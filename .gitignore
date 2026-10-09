@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+*.local
+
+# Build output
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Prisma
+# (keep schema.prisma; migrations are committed)
+
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/

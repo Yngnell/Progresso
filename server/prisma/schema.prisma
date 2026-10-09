@@ -1,0 +1,176 @@
+// SK Project Monitoring System — Prisma schema (PostgreSQL)
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum Role {
+  ADMIN
+  VIEWER
+}
+
+enum ProjectStatus {
+  PROPOSED
+  PLANNING
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum EventType {
+  MEETING
+  SESSION
+  ACTIVITY
+  APPOINTMENT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum NewsStatus {
+  DRAFT
+  PUBLISHED
+}
+
+// ---------- Models ----------
+
+// App users. Admins AND registered public viewers live here.
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(VIEWER)
+  phone        String?
+  photoUrl     String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  news          News[]    // articles authored (admin)
+  createdProjects Project[] @relation("ProjectCreator")
+
+  @@index([role])
+}
+
+// Directory of SK / barangay officials (no login required).
+model Official {
+  id           String    @id @default(uuid())
+  name         String
+  position     String
+  committee    String?
+  contact      String?
+  termStart    DateTime?
+  termEnd      DateTime?
+  photoUrl     String?
+  bio          String?
+  displayOrder Int       @default(0)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relations
+  events       Event[]   @relation("EventOrganizer")
+  projects     Project[] // many-to-many team membership
+}
+
+// Core monitoring entity: an SK project / program.
+model Project {
+  id             String        @id @default(uuid())
+  title          String
+  description    String?
+  category       String?
+  status         ProjectStatus @default(PROPOSED)
+  budget         Decimal       @default(0) @db.Decimal(12, 2)
+  progress       Int           @default(0) // 0-100
+  startDate      DateTime?
+  endDate        DateTime?
+  location       String?
+  coverImageUrl  String?
+  createdById    String
+  createdBy      User          @relation("ProjectCreator", fields: [createdById], references: [id])
+  officials      Official[]    // team
+  expenses       Expense[]
+  events         Event[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([status])
+}
+
+// A single expense line item under a project.
+model Expense {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  item      String
+  amount    Decimal  @db.Decimal(12, 2)
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+}
+
+// Calendar entry: meeting, session, activity, or appointment.
+model Event {
+  id               String    @id @default(uuid())
+  title            String
+  type             EventType @default(MEETING)
+  description      String?
+  startAt          DateTime
+  endAt            DateTime?
+  location         String?
+  meetingLink      String?
+  organizerId      String?
+  organizer        Official? @relation("EventOrganizer", fields: [organizerId], references: [id])
+  relatedProjectId String?
+  relatedProject   Project?  @relation(fields: [relatedProjectId], references: [id])
+  attendance       AttendanceRecord[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([startAt])
+}
+
+// One attendance record per participant per event.
+model AttendanceRecord {
+  id          String           @id @default(uuid())
+  eventId     String
+  event       Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participant String           // display name of attendee
+  userId      String?          // optional link to a registered user
+  status      AttendanceStatus @default(PRESENT)
+  timeIn      DateTime?
+  createdAt   DateTime         @default(now())
+}
+
+// Public news / announcements shown on the home page.
+model News {
+  id            String     @id @default(uuid())
+  title         String
+  category      String?
+  excerpt       String?
+  content       String
+  coverImageUrl String?
+  authorId      String
+  author        User       @relation(fields: [authorId], references: [id])
+  status        NewsStatus @default(DRAFT)
+  publishedAt   DateTime?
+  views         Int        @default(0)
+  isFeatured    Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([status])
+}
