@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Plus } from 'lucide-react';
 import { newsApi } from '../../api/news';
+import PageHeader from '../../components/PageHeader';
 import {
   Button,
   Card,
@@ -104,17 +106,16 @@ export default function AdminNews() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">News &amp; Updates</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Write and publish announcements for the community.
-          </p>
-        </div>
-        <Button variant="accent" onClick={openCreate}>
-          + New Article
-        </Button>
-      </div>
+      <PageHeader
+        title="News & Updates"
+        description="Write and publish announcements for the community."
+        actions={
+          <Button variant="accent" onClick={openCreate}>
+            <Plus size={18} strokeWidth={2} aria-hidden="true" />
+            New Article
+          </Button>
+        }
+      />
 
       <div className="mt-6">
         {isLoading ? (
@@ -125,7 +126,8 @@ export default function AdminNews() {
             description="Create your first news article to publish on the home page."
             action={
               <Button variant="accent" onClick={openCreate}>
-                + New Article
+                <Plus size={18} strokeWidth={2} aria-hidden="true" />
+                New Article
               </Button>
             }
           />

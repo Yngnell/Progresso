@@ -4,7 +4,7 @@ const router = express.Router();
 const { getStats } = require('../controllers/statsController');
 const { protect, restrictTo } = require('../middleware/auth');
 
-// Admin only dashboard stats.
-router.get('/', protect, restrictTo('ADMIN'), getStats);
+// Dashboard stats: admin and the chairman (read-only).
+router.get('/', protect, restrictTo('ADMIN', 'CHAIRMAN'), getStats);
 
 module.exports = router;

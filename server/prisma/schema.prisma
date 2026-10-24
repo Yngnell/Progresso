@@ -14,6 +14,7 @@ datasource db {
 
 enum Role {
   ADMIN
+  CHAIRMAN
   VIEWER
 }
 
@@ -55,13 +56,16 @@ model User {
   role         Role     @default(VIEWER)
   phone        String?
   photoUrl     String?
+  // Where project alerts are emailed (e.g. a Gmail address). Empty = in-app alerts only.
+  notifyEmail  String?
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   // Relations
   news          News[]    // articles authored (admin)
-  createdProjects Project[] @relation("ProjectCreator")
+  createdProjects  Project[] @relation("ProjectCreator")
+  reviewedProjects Project[] @relation("ProjectReviewer")
 
   @@index([role])
 }
@@ -95,20 +99,93 @@ model Project {
   category       String?
   status         ProjectStatus @default(PROPOSED)
   budget         Decimal       @default(0) @db.Decimal(12, 2)
-  progress       Int           @default(0) // 0-100
+  progress       Int           @default(0) // legacy; progress is now computed from events + tasks
   startDate      DateTime?
   endDate        DateTime?
   location       String?
   coverImageUrl  String?
   createdById    String
   createdBy      User          @relation("ProjectCreator", fields: [createdById], references: [id])
+  // Barangay Chairman review: PENDING (awaiting) | APPROVED | RETURNED (needs revision)
+  approvalState  String        @default("PENDING")
+  reviewedById   String?
+  reviewedBy     User?         @relation("ProjectReviewer", fields: [reviewedById], references: [id])
+  reviewedAt     DateTime?
+  reviewRemarks  String?
+  // SK council approval recorded when the project is marked completed
+  councilApprovedOn   DateTime?
+  councilResolutionNo String?
+  cancelReason        String?
+  // Archive: an approved deletion request moves the project here instead of erasing it.
+  archivedAt          DateTime?
+  archivedReason      String?
+  archivedByName      String?
+  // "Prepared by" on the project proposal form (snapshots of the official's name/position)
+  proposedByName      String?
+  proposedByPosition  String?
   officials      Official[]    // team
   expenses       Expense[]
   events         Event[]
+  tasks          ProjectTask[]
+  requestItems   ProjectRequestItem[]
+  notifications  Notification[]
+  deletionRequests DeletionRequest[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
   @@index([status])
+}
+
+// One row of the project's "Itemized List of Purchase Request (PR)" sheet.
+// The project budget is the total of these amounts.
+model ProjectRequestItem {
+  id           String    @id @default(uuid())
+  projectId    String
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  prNo         String?
+  prDate       DateTime?
+  requestedBy  String?
+  amount       Decimal   @default(0) @db.Decimal(12, 2)
+  displayOrder Int       @default(0)
+
+  @@index([projectId])
+}
+
+// A project can only be deleted after the chairman approves a request that
+// states a reason. Rows are kept after the project is gone (projectId becomes
+// null; projectTitle and names are snapshots) so there is always a record.
+model DeletionRequest {
+  id              String    @id @default(uuid())
+  projectId       String?
+  project         Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectTitle    String
+  reason          String
+  status          String    @default("PENDING") // PENDING | APPROVED | REJECTED | WITHDRAWN
+  requestedById   String?
+  requestedByName String
+  reviewedById    String?
+  reviewedByName  String?
+  reviewedAt      DateTime?
+  reviewRemarks   String?
+  createdAt       DateTime  @default(now())
+
+  @@index([status])
+  @@index([projectId])
+}
+
+// A checklist item under a project; ticking it counts toward progress.
+model ProjectTask {
+  id           String    @id @default(uuid())
+  projectId    String
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title        String
+  dueDate      DateTime?
+  done         Boolean   @default(false)
+  completedAt  DateTime?
+  displayOrder Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  @@index([projectId])
 }
 
 // A single expense line item under a project.
@@ -119,7 +196,30 @@ model Expense {
   item      String
   amount    Decimal  @db.Decimal(12, 2)
   date      DateTime @default(now())
+  // A manual deduction from the budget is backed by an uploaded receipt (image or PDF).
+  voucherNo    String?
+  receiptFile  String? // stored file name inside server/uploads/receipts
+  receiptName  String? // original file name, shown to the user
+  receiptType  String? // MIME type
   createdAt DateTime @default(now())
+}
+
+// In-app alerts about a project: progress milestones and approaching/passed end date.
+// One row per project and type, so each alert fires once. readByIds lists the users
+// who have already opened it.
+model Notification {
+  id        String   @id @default(uuid())
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type      String   // PROGRESS_50 | PROGRESS_75 | PROGRESS_90 | ENDING_3D | ENDING_1D | OVERDUE
+  title     String
+  message   String
+  readByIds String[] @default([])
+  emailedAt DateTime? // set once the alert has been emailed to everyone who opted in
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, type])
+  @@index([createdAt])
 }
 
 // Calendar entry: meeting, session, activity, or appointment.

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Plus } from 'lucide-react';
 import { officialsApi } from '../../api/officials';
+import PageHeader from '../../components/PageHeader';
 import {
   Button,
   Card,
@@ -105,17 +107,16 @@ export default function AdminOfficials() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Officials Directory</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Manage the SK and barangay officials shown on the public site.
-          </p>
-        </div>
-        <Button variant="accent" onClick={openCreate}>
-          + Add Official
-        </Button>
-      </div>
+      <PageHeader
+        title="Officials Directory"
+        description="Manage the SK and barangay officials shown on the public site."
+        actions={
+          <Button variant="accent" onClick={openCreate}>
+            <Plus size={18} strokeWidth={2} aria-hidden="true" />
+            Add Official
+          </Button>
+        }
+      />
 
       <div className="mt-6">
         {isLoading ? (
@@ -126,7 +127,8 @@ export default function AdminOfficials() {
             description="Add your first official to populate the public directory."
             action={
               <Button variant="accent" onClick={openCreate}>
-                + Add Official
+                <Plus size={18} strokeWidth={2} aria-hidden="true" />
+                Add Official
               </Button>
             }
           />
@@ -150,17 +152,22 @@ export default function AdminOfficials() {
                 </div>
 
                 {o.committee && (
-                  <p className="mt-3 text-xs text-slate-400">Committee: {o.committee}</p>
+                  <p className="mt-3 text-sm text-slate-600">Committee: {o.committee}</p>
                 )}
                 {o.contact && (
-                  <p className="mt-1 text-xs text-slate-400">Contact: {o.contact}</p>
+                  <p className="mt-1 text-sm text-slate-600">Contact: {o.contact}</p>
                 )}
 
                 <div className="mt-4 flex gap-2 border-t border-slate-100 pt-4">
                   <Button size="sm" variant="secondary" onClick={() => openEdit(o)}>
                     Edit
                   </Button>
-                  <Button size="sm" variant="danger" onClick={() => handleDelete(o)}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-red-700 hover:bg-red-50"
+                    onClick={() => handleDelete(o)}
+                  >
                     Delete
                   </Button>
                 </div>

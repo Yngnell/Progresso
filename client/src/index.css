@@ -1,44 +1,86 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   html {
-    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-family: 'Barlow', ui-sans-serif, system-ui, sans-serif;
+    /* The browser's own parts take the palette too */
+    accent-color: #1c66cc;
+    scrollbar-color: #bac6db transparent;
+    scrollbar-width: thin;
   }
   body {
     @apply bg-slate-50 text-slate-800 antialiased;
+  }
+  ::selection {
+    background: #bbd5fa;
+    color: #0b1f4a;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #bac6db;
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #627290;
+    background-clip: content-box;
+    border: 3px solid transparent;
+  }
+  /* Figures line up in tables and lists */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  /* One keyboard focus ring everywhere */
+  :focus-visible {
+    outline: 2px solid #2f7fe6;
+    outline-offset: 2px;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+    @apply text-slate-900;
   }
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply bg-brand-600 text-white hover:bg-brand-700 focus:ring-brand-500;
+    @apply bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800;
   }
+  /* Gold action: ink text, because white on gold is unreadable */
   .btn-accent {
-    @apply bg-accent-500 text-white hover:bg-accent-600 focus:ring-accent-400;
+    @apply bg-accent-500 text-ink hover:bg-accent-400 active:bg-accent-600;
   }
   .btn-secondary {
-    @apply bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-brand-500;
+    @apply border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50 active:bg-slate-100;
   }
   .btn-danger {
-    @apply bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+    @apply bg-red-600 text-white hover:bg-red-700 active:bg-red-800;
   }
   .btn-ghost {
-    @apply text-slate-600 hover:bg-slate-100 focus:ring-brand-500;
+    @apply text-slate-600 hover:bg-slate-100 active:bg-slate-200;
   }
   .card {
-    @apply bg-white rounded-xl border border-slate-200 shadow-card;
+    @apply rounded-xl border border-slate-200 bg-white shadow-card;
   }
   .input {
-    @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm placeholder-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200;
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200;
   }
   .label {
-    @apply block text-sm font-medium text-slate-700 mb-1;
+    @apply mb-1 block text-sm font-semibold text-slate-700;
+  }
+  /* The seal's lettering: condensed, heavy, capitals */
+  .seal-type {
+    @apply font-display font-bold uppercase tracking-wide;
   }
 }

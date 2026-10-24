@@ -1,7 +1,7 @@
 # Dependencies
 node_modules/
 
-# Environment
+# Environment (secrets: database URL, JWT secret, Gmail app password)
 .env
 .env.local
 *.local
@@ -19,5 +19,17 @@ npm-debug.log*
 
 # OS / Editor
 .DS_Store
+Thumbs.db
 .vscode/
 .idea/
+~$*
+
+# Uploaded files (expense receipts) live on the server, not in the repo
+server/uploads/
+
+# Local AI/design tooling, not part of the app
+.claude/
+.agent/
+.gemini/
+.impeccable/
+client/.impeccable/
