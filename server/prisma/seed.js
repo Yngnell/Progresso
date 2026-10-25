@@ -19,6 +19,7 @@ async function ensureUser({ email, password, name, role }) {
       email,
       passwordHash: await bcrypt.hash(password, 12),
       role,
+      emailVerifiedAt: new Date(), // staff accounts are created by the admin, so they start verified
     },
   });
 

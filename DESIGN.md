@@ -286,3 +286,7 @@ Swallowtail banner, condensed bold capitals at 13px, 16px side padding. Fill by 
 ## Update: project cards use the progress bar
 
 Project cards (admin list and public grid) show the status ribbon and title on the left, the official progress as a large Barlow Condensed number on the right, and the slim progress bar beneath, coloured by schedule (azure on track, gold behind, red overdue, green completed) with the gold expected-by-now tick, followed by one muted line with the start and end date and time. The ProgressRoundel stays on the project detail header, the public home "Happening now" panel and the dashboard "Needs attention" list.
+
+## Update: dashboard analytics
+
+The admin and chairman Dashboard now leads with four `KpiCard`s (active projects, budget used, completion rate, attendance rate), each a small Barlow Condensed figure with an optional 0-100 meter. Below them sit four Recharts panels drawn in the seal palette on hairline gridlines: spending by month (azure area), projects by status (donut with the total in the centre, ribbon colours), budget vs spent per project (slate budget bar, azure spent bar, red when over budget) and attendance by session (stacked present, late, excused, absent). Every chart has an `aria-label` and a plain empty state. Needs attention, Upcoming sessions and Recent projects follow. The numbers come from `analytics` in `GET /api/stats`. Chart code lives in `components/charts/`.

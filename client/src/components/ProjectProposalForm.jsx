@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import Letterhead from './Letterhead';
 
 const MONTHS = [
@@ -12,6 +13,26 @@ const cellInput =
 
 const cell = 'border border-black';
 const headCell = `${cell} px-2 py-3 text-center text-sm font-bold text-black`;
+
+// PR numbers are automatic and look like 10-003-2026: month of the PR date, the row's
+// position (001, 002, 003, ...), and the year.
+
+// Month and year of a PR row: its own date, else the project's start, else today.
+function prefixParts(item, startDate) {
+  const d = item.prDate
+    ? new Date(`${item.prDate}T00:00:00`)
+    : startDate
+      ? new Date(startDate)
+      : new Date();
+  const base = Number.isNaN(d.getTime()) ? new Date() : d;
+  return { mm: String(base.getMonth() + 1).padStart(2, '0'), yyyy: String(base.getFullYear()) };
+}
+
+// The full PR no. of a row, e.g. row 3 with a date in October 2026 -> "10-003-2026".
+function prNumber(item, index, startDate) {
+  const { mm, yyyy } = prefixParts(item, startDate);
+  return `${mm}-${String(index + 1).padStart(3, '0')}-${yyyy}`;
+}
 
 export const emptyItem = { prNo: '', prDate: '', requestedBy: '', amount: '' };
 
@@ -64,6 +85,15 @@ export default function ProjectProposalForm({
   const monthName = MONTHS[month];
   const year = basis.getFullYear();
 
+  // Keep every row's saved PR no. in step with its position and date: adding, removing
+  // or re-dating a row renumbers the list (001, 002, 003, ...).
+  useEffect(() => {
+    form.items.forEach((item, i) => {
+      const wanted = prNumber(item, i, form.startDate);
+      if (item.prNo !== wanted) updateItem(i, 'prNo', wanted);
+    });
+  }, [form.items, form.startDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const total = form.items.reduce((sum, i) => sum + Number(i.amount || 0), 0);
 
   return (
@@ -105,13 +135,11 @@ export default function ProjectProposalForm({
             {form.items.map((item, i) => (
               <tr key={i}>
                 <td className={`${cell} text-center text-sm font-bold text-black`}>{i + 1}</td>
-                <td className={cell}>
-                  <input
-                    className={cellInput}
-                    value={item.prNo}
-                    onChange={(e) => updateItem(i, 'prNo', e.target.value)}
-                    placeholder={`${String(month + 1).padStart(2, '0')}-${String(i + 1).padStart(3, '0')}-${year}`}
-                  />
+                <td
+                  className={`${cell} px-2 py-3 text-center text-sm font-semibold text-black`}
+                  data-pr-no
+                >
+                  {prNumber(item, i, form.startDate)}
                 </td>
                 <td className={cell}>
                   <input

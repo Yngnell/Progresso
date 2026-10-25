@@ -65,7 +65,35 @@ function evaluateProject(project, now = new Date()) {
   return alerts;
 }
 
-// Looks at every active project and creates the alerts that are newly due.
+// Calendar reminders: one the day before and one the hour before an event starts.
+// Pure. An event that is already under an hour away only gets the hour reminder, and
+// past events get nothing, so a late start-up never floods the list.
+function evaluateEvent(event, now = new Date()) {
+  const left = new Date(event.startAt).getTime() - now.getTime();
+  if (left <= 0) return [];
+  const where = event.location ? ` at ${event.location}` : '';
+  if (left <= HOUR) {
+    return [
+      {
+        type: 'EVENT_1H',
+        title: `Starting soon: ${event.title}`,
+        message: `${event.title} starts at ${when(event.startAt)}${where}.`,
+      },
+    ];
+  }
+  if (left <= 24 * HOUR) {
+    return [
+      {
+        type: 'EVENT_1D',
+        title: `Coming up: ${event.title}`,
+        message: `${event.title} is on ${when(event.startAt)}${where}.`,
+      },
+    ];
+  }
+  return [];
+}
+
+// Looks at every active project and upcoming event and creates the alerts that are newly due.
 // Safe to run often: existing alerts are skipped by the unique key. Throttled so
 // opening the notification list repeatedly does not hit the database each time.
 let lastSync = 0;
@@ -95,6 +123,15 @@ async function syncNotifications({ force = false } = {}) {
     }
   }
 
+  // Events starting within the next day (plus a little slack)
+  const events = await prisma.event.findMany({
+    where: { startAt: { gt: now, lte: new Date(now.getTime() + 25 * HOUR) } },
+    select: { id: true, title: true, startAt: true, location: true },
+  });
+  for (const e of events) {
+    for (const alert of evaluateEvent(e, now)) rows.push({ eventId: e.id, ...alert });
+  }
+
   let created = 0;
   if (rows.length > 0) {
     const result = await prisma.notification.createMany({ data: rows, skipDuplicates: true });
@@ -103,6 +140,10 @@ async function syncNotifications({ force = false } = {}) {
 
   // Email what is new, without making the caller wait for the mail server.
   sendPendingEmails().catch((err) => console.error('Alert email failed:', err.message));
+  // Residents who opted in get their own, public-friendly email (loaded here to avoid a require cycle).
+  require('./residentEmails')
+    .sendPendingViewerEmails()
+    .catch((err) => console.error('Resident email failed:', err.message));
   return created;
 }
 
@@ -114,11 +155,12 @@ const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ESCAPES[c]);
 
 // Builds one email that lists every given alert. Pure: no database or network.
 function buildDigest(alerts) {
-  const link = (a) => `${APP_URL()}/admin/projects/${a.projectId}`;
+  const link = (a) =>
+    a.eventId ? `${APP_URL()}/admin/calendar/${a.eventId}` : `${APP_URL()}/admin/projects/${a.projectId}`;
   const subject =
     alerts.length === 1
       ? `SK Monitoring: ${alerts[0].title}`
-      : `SK Monitoring: ${alerts.length} new project alerts`;
+      : `SK Monitoring: ${alerts.length} new alerts`;
 
   const text = alerts
     .map((a) => `${a.title}\n${a.message}\n${link(a)}`)
@@ -126,14 +168,14 @@ function buildDigest(alerts) {
 
   const html = `
     <div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;max-width:560px">
-      <p style="font-size:16px;font-weight:bold;margin:0 0 12px">SK Project Monitoring: project alerts</p>
+      <p style="font-size:16px;font-weight:bold;margin:0 0 12px">SK Project Monitoring: alerts</p>
       ${alerts
         .map(
           (a) => `
         <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:10px">
           <p style="margin:0;font-weight:bold">${escapeHtml(a.title)}</p>
           <p style="margin:4px 0 8px;color:#475569;font-size:14px">${escapeHtml(a.message)}</p>
-          <a href="${link(a)}" style="color:#4f46e5;font-size:14px">Open the project</a>
+          <a href="${link(a)}" style="color:#4f46e5;font-size:14px">${a.eventId ? 'Open the event' : 'Open the project'}</a>
         </div>`
         )
         .join('')}
@@ -158,7 +200,6 @@ async function sendPendingEmails() {
     const pending = await prisma.notification.findMany({
       where: {
         emailedAt: null,
-        projectId: { not: null },
         createdAt: { gt: new Date(Date.now() - EMAIL_WINDOW_MS) },
       },
       orderBy: { createdAt: 'asc' },
@@ -170,6 +211,7 @@ async function sendPendingEmails() {
         isActive: true,
         role: { in: ['ADMIN', 'CHAIRMAN'] },
         notifyEmail: { not: null },
+        notifyEmailVerifiedAt: { not: null }, // only addresses that confirmed their code
       },
       select: { notifyEmail: true },
     });
@@ -190,4 +232,4 @@ async function sendPendingEmails() {
   }
 }
 
-module.exports = { evaluateProject, syncNotifications, buildDigest, sendPendingEmails };
+module.exports = { evaluateProject, evaluateEvent, syncNotifications, buildDigest, sendPendingEmails };

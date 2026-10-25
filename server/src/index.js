@@ -12,6 +12,7 @@ const attendanceRoutes = require('./routes/attendanceRoutes');
 const statsRoutes = require('./routes/statsRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const { syncNotifications } = require('./utils/notifications');
+const { cleanupPendingSignups } = require('./utils/verification');
 const errorHandler = require('./middleware/error');
 
 const app = express();
@@ -46,10 +47,13 @@ app.listen(PORT, () => {
 
   // Progress is computed on the fly, so milestones and approaching end dates are
   // checked on a timer: once at start-up and then every 10 minutes.
-  const runSync = () =>
+  const runSync = () => {
     syncNotifications({ force: true }).catch((err) =>
       console.error('Notification check failed:', err.message)
     );
+    // Sign-ups nobody finished (never entered their emailed code) are forgotten after a day.
+    cleanupPendingSignups().catch((err) => console.error('Sign-up cleanup failed:', err.message));
+  };
   runSync();
   setInterval(runSync, 10 * 60 * 1000);
 });

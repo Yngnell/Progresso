@@ -27,7 +27,15 @@ const groups = [
     links: [
       { to: '/admin', label: 'Dashboard', Icon: LayoutDashboard, end: true },
       { to: '/admin/projects', label: 'Projects', Icon: FolderKanban },
-      { to: '/admin/proposals', label: 'Approvals', Icon: ClipboardCheck, badge: true },
+      // The chairman approves; the admin only follows the status of their proposals.
+      {
+        to: '/admin/proposals',
+        label: 'Approvals',
+        labelFor: { ADMIN: 'Proposals' },
+        Icon: ClipboardCheck,
+        badge: true,
+        firstFor: ['CHAIRMAN'],
+      },
       { to: '/admin/calendar', label: 'Calendar', Icon: CalendarDays },
       { to: '/admin/attendance', label: 'Attendance', Icon: ListChecks },
     ],
@@ -110,8 +118,17 @@ export default function AdminLayout() {
   // A new page closes the phone menu.
   useEffect(() => setDrawerOpen(false), [location.pathname]);
 
+  // Each role sees only its own links, under the name that fits what it can do there.
+  // A link marked `firstFor` a role moves to the top of its group for that role.
+  const role = user?.role;
   const links = groups
-    .map((g) => ({ ...g, links: g.links.filter((l) => !l.roles || l.roles.includes(user?.role)) }))
+    .map((g) => {
+      const visible = g.links
+        .filter((l) => !l.roles || l.roles.includes(role))
+        .map((l) => ({ ...l, label: l.labelFor?.[role] || l.label }));
+      const first = visible.filter((l) => l.firstFor?.includes(role));
+      return { ...g, links: [...first, ...visible.filter((l) => !first.includes(l))] };
+    })
     .filter((g) => g.links.length > 0);
 
   // Items that need the current user's action: pending proposals for the

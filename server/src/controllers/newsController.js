@@ -1,4 +1,5 @@
 const prisma = require('../prisma');
+const { sendNewsEmail } = require('../utils/residentEmails');
 
 // GET /api/news — public sees PUBLISHED only; admin sees all.
 async function getNews(req, res, next) {
@@ -74,6 +75,9 @@ async function createNews(req, res, next) {
       },
     });
     res.status(201).json({ news: item });
+    // Residents who opted in are told about a new published article (after the reply, so
+    // the admin never waits for the mail server).
+    sendNewsEmail(item).catch((err) => console.error('News email failed:', err.message));
   } catch (err) {
     next(err);
   }
@@ -103,6 +107,10 @@ async function updateNews(req, res, next) {
 
     const item = await prisma.news.update({ where: { id: req.params.id }, data });
     res.json({ news: item });
+    // Only the first time an article goes live is it emailed (sendNewsEmail claims it).
+    if (item.status === 'PUBLISHED' && existing.status !== 'PUBLISHED') {
+      sendNewsEmail(item).catch((err) => console.error('News email failed:', err.message));
+    }
   } catch (err) {
     next(err);
   }

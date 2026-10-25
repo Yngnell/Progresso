@@ -58,6 +58,19 @@ model User {
   photoUrl     String?
   // Where project alerts are emailed (e.g. a Gmail address). Empty = in-app alerts only.
   notifyEmail  String?
+  // Email verification: the login email (viewers confirm it at sign-up) and the alert
+  // email each need a confirmed 6-digit code before they are trusted.
+  emailVerifiedAt       DateTime?
+  notifyEmailVerifiedAt DateTime?
+  verifyCodeHash        String?   // bcrypt hash of the pending 6-digit code
+  verifyCodeExpires     DateTime?
+  verifyCodeFor         String?   // LOGIN | NOTIFY: which address the code confirms
+  verifyAttempts        Int       @default(0)
+  verifyCodeSentAt      DateTime?
+  // Residents can opt in to emails about news, events and project milestones at sign-up.
+  receiveUpdates        Boolean   @default(false)
+  updatesSince          DateTime? // they only get alerts created after they opted in
+  unsubscribeToken      String?   @unique
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -211,14 +224,18 @@ model Notification {
   id        String   @id @default(uuid())
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  type      String   // PROGRESS_50 | PROGRESS_75 | PROGRESS_90 | ENDING_3D | ENDING_1D | OVERDUE
+  eventId   String?
+  event     Event?   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  type      String   // PROGRESS_50/75/90 | ENDING_3D | ENDING_1D (projects) | EVENT_1D | EVENT_1H (calendar)
   title     String
   message   String
   readByIds String[] @default([])
   emailedAt DateTime? // set once the alert has been emailed to everyone who opted in
+  viewerEmailedAt DateTime? // same, for the residents who ticked "email me updates"
   createdAt DateTime @default(now())
 
   @@unique([projectId, type])
+  @@unique([eventId, type])
   @@index([createdAt])
 }
 
@@ -237,6 +254,7 @@ model Event {
   relatedProjectId String?
   relatedProject   Project?  @relation(fields: [relatedProjectId], references: [id])
   attendance       AttendanceRecord[]
+  notifications    Notification[]
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -269,8 +287,27 @@ model News {
   publishedAt   DateTime?
   views         Int        @default(0)
   isFeatured    Boolean    @default(false)
+  emailedAt     DateTime?  // set once subscribers were emailed about this article
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
   @@index([status])
+}
+
+// A sign-up waiting for its emailed code. The User row is only created once the code is
+// verified, so nobody can register with an address they do not own.
+model PendingSignup {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  name           String
+  phone          String?
+  passwordHash   String
+  receiveUpdates Boolean  @default(false)
+  codeHash       String
+  codeExpires    DateTime
+  attempts       Int      @default(0)
+  sentAt         DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
 }

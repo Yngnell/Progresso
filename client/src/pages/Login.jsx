@@ -13,15 +13,23 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from?.pathname || '/admin';
+  // Where to go after signing in. Staff go back to the page they were sent from (or the
+  // dashboard); residents have no dashboard, so they return to a public page.
+  const from = location.state?.from?.pathname;
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
-      navigate(from, { replace: true });
+      const signedIn = await login(email, password);
+      const isStaff = ['ADMIN', 'CHAIRMAN'].includes(signedIn?.role);
+      const target = isStaff
+        ? from || '/admin'
+        : from && !from.startsWith('/admin')
+          ? from
+          : '/';
+      navigate(target, { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');
     } finally {
@@ -30,7 +38,7 @@ export default function Login() {
   }
 
   return (
-    <AuthShell title="Welcome back" description="Sign in to the SK admin panel.">
+    <AuthShell title="Welcome back" description="Sign in to your account.">
       {error && (
         <div
           className="mb-4 rounded-lg bg-red-50 px-3 py-2.5 text-[15px] font-medium text-red-700"

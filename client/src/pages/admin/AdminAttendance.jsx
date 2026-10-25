@@ -5,6 +5,7 @@ import PageHeader from '../../components/PageHeader';
 import EventTypeIcon from '../../components/EventTypeIcon';
 import { eventsApi } from '../../api/events';
 import { Card, Badge, Button, EmptyState } from '../../components/ui';
+import { useAuth } from '../../context/AuthContext';
 import { EVENT_TYPE, ATTENDANCE_STATUS, formatDateTime } from '../../utils/format';
 
 // Count attendance records by status for one event.
@@ -18,6 +19,8 @@ function tally(event) {
 }
 
 export default function AdminAttendance() {
+  const { user } = useAuth();
+  const readOnly = user?.role === 'CHAIRMAN'; // the chairman views attendance, the admin records it
   const { data, isLoading } = useQuery({
     queryKey: ['events', 'admin'],
     queryFn: () => eventsApi.list({}),
@@ -28,7 +31,11 @@ export default function AdminAttendance() {
     <div>
       <PageHeader
         title="Attendance Records"
-        description="Overview of attendance across all events. Open an event to mark or edit attendees."
+        description={
+          readOnly
+            ? 'Overview of attendance across all events. Open an event to see who attended.'
+            : 'Overview of attendance across all events. Open an event to mark or edit attendees.'
+        }
       />
 
       <div className="mt-6">
@@ -64,7 +71,7 @@ export default function AdminAttendance() {
                     </div>
                     <Link to={`/admin/calendar/${e.id}`}>
                       <Button size="sm" variant="secondary">
-                        Mark / View
+                        {readOnly ? 'View' : 'Mark / View'}
                         <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" />
                       </Button>
                     </Link>

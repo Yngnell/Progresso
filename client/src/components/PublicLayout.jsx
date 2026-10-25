@@ -35,8 +35,13 @@ function Nameplate({ light = false }) {
   );
 }
 
+// Only SK staff and the Barangay Chairman have a dashboard; residents (viewers) do not.
+const STAFF = ['ADMIN', 'CHAIRMAN'];
+
 export default function PublicLayout() {
   const { user, logout } = useAuth();
+  const isStaff = STAFF.includes(user?.role);
+  const firstName = (user?.name || '').split(' ')[0];
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = () => setMenuOpen(false);
 
@@ -72,12 +77,16 @@ export default function PublicLayout() {
             <div className="hidden items-center gap-2 md:flex">
               {user ? (
                 <>
-                  <Link
-                    to="/admin"
-                    className="rounded-lg px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"
-                  >
-                    Dashboard
-                  </Link>
+                  {isStaff ? (
+                    <Link
+                      to="/admin"
+                      className="rounded-lg px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"
+                    >
+                      Dashboard
+                    </Link>
+                  ) : (
+                    <span className="px-2 text-sm font-semibold text-slate-700">Hi, {firstName}</span>
+                  )}
                   <Button variant="secondary" size="sm" onClick={logout}>
                     Logout
                   </Button>
@@ -132,11 +141,17 @@ export default function PublicLayout() {
               <div className="mt-2 flex gap-2 border-t border-slate-100 py-3">
                 {user ? (
                   <>
-                    <Link to="/admin" onClick={closeMenu} className="flex-1">
-                      <Button variant="secondary" className="w-full">
-                        Dashboard
-                      </Button>
-                    </Link>
+                    {isStaff ? (
+                      <Link to="/admin" onClick={closeMenu} className="flex-1">
+                        <Button variant="secondary" className="w-full">
+                          Dashboard
+                        </Button>
+                      </Link>
+                    ) : (
+                      <span className="flex flex-1 items-center text-base font-semibold text-slate-700">
+                        Hi, {firstName}
+                      </span>
+                    )}
                     <Button variant="ghost" className="flex-1" onClick={logout}>
                       Logout
                     </Button>

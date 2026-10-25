@@ -8,6 +8,8 @@ const {
   getEmailSettings,
   saveEmailSettings,
   sendTestEmail,
+  verifyNotifyEmail,
+  resendNotifyCode,
 } = require('../controllers/notificationController');
 const { protect, restrictTo } = require('../middleware/auth');
 
@@ -18,6 +20,8 @@ router.get('/', listNotifications);
 router.put('/read-all', markAllRead); // before '/:id/read'
 router.get('/email-settings', getEmailSettings);
 router.put('/email-settings', saveEmailSettings);
+router.post('/verify-email', verifyNotifyEmail);
+router.post('/resend-code', resendNotifyCode);
 router.post('/test-email', sendTestEmail);
 router.put('/:id/read', markRead);
 

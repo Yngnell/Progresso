@@ -4,12 +4,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
   CalendarClock,
+  CircleCheck,
   Flag,
   Mail,
   Target,
   TrendingUp,
 } from 'lucide-react';
 import { notificationsApi } from '../api/notifications';
+import VerifyCodeForm from './VerifyCodeForm';
 
 // Drawn icon and tint per alert type (replaces the old emoji).
 const TYPE_STYLE = {
@@ -18,6 +20,9 @@ const TYPE_STYLE = {
   PROGRESS_90: { Icon: Flag, tone: 'bg-green-50', color: 'text-green-700' },
   ENDING_3D: { Icon: CalendarClock, tone: 'bg-amber-50', color: 'text-amber-700' },
   ENDING_1D: { Icon: CalendarClock, tone: 'bg-amber-100', color: 'text-amber-800' },
+  // Calendar reminders
+  EVENT_1D: { Icon: CalendarClock, tone: 'bg-brand-50', color: 'text-brand-700' },
+  EVENT_1H: { Icon: CalendarClock, tone: 'bg-brand-100', color: 'text-brand-800' },
 };
 
 // "Email alerts" box at the bottom of the dropdown: save a Gmail address and the same
@@ -33,14 +38,25 @@ function EmailAlerts() {
   });
   const saved = data?.email || '';
   const value = email ?? saved;
+  const verified = Boolean(data?.verified);
+  // After saving a new address the 6-digit code box shows until it is confirmed.
+  const needsCode = Boolean(saved) && !verified && Boolean(data?.mailConfigured);
 
   const saveMutation = useMutation({
     mutationFn: () => notificationsApi.saveEmail(value.trim()),
     onSuccess: (res) => {
       setEmail(null);
       setMessage({
-        ok: true,
-        text: res.email ? `Alerts will be emailed to ${res.email}.` : 'Email alerts are off.',
+        ok: !res.warning,
+        text: res.warning
+          ? res.warning
+          : !res.email
+            ? 'Email alerts are off.'
+            : res.verified
+              ? `Alerts will be emailed to ${res.email}.`
+              : res.codeSent
+                ? 'We emailed you a 6-digit code. Enter it below to confirm this address.'
+                : 'Enter the code we sent earlier, or ask for a new one.',
       });
       qc.invalidateQueries({ queryKey: ['notifications', 'email-settings'] });
     },
@@ -79,7 +95,27 @@ function EmailAlerts() {
           Save
         </button>
       </div>
-      {saved && (
+      {saved && verified && (
+        <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-green-700">
+          <CircleCheck size={16} strokeWidth={1.75} aria-hidden="true" />
+          Verified. Project and calendar alerts go to this address.
+        </p>
+      )}
+      {needsCode && (
+        <div className="mt-3 rounded-lg bg-slate-50 p-3">
+          <VerifyCodeForm
+            compact
+            email={saved}
+            onVerify={async (code) => {
+              await notificationsApi.verifyEmail(code);
+              setMessage({ ok: true, text: 'Email verified. Alerts will be emailed to you.' });
+              qc.invalidateQueries({ queryKey: ['notifications', 'email-settings'] });
+            }}
+            onResend={() => notificationsApi.resendCode()}
+          />
+        </div>
+      )}
+      {saved && verified && (
         <button
           type="button"
           className="mt-2 text-sm font-semibold text-brand-700 hover:text-brand-800"
@@ -113,7 +149,7 @@ function timeAgo(iso) {
 }
 
 // Bell with an unread badge and a dropdown list. Alerts: progress milestones
-// (50%, 75%, 90%) and projects that are about to end.
+// (50%, 75%, 90%), projects that are about to end, and calendar events starting soon.
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -134,7 +170,8 @@ export default function NotificationBell() {
   function openNotification(n) {
     if (!n.read) readMutation.mutate(n.id);
     setOpen(false);
-    if (n.project) navigate(`/admin/projects/${n.project.id}`);
+    if (n.event) navigate(`/admin/calendar/${n.event.id}`);
+    else if (n.project) navigate(`/admin/projects/${n.project.id}`);
   }
 
   return (

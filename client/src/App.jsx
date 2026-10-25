@@ -6,6 +6,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Unsubscribe from './pages/Unsubscribe';
 import NewsList from './pages/NewsList';
 import NewsDetail from './pages/NewsDetail';
 import ProjectsPublic from './pages/ProjectsPublic';
@@ -42,6 +43,7 @@ export default function App() {
       {/* Auth pages (standalone) */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/unsubscribe" element={<Unsubscribe />} />
 
       {/* Printable Accomplishment Report (standalone: no admin sidebar when printing) */}
       <Route

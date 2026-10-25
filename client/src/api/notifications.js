@@ -9,4 +9,7 @@ export const notificationsApi = {
   emailSettings: () => api.get('/notifications/email-settings').then((r) => r.data),
   saveEmail: (email) => api.put('/notifications/email-settings', { email }).then((r) => r.data),
   sendTestEmail: () => api.post('/notifications/test-email').then((r) => r.data),
+  // The alert address must be confirmed with the 6-digit code emailed to it.
+  verifyEmail: (code) => api.post('/notifications/verify-email', { code }).then((r) => r.data),
+  resendCode: () => api.post('/notifications/resend-code').then((r) => r.data),
 };

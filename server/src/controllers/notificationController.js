@@ -1,6 +1,7 @@
 const prisma = require('../prisma');
 const { syncNotifications, sendPendingEmails } = require('../utils/notifications');
 const { isMailConfigured, sendMail } = require('../utils/mailer');
+const { issueCode, checkCode } = require('../utils/verification');
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -14,7 +15,10 @@ async function listNotifications(req, res, next) {
       prisma.notification.findMany({
         orderBy: { createdAt: 'desc' },
         take: 50,
-        include: { project: { select: { id: true, title: true, archivedAt: true } } },
+        include: {
+          project: { select: { id: true, title: true, archivedAt: true } },
+          event: { select: { id: true, title: true } },
+        },
       }),
       prisma.notification.count({ where: { NOT: { readByIds: { has: uid } } } }),
     ]);
@@ -65,6 +69,7 @@ async function markAllRead(req, res, next) {
 async function getEmailSettings(req, res) {
   res.json({
     email: req.user.notifyEmail || '',
+    verified: Boolean(req.user.notifyEmail && req.user.notifyEmailVerifiedAt),
     mailConfigured: isMailConfigured(),
   });
 }
@@ -76,13 +81,37 @@ async function saveEmailSettings(req, res, next) {
     if (email && !EMAIL_PATTERN.test(email)) {
       return res.status(400).json({ message: 'Please enter a valid email address' });
     }
-    await prisma.user.update({
-      where: { id: req.user.id },
-      data: { notifyEmail: email || null },
+    const changed = email !== (req.user.notifyEmail || '');
+    const user = changed
+      ? await prisma.user.update({
+          where: { id: req.user.id },
+          data: {
+            notifyEmail: email || null,
+            notifyEmailVerifiedAt: null, // a new address must be confirmed again
+            ...(email ? {} : { verifyCodeHash: null, verifyCodeExpires: null, verifyCodeFor: null }),
+          },
+        })
+      : req.user;
+
+    // A new (or still unverified) address gets a 6-digit code to confirm it.
+    let codeSent = false;
+    let warning;
+    if (email && !user.notifyEmailVerifiedAt && isMailConfigured()) {
+      try {
+        await issueCode(user, 'NOTIFY', email);
+        codeSent = true;
+      } catch (err) {
+        if (err.status === 429) warning = err.message;
+        else warning = 'We could not send the code. Check the address and try again.';
+      }
+    }
+    res.json({
+      email,
+      verified: Boolean(email && user.notifyEmailVerifiedAt),
+      codeSent,
+      warning,
+      mailConfigured: isMailConfigured(),
     });
-    // Send any recent alerts that were waiting for someone to opt in.
-    if (email) sendPendingEmails().catch((err) => console.error('Alert email failed:', err.message));
-    res.json({ email, mailConfigured: isMailConfigured() });
   } catch (err) {
     next(err);
   }
@@ -94,6 +123,9 @@ async function sendTestEmail(req, res, next) {
     if (!req.user.notifyEmail) {
       return res.status(400).json({ message: 'Save your email address first' });
     }
+    if (!req.user.notifyEmailVerifiedAt) {
+      return res.status(400).json({ message: 'Verify your email address first (enter the 6-digit code)' });
+    }
     if (!isMailConfigured()) {
       return res.status(400).json({
         message:
@@ -104,8 +136,8 @@ async function sendTestEmail(req, res, next) {
       await sendMail({
         to: req.user.notifyEmail,
         subject: 'SK Monitoring: test email',
-        text: 'This is a test. Project alerts (progress milestones and projects about to end) will be emailed to this address.',
-        html: '<p style="font-family:Arial,sans-serif">This is a test. Project alerts (progress milestones and projects about to end) will be emailed to this address.</p>',
+        text: 'This is a test. Project alerts (progress milestones, projects about to end) and calendar reminders will be emailed to this address.',
+        html: '<p style="font-family:Arial,sans-serif">This is a test. Project alerts (progress milestones, projects about to end) and calendar reminders will be emailed to this address.</p>',
       });
     } catch (err) {
       return res.status(502).json({ message: `The email could not be sent: ${err.message}` });
@@ -116,7 +148,51 @@ async function sendTestEmail(req, res, next) {
   }
 }
 
+// POST /api/notifications/verify-email — { code }. Confirms the saved alert address.
+async function verifyNotifyEmail(req, res, next) {
+  try {
+    if (!req.user.notifyEmail) {
+      return res.status(400).json({ message: 'Save your email address first' });
+    }
+    if (req.user.notifyEmailVerifiedAt) return res.json({ verified: true });
+    await checkCode(req.user, 'NOTIFY', req.body.code);
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { notifyEmailVerifiedAt: new Date() },
+    });
+    // Send any recent alerts that were waiting for a verified address.
+    sendPendingEmails().catch((err) => console.error('Alert email failed:', err.message));
+    res.json({ verified: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/notifications/resend-code — sends a fresh code (at most one a minute).
+async function resendNotifyCode(req, res, next) {
+  try {
+    if (!req.user.notifyEmail) {
+      return res.status(400).json({ message: 'Save your email address first' });
+    }
+    if (req.user.notifyEmailVerifiedAt) return res.json({ verified: true });
+    if (!isMailConfigured()) {
+      return res.status(400).json({ message: 'Email is not set up on the server yet' });
+    }
+    try {
+      await issueCode(req.user, 'NOTIFY', req.user.notifyEmail);
+    } catch (err) {
+      if (err.status === 429) return res.status(429).json({ message: err.message });
+      return res.status(502).json({ message: 'We could not send the code. Try again later.' });
+    }
+    res.json({ codeSent: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
+  verifyNotifyEmail,
+  resendNotifyCode,
   listNotifications,
   markRead,
   markAllRead,
