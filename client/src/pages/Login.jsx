@@ -15,7 +15,9 @@ export default function Login() {
   const location = useLocation();
   // Where to go after signing in. Staff go back to the page they were sent from (or the
   // dashboard); residents have no dashboard, so they return to a public page.
+  // The query string is kept too (a QR check-in link carries the meeting and its code).
   const from = location.state?.from?.pathname;
+  const fromFull = from ? `${from}${location.state.from.search || ''}` : undefined;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -25,9 +27,9 @@ export default function Login() {
       const signedIn = await login(email, password);
       const isStaff = ['ADMIN', 'CHAIRMAN'].includes(signedIn?.role);
       const target = isStaff
-        ? from || '/admin'
+        ? fromFull || '/admin'
         : from && !from.startsWith('/admin')
-          ? from
+          ? fromFull
           : '/';
       navigate(target, { replace: true });
     } catch (err) {
@@ -70,7 +72,7 @@ export default function Login() {
       </form>
       <p className="mt-5 text-slate-600">
         No account?{' '}
-        <Link className="font-semibold text-brand-700 hover:text-brand-800" to="/register">
+        <Link className="font-semibold text-brand-700 hover:text-brand-800" to="/register" state={location.state}>
           Register as a viewer
         </Link>
       </p>

@@ -7,6 +7,8 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Unsubscribe from './pages/Unsubscribe';
+import CheckIn from './pages/CheckIn';
+import EventQrCheckin from './pages/admin/EventQrCheckin';
 import NewsList from './pages/NewsList';
 import NewsDetail from './pages/NewsDetail';
 import ProjectsPublic from './pages/ProjectsPublic';
@@ -44,6 +46,17 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/unsubscribe" element={<Unsubscribe />} />
+      <Route path="/checkin" element={<CheckIn />} />
+
+      {/* Full-screen QR for a meeting (shown on a projector, no sidebar) */}
+      <Route
+        path="/admin/calendar/:id/qr"
+        element={
+          <ProtectedRoute roles={['ADMIN']}>
+            <EventQrCheckin />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Printable Accomplishment Report (standalone: no admin sidebar when printing) */}
       <Route

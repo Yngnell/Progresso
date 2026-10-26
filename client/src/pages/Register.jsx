@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Button, Input } from '../components/ui';
 import AuthShell from '../components/AuthShell';
@@ -18,6 +18,10 @@ export default function Register() {
   const [pendingEmail, setPendingEmail] = useState(''); // set once the code was emailed
 
   const { register, verifyEmail, resendCode } = useAuth();
+  // Sent here from a QR check-in? Go back there once the account exists.
+  const location = useLocation();
+  const from = location.state?.from;
+  const afterSignup = from?.pathname === '/checkin' ? `${from.pathname}${from.search || ''}` : '/';
   const navigate = useNavigate();
 
   function update(field) {
@@ -31,7 +35,7 @@ export default function Register() {
     try {
       const result = await register(form);
       if (result.needsVerification) setPendingEmail(result.email);
-      else navigate('/');
+      else navigate(afterSignup);
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed');
     } finally {
@@ -49,7 +53,7 @@ export default function Register() {
           email={pendingEmail}
           onVerify={(code) => verifyEmail(pendingEmail, code)}
           onResend={() => resendCode(pendingEmail)}
-          onDone={() => navigate('/')}
+          onDone={() => navigate(afterSignup)}
         />
         <p className="mt-5 text-slate-600">
           Wrong address?{' '}
@@ -120,7 +124,7 @@ export default function Register() {
       </form>
       <p className="mt-5 text-slate-600">
         Already have an account?{' '}
-        <Link className="font-semibold text-brand-700 hover:text-brand-800" to="/login">
+        <Link className="font-semibold text-brand-700 hover:text-brand-800" to="/login" state={location.state}>
           Login
         </Link>
       </p>

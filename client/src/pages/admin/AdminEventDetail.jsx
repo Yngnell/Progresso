@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { eventsApi } from '../../api/events';
 import { attendanceApi } from '../../api/attendance';
-import { ArrowLeft, Plus } from 'lucide-react';
+import { ArrowLeft, Plus, QrCode } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
@@ -104,6 +104,14 @@ export default function AdminEventDetail() {
             {t.label} · {formatDateTime(event.startAt)}
           </p>
         </div>
+        {!readOnly && (
+          <Link to={`/admin/calendar/${event.id}/qr`}>
+            <Button variant="accent">
+              <QrCode size={18} strokeWidth={1.75} aria-hidden="true" />
+              Show QR check-in
+            </Button>
+          </Link>
+        )}
       </div>
 
       {/* Summary: the four attendance counts in a single strip */}
