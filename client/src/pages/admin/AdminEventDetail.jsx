@@ -41,11 +41,6 @@ export default function AdminEventDetail() {
     onSuccess: invalidate,
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (recordId) => attendanceApi.removeRecord(recordId),
-    onSuccess: invalidate,
-  });
-
   if (isLoading) return <p className="text-sm text-slate-500">Loading…</p>;
   if (isError || !event)
     return (
@@ -123,7 +118,6 @@ export default function AdminEventDetail() {
                     <th className="py-2">Participant</th>
                     <th className="py-2">Status</th>
                     <th className="py-2">Time In</th>
-                    {!readOnly && <th className="py-2 text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -153,16 +147,6 @@ export default function AdminEventDetail() {
                         )}
                       </td>
                       <td className="py-2 text-slate-500">{formatTime(r.timeIn) || '—'}</td>
-                      {!readOnly && (
-                        <td className="py-2 text-right">
-                          <button
-                            className="text-xs text-red-600 hover:text-red-700"
-                            onClick={() => deleteMutation.mutate(r.id)}
-                          >
-                            Remove
-                          </button>
-                        </td>
-                      )}
                     </tr>
                   ))}
                 </tbody>

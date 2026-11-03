@@ -4,7 +4,6 @@ const router = express.Router();
 const {
   getEventAttendance,
   updateRecord,
-  deleteRecord,
   getEventSummary,
   getQrCode,
   checkIn,
@@ -19,6 +18,5 @@ router.get('/summary/:eventId', protect, restrictTo('ADMIN', 'CHAIRMAN'), getEve
 router.get('/qr/:eventId', protect, restrictTo('ADMIN'), getQrCode);
 router.post('/checkin', protect, checkIn);
 router.put('/record/:id', protect, restrictTo('ADMIN'), updateRecord);
-router.delete('/record/:id', protect, restrictTo('ADMIN'), deleteRecord);
 
 module.exports = router;

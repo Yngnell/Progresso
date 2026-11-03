@@ -38,20 +38,6 @@ async function updateRecord(req, res, next) {
   }
 }
 
-// DELETE /api/attendance/record/:id - admin.
-async function deleteRecord(req, res, next) {
-  try {
-    const existing = await prisma.attendanceRecord.findUnique({
-      where: { id: req.params.id },
-    });
-    if (!existing) return res.status(404).json({ message: 'Record not found' });
-    await prisma.attendanceRecord.delete({ where: { id: req.params.id } });
-    res.json({ message: 'Record deleted' });
-  } catch (err) {
-    next(err);
-  }
-}
-
 // GET /api/attendance/summary/:eventId - admin. Tally by status.
 async function getEventSummary(req, res, next) {
   try {
@@ -148,6 +134,5 @@ module.exports = {
   checkIn,
   getEventAttendance,
   updateRecord,
-  deleteRecord,
   getEventSummary,
 };
