@@ -1,4 +1,5 @@
 ﻿const prisma = require('../prisma');
+const { parsePhDate } = require('../utils/phTime');
 
 // Shared include: organizer, related project, and attendance records.
 const includeOpts = {
@@ -60,9 +61,9 @@ function parseEventBody(body) {
   if (description !== undefined) data.description = description;
   if (startAt !== undefined) {
     if (!startAt) return { error: 'Start date/time is required' };
-    data.startAt = new Date(startAt);
+    data.startAt = parsePhDate(startAt);
   }
-  if (endAt !== undefined) data.endAt = endAt ? new Date(endAt) : null;
+  if (endAt !== undefined) data.endAt = endAt ? parsePhDate(endAt) : null;
   if (location !== undefined) data.location = location;
   if (meetingLink !== undefined) data.meetingLink = meetingLink;
   if (organizerId !== undefined) data.organizerId = organizerId || null;

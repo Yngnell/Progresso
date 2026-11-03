@@ -1,4 +1,5 @@
-const prisma = require('../prisma');
+const prisma = require('../prisma');
+const { parsePhDate } = require('../utils/phTime');
 const { receiptPath, removeReceiptFile } = require('../middleware/upload');
 const { photosForProject } = require('./photoController');
 
@@ -232,8 +233,8 @@ function parseProjectBody(body) {
   if (description !== undefined) data.description = description;
   if (category !== undefined) data.category = category;
   if (budget !== undefined) data.budget = budget;
-  if (startDate !== undefined) data.startDate = startDate ? new Date(startDate) : null;
-  if (endDate !== undefined) data.endDate = endDate ? new Date(endDate) : null;
+  if (startDate !== undefined) data.startDate = startDate ? parsePhDate(startDate) : null;
+  if (endDate !== undefined) data.endDate = endDate ? parsePhDate(endDate) : null;
   if (location !== undefined) data.location = location;
   if (coverImageUrl !== undefined) data.coverImageUrl = coverImageUrl;
   // "Prepared by" on the proposal form; blank clears it.

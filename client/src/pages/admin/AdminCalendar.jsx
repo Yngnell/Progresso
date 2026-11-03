@@ -136,7 +136,10 @@ export default function AdminCalendar() {
   function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    saveMutation.mutate(form);
+    // datetime-local has no time zone; convert it here so the server stores the
+    // exact moment picked (in the browser's Philippine time), not the same clock time in UTC.
+    const toIso = (v) => (v ? new Date(v).toISOString() : '');
+    saveMutation.mutate({ ...form, startAt: toIso(form.startAt), endAt: toIso(form.endAt) });
   }
 
   function handleDelete(event) {
