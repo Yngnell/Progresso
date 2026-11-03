@@ -2,11 +2,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { eventsApi } from '../../api/events';
 import { attendanceApi } from '../../api/attendance';
-import { ArrowLeft, QrCode } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
-import { Button, Card, Badge } from '../../components/ui';
+import { Card, Badge } from '../../components/ui';
 import { EVENT_TYPE, ATTENDANCE_STATUS, formatDateTime, formatTime } from '../../utils/format';
 
 const statusOptions = Object.entries(ATTENDANCE_STATUS).map(([value, v]) => ({
@@ -78,14 +78,6 @@ export default function AdminEventDetail() {
             {t.label} · {formatDateTime(event.startAt)}
           </p>
         </div>
-        {!readOnly && (
-          <Link to={`/admin/calendar/${event.id}/qr`}>
-            <Button variant="accent">
-              <QrCode size={18} strokeWidth={1.75} aria-hidden="true" />
-              Show QR check-in
-            </Button>
-          </Link>
-        )}
       </div>
 
       {/* Summary: the four attendance counts in a single strip */}
@@ -108,8 +100,8 @@ export default function AdminEventDetail() {
           <div className="mt-4">
             {records.length === 0 ? (
               <p className="text-slate-600">
-                No attendees yet. Open <span className="font-semibold">Show QR check-in</span> at the
-                meeting so attendees can scan and check themselves in.
+                No attendees yet. The SK Chairperson shows the attendance QR code at the meeting, and
+                attendees scan it to check themselves in.
               </p>
             ) : (
               <table className="w-full text-sm">

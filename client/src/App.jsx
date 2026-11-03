@@ -10,6 +10,7 @@ import Unsubscribe from './pages/Unsubscribe';
 import CheckIn from './pages/CheckIn';
 import Account from './pages/Account';
 import EventQrCheckin from './pages/admin/EventQrCheckin';
+import MeetingQrList from './pages/MeetingQrList';
 import NewsList from './pages/NewsList';
 import NewsDetail from './pages/NewsDetail';
 import ProjectsPublic from './pages/ProjectsPublic';
@@ -41,6 +42,14 @@ export default function App() {
         <Route path="/officials" element={<OfficialsPublic />} />
         <Route path="/events" element={<EventsPublic />} />
         <Route
+          path="/attendance-qr"
+          element={
+            <ProtectedRoute allow={(u) => u.canShowQr}>
+              <MeetingQrList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/account"
           element={
             <ProtectedRoute>
@@ -58,9 +67,9 @@ export default function App() {
 
       {/* Full-screen QR for a meeting (shown on a projector, no sidebar) */}
       <Route
-        path="/admin/calendar/:id/qr"
+        path="/attendance-qr/:id"
         element={
-          <ProtectedRoute roles={['ADMIN']}>
+          <ProtectedRoute allow={(u) => u.canShowQr}>
             <EventQrCheckin />
           </ProtectedRoute>
         }

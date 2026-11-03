@@ -70,7 +70,7 @@ function checkinWindow(event) {
   return { start, opens: start - OPENS_BEFORE, closes: end };
 }
 
-// GET /api/attendance/qr/:eventId - admin. The code for the QR shown on screen right now.
+// GET /api/attendance/qr/:eventId - the SK Chairperson only. The code for the QR shown on screen right now.
 async function getQrCode(req, res, next) {
   try {
     const event = await prisma.event.findUnique({

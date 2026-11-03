@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { canShowQr } = require('../utils/qrHolder');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../prisma');
@@ -24,6 +25,8 @@ function publicUser(user) {
     photoUrl: user.photoUrl,
     // Set for SK officials: their position from the officials directory
     official: user.official ? { id: user.official.id, position: user.official.position } : null,
+    // Only the SK Chairperson's account may show the attendance QR code
+    canShowQr: canShowQr(user),
     pendingEmail: user.pendingEmail || null,
   };
 }
@@ -151,6 +154,7 @@ async function login(req, res, next) {
 
     const user = await prisma.user.findFirst({
       where: { email: { equals: String(email).trim(), mode: 'insensitive' } },
+      include: { official: { select: { id: true, position: true } } },
     });
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
       return res.status(401).json({ message: 'Invalid email or password' });

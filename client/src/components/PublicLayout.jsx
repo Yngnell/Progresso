@@ -85,12 +85,22 @@ export default function PublicLayout() {
                       Dashboard
                     </Link>
                   ) : (
-                    <Link
-                      to="/account"
-                      className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                    >
-                      Hi, {firstName}
-                    </Link>
+                    <>
+                      {user.canShowQr && (
+                        <Link
+                          to="/attendance-qr"
+                          className="rounded-lg px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"
+                        >
+                          Attendance QR
+                        </Link>
+                      )}
+                      <Link
+                        to="/account"
+                        className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                      >
+                        Hi, {firstName}
+                      </Link>
+                    </>
                   )}
                   <Button variant="secondary" size="sm" onClick={logout}>
                     Logout
@@ -143,6 +153,15 @@ export default function PublicLayout() {
                   {l.label}
                 </NavLink>
               ))}
+              {user?.canShowQr && (
+                <NavLink
+                  to="/attendance-qr"
+                  onClick={closeMenu}
+                  className="rounded-lg px-3 py-3 text-base font-semibold text-brand-700"
+                >
+                  Attendance QR
+                </NavLink>
+              )}
               <div className="mt-2 flex gap-2 border-t border-slate-100 py-3">
                 {user ? (
                   <>

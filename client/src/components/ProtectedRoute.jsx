@@ -3,7 +3,8 @@ import { useAuth } from '../context/AuthContext';
 
 // Guards a route. Redirects to /login if not authenticated,
 // and redirects users whose role is not allowed here.
-export default function ProtectedRoute({ children, roles }) {
+// `allow` is an extra check on the user (e.g. only the SK Chairperson for the QR code).
+export default function ProtectedRoute({ children, roles, allow }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
@@ -17,7 +18,7 @@ export default function ProtectedRoute({ children, roles }) {
 
   // Signed in but not allowed here: residents go to the public site, staff to the
   // dashboard (e.g. the chairman opening an admin-only page).
-  if (roles && !roles.includes(user.role)) {
+  if ((roles && !roles.includes(user.role)) || (allow && !allow(user))) {
     const staff = ['ADMIN', 'CHAIRMAN'].includes(user.role);
     return <Navigate to={staff ? '/admin' : '/'} replace />;
   }

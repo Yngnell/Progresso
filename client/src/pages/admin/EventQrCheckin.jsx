@@ -45,10 +45,10 @@ export default function EventQrCheckin() {
   return (
     <div className="min-h-screen bg-brand-900 px-4 py-6 text-white sm:px-8">
       <Link
-        to={`/admin/calendar/${id}`}
+        to="/attendance-qr"
         className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-200 hover:text-white"
       >
-        <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" /> Back to the event
+        <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" /> All meetings
       </Link>
 
       {error ? (
