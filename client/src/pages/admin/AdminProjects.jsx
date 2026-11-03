@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '../../api/projects';
 import { officialsApi } from '../../api/officials';
 import { useAuth } from '../../context/AuthContext';
-import { FileText, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import OverflowMenu from '../../components/OverflowMenu';
 import { Button, Modal, EmptyState } from '../../components/ui';
 import { PROJECT_STATUS, toDateTimeLocal } from '../../utils/format';
@@ -244,14 +243,6 @@ export default function AdminProjects() {
                   notice={waiting}
                   footer={
                     <div className="flex flex-wrap items-center gap-2">
-                      {p.status !== 'PROPOSED' && p.approvalState !== 'REJECTED' && (
-                        <Link to={`/admin/projects/${p.id}/report`}>
-                          <Button size="sm" variant="secondary">
-                            <FileText size={16} strokeWidth={1.75} aria-hidden="true" />
-                            Report
-                          </Button>
-                        </Link>
-                      )}
                       {!readOnly && p.approvalState !== 'REJECTED' && (
                         <Button size="sm" variant="secondary" onClick={() => openEdit(p)}>
                           <Pencil size={16} strokeWidth={1.75} aria-hidden="true" />
