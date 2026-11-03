@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Unsubscribe from './pages/Unsubscribe';
 import CheckIn from './pages/CheckIn';
+import Account from './pages/Account';
 import EventQrCheckin from './pages/admin/EventQrCheckin';
 import NewsList from './pages/NewsList';
 import NewsDetail from './pages/NewsDetail';
@@ -39,6 +40,14 @@ export default function App() {
         <Route path="/projects/:id" element={<ProjectDetailPublic />} />
         <Route path="/officials" element={<OfficialsPublic />} />
         <Route path="/events" element={<EventsPublic />} />
+        <Route
+          path="/account"
+          element={
+            <ProtectedRoute>
+              <Account />
+            </ProtectedRoute>
+          }
+        />
       </Route>
 
       {/* Auth pages (standalone) */}

@@ -227,10 +227,14 @@ export default function AdminLayout() {
 
           <div className="ml-auto flex items-center gap-1 sm:gap-3">
             <NotificationBell />
-            <div className="hidden text-right leading-tight sm:block">
+            <Link
+              to="/account"
+              className="hidden rounded-lg px-2 py-1 text-right leading-tight hover:bg-slate-100 sm:block"
+              title="My account"
+            >
               <p className="text-sm font-semibold text-slate-900">{user?.name}</p>
               <p className="text-xs text-slate-600">{ROLE_LABEL[user?.role] || user?.role}</p>
-            </div>
+            </Link>
             <button
               type="button"
               onClick={logout}

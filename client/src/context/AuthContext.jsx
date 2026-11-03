@@ -61,7 +61,14 @@ export function AuthProvider({ children }) {
     setUser(null);
   }
 
-  const value = { user, loading, login, register, verifyEmail, resendCode, logout };
+  // Re-reads the signed-in user (e.g. after changing the email in My Account).
+  async function refreshUser() {
+    const res = await api.get('/auth/me');
+    setUser(res.data.user);
+    return res.data.user;
+  }
+
+  const value = { user, loading, login, register, verifyEmail, resendCode, logout, refreshUser };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

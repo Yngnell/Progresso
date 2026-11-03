@@ -85,7 +85,12 @@ export default function PublicLayout() {
                       Dashboard
                     </Link>
                   ) : (
-                    <span className="px-2 text-sm font-semibold text-slate-700">Hi, {firstName}</span>
+                    <Link
+                      to="/account"
+                      className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                    >
+                      Hi, {firstName}
+                    </Link>
                   )}
                   <Button variant="secondary" size="sm" onClick={logout}>
                     Logout
@@ -148,9 +153,9 @@ export default function PublicLayout() {
                         </Button>
                       </Link>
                     ) : (
-                      <span className="flex flex-1 items-center text-base font-semibold text-slate-700">
+                      <Link to="/account" onClick={closeMenu} className="flex flex-1 items-center text-base font-semibold text-slate-700">
                         Hi, {firstName}
-                      </span>
+                      </Link>
                     )}
                     <Button variant="ghost" className="flex-1" onClick={logout}>
                       Logout

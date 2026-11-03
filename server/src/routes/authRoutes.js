@@ -9,6 +9,11 @@ const {
   unsubscribe,
   getMe,
   updateProfile,
+  changePassword,
+  changeEmail,
+  confirmEmailChange,
+  resendEmailChangeCode,
+  cancelEmailChange,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
@@ -22,5 +27,12 @@ router.post('/unsubscribe', unsubscribe);
 // Authenticated
 router.get('/me', protect, getMe);
 router.put('/profile', protect, updateProfile);
+
+// My Account: anyone signed in can change their own login
+router.put('/password', protect, changePassword);
+router.put('/email', protect, changeEmail);
+router.post('/email/confirm', protect, confirmEmailChange);
+router.post('/email/resend', protect, resendEmailChangeCode);
+router.delete('/email', protect, cancelEmailChange);
 
 module.exports = router;
