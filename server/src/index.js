@@ -11,6 +11,7 @@ const eventRoutes = require('./routes/eventRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const statsRoutes = require('./routes/statsRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const photoRoutes = require('./routes/photoRoutes');
 const { syncNotifications } = require('./utils/notifications');
 const { cleanupPendingSignups } = require('./utils/verification');
 const errorHandler = require('./middleware/error');
@@ -37,6 +38,7 @@ app.use('/api/events', eventRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/photos', photoRoutes);
 
 // Centralized error handler (must be last)
 app.use(errorHandler);

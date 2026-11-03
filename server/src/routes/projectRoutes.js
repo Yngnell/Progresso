@@ -24,7 +24,8 @@ const {
   deleteTask,
 } = require('../controllers/projectController');
 const { protect, optionalAuth, restrictTo } = require('../middleware/auth');
-const { receiptUpload } = require('../middleware/upload');
+const { receiptUpload, photoUpload } = require('../middleware/upload');
+const { addProjectPhotos } = require('../controllers/photoController');
 
 // Public. optionalAuth lets admin/chairman also see not-yet-approved proposals.
 router.get('/', optionalAuth, getProjects);
@@ -73,6 +74,8 @@ router.post(
   attachReceipt
 );
 router.delete('/:id/expenses/:expenseId', protect, restrictTo('ADMIN'), deleteExpense);
+// Progress photos shown on the public project page
+router.post('/:id/photos', protect, restrictTo('ADMIN'), photoUpload, addProjectPhotos);
 router.post('/:id/tasks', protect, restrictTo('ADMIN'), addTask);
 router.put('/:id/tasks/:taskId', protect, restrictTo('ADMIN'), updateTask);
 router.delete('/:id/tasks/:taskId', protect, restrictTo('ADMIN'), deleteTask);

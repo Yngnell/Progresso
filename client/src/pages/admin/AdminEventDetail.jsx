@@ -7,6 +7,7 @@ import { ArrowLeft, Plus, QrCode } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
+import PhotoGallery from '../../components/PhotoGallery';
 import { Button, Card, Badge, Input, Select } from '../../components/ui';
 import { EVENT_TYPE, ATTENDANCE_STATUS, formatDateTime, formatTime } from '../../utils/format';
 
@@ -215,6 +216,21 @@ export default function AdminEventDetail() {
           </div>
         </Card>
       </div>
+
+      {/* Photos of the event (shown on the public Events page) */}
+      <Card className="mt-6 p-5">
+        <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Photos</h2>
+        <p className="mt-1 mb-4 text-sm text-slate-600">
+          Photos appear on the public Events page.
+        </p>
+        <PhotoGallery
+          photos={event.photos}
+          target={{ eventId: event.id }}
+          canUpload={!readOnly}
+          onChange={() => qc.invalidateQueries({ queryKey: ['events', id] })}
+          emptyText="No photos yet."
+        />
+      </Card>
     </div>
   );
 }

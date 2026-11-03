@@ -56,4 +56,57 @@ function removeReceiptFile(fileName) {
   fs.unlink(receiptPath(fileName), () => {});
 }
 
-module.exports = { receiptUpload, receiptPath, removeReceiptFile };
+// ---------- Progress photos (public) ----------
+
+const PHOTO_DIR = path.join(__dirname, '..', '..', 'uploads', 'photos');
+fs.mkdirSync(PHOTO_DIR, { recursive: true });
+
+const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+const MAX_PHOTOS = 6;
+
+const photoUploader = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, PHOTO_DIR),
+    filename: (_req, file, cb) => cb(null, crypto.randomUUID() + (PHOTO_TYPES[file.mimetype] || '')),
+  }),
+  limits: { fileSize: MAX_SIZE, files: MAX_PHOTOS },
+  fileFilter: (_req, file, cb) => {
+    if (!PHOTO_TYPES[file.mimetype]) {
+      const err = new Error('Photos must be JPG, PNG or WebP images');
+      err.status = 400;
+      return cb(err);
+    }
+    cb(null, true);
+  },
+});
+
+// Reads up to 6 images from the form field "photos".
+function photoUpload(req, res, next) {
+  photoUploader.array('photos', MAX_PHOTOS)(req, res, (err) => {
+    if (!err) return next();
+    err.status = 400;
+    if (err.code === 'LIMIT_FILE_SIZE') err.message = 'Each photo must be 5 MB or smaller';
+    if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+      err.message = 'You can upload up to 6 photos at a time';
+    }
+    next(err);
+  });
+}
+
+function photoPath(fileName) {
+  return path.join(PHOTO_DIR, path.basename(fileName));
+}
+
+function removePhotoFile(fileName) {
+  if (!fileName) return;
+  fs.unlink(photoPath(fileName), () => {});
+}
+
+module.exports = {
+  receiptUpload,
+  receiptPath,
+  removeReceiptFile,
+  photoUpload,
+  photoPath,
+  removePhotoFile,
+};

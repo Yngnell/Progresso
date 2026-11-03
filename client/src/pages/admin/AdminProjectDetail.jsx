@@ -9,6 +9,7 @@ import { ProgressRoundel, ScheduleWords, StatusRibbon } from '../../components/R
 import { Button, Card } from '../../components/ui';
 import { totalSpent } from '../../components/ProjectCard';
 import ProjectChecklist from '../../components/ProjectChecklist';
+import PhotoGallery from '../../components/PhotoGallery';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
 import ProjectStatusDialog from '../../components/ProjectStatusDialog';
 import { formatPeso, formatDate, formatDateTime } from '../../utils/format';
@@ -447,6 +448,21 @@ export default function AdminProjectDetail() {
                 eventLink={(ev) => `/admin/calendar/${ev.id}`}
               />
             </div>
+          </Card>
+
+          {/* Progress photos (shown on the public project page) */}
+          <Card className="p-6">
+            <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Photos</h2>
+            <p className="mt-1 mb-4 text-sm text-slate-600">
+              Progress photos appear on the public project page so residents can see the work.
+            </p>
+            <PhotoGallery
+              photos={project.photos}
+              target={{ projectId: project.id }}
+              canUpload={!readOnly}
+              onChange={() => qc.invalidateQueries({ queryKey: ['projects', id] })}
+              emptyText="No photos yet."
+            />
           </Card>
 
           {/* Expenses */}

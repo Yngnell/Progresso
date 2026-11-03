@@ -143,6 +143,7 @@ model Project {
   requestItems   ProjectRequestItem[]
   notifications  Notification[]
   deletionRequests DeletionRequest[]
+  photos         Photo[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -255,6 +256,7 @@ model Event {
   relatedProject   Project?  @relation(fields: [relatedProjectId], references: [id])
   attendance       AttendanceRecord[]
   notifications    Notification[]
+  photos           Photo[]
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -310,4 +312,21 @@ model PendingSignup {
   createdAt      DateTime @default(now())
 
   @@index([createdAt])
+}
+
+// A progress photo of a project or an event, shown on the public site.
+model Photo {
+  id             String   @id @default(uuid())
+  projectId      String?
+  project        Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  eventId        String?
+  event          Event?   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  caption        String?
+  fileName       String   // stored file name inside server/uploads/photos
+  mimeType       String
+  uploadedByName String
+  createdAt      DateTime @default(now())
+
+  @@index([projectId])
+  @@index([eventId])
 }

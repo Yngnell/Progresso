@@ -1,5 +1,6 @@
 const prisma = require('../prisma');
 const { receiptPath, removeReceiptFile } = require('../middleware/upload');
+const { photosForProject } = require('./photoController');
 
 // Archived projects are kept for the record but cannot be changed.
 const ARCHIVED_MESSAGE = 'This project is archived and can no longer be changed';
@@ -172,6 +173,8 @@ async function getProject(req, res, next) {
       return res.status(404).json({ message: 'Project not found' });
     }
     const result = withProgress(project);
+    // Progress photos: the project's own and those taken at its linked events
+    result.photos = await photosForProject(project.id);
     res.json({ project: canSeeProposed(req.user) ? result : stripInternal(result) });
   } catch (err) {
     next(err);

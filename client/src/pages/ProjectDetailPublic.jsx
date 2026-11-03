@@ -6,6 +6,7 @@ import { Card } from '../components/ui';
 import { totalSpent, progressSummary } from '../components/ProjectCard';
 import { ProgressRoundel, ScheduleWords, StatusRibbon } from '../components/Roundel';
 import ProjectChecklist from '../components/ProjectChecklist';
+import PhotoGallery from '../components/PhotoGallery';
 import { formatPeso, formatDate, formatDateTime } from '../utils/format';
 
 function Fact({ label, children }) {
@@ -90,6 +91,15 @@ export default function ProjectDetailPublic() {
           <ProjectChecklist project={project} />
         </div>
       </Card>
+
+      {project.photos?.length > 0 && (
+        <Card className="mt-6 p-6">
+          <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Photos</h2>
+          <div className="mt-4">
+            <PhotoGallery photos={project.photos} />
+          </div>
+        </Card>
+      )}
 
       {/* Expenses are public so residents can see where the budget goes. */}
       <Card className="mt-6 p-6">
