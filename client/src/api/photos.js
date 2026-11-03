@@ -1,15 +1,13 @@
 import api from './axios';
 
-// Progress photos of projects and events.
+// Progress photos of projects.
 export const photosApi = {
-  // target: { projectId } or { eventId }. files: a FileList or array of images.
+  // target: { projectId }. files: a FileList or array of images.
   upload: (target, files, caption, onProgress) => {
     const form = new FormData();
     Array.from(files).forEach((f) => form.append('photos', f));
     if (caption) form.append('caption', caption);
-    const path = target.projectId
-      ? `/projects/${target.projectId}/photos`
-      : `/events/${target.eventId}/photos`;
+    const path = `/projects/${target.projectId}/photos`;
     return api
       .post(path, form, {
         onUploadProgress: (e) => e.total && onProgress?.(Math.round((e.loaded / e.total) * 100)),

@@ -6,7 +6,6 @@ import { EVENT_TYPE, formatDateTime, formatTime } from '../utils/format';
 import PageHeader from '../components/PageHeader';
 import DateTile from '../components/DateTile';
 import EventTypeIcon from '../components/EventTypeIcon';
-import PhotoGallery from '../components/PhotoGallery';
 
 export default function EventsPublic() {
   const { data, isLoading } = useQuery({
@@ -15,11 +14,6 @@ export default function EventsPublic() {
   });
   const events = data?.events || [];
   const upcoming = events.filter((e) => new Date(e.startAt) >= new Date());
-  // Past events that have photos, newest first
-  const withPhotos = events
-    .filter((e) => new Date(e.startAt) < new Date() && e.photos?.length > 0)
-    .sort((a, b) => new Date(b.startAt) - new Date(a.startAt))
-    .slice(0, 6);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
@@ -73,23 +67,6 @@ export default function EventsPublic() {
         )}
       </div>
 
-      {withPhotos.length > 0 && (
-        <section className="mt-12">
-          <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Photos from past events</h2>
-          <div className="mt-4 space-y-6">
-            {withPhotos.map((e) => (
-              <Card key={e.id} className="p-5">
-                <h3 className="text-lg font-bold text-slate-900">{e.title}</h3>
-                <p className="mb-3 text-sm text-slate-600">
-                  {formatDateTime(e.startAt)}
-                  {e.location ? ` · ${e.location}` : ''}
-                </p>
-                <PhotoGallery photos={e.photos} />
-              </Card>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

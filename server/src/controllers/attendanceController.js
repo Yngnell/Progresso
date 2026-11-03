@@ -14,42 +14,6 @@ async function getEventAttendance(req, res, next) {
   }
 }
 
-// POST /api/attendance/event/:eventId - admin.
-// Accepts a single record OR an array of records (bulk marking).
-async function markAttendance(req, res, next) {
-  try {
-    const { eventId } = req.params;
-    const event = await prisma.event.findUnique({ where: { id: eventId } });
-    if (!event) return res.status(404).json({ message: 'Event not found' });
-
-    const body = Array.isArray(req.body) ? req.body : [req.body];
-
-    for (const r of body) {
-      if (!r.participant) {
-        return res.status(400).json({ message: 'Each record needs a participant name' });
-      }
-    }
-
-    const created = await prisma.$transaction(
-      body.map((r) =>
-        prisma.attendanceRecord.create({
-          data: {
-            eventId,
-            participant: r.participant,
-            status: r.status || 'PRESENT',
-            userId: r.userId || null,
-            timeIn: r.timeIn ? new Date(r.timeIn) : undefined,
-          },
-        })
-      )
-    );
-
-    res.status(201).json({ records: created });
-  } catch (err) {
-    next(err);
-  }
-}
-
 // PUT /api/attendance/record/:id - admin. Update a record's status.
 async function updateRecord(req, res, next) {
   try {
@@ -183,7 +147,6 @@ module.exports = {
   getQrCode,
   checkIn,
   getEventAttendance,
-  markAttendance,
   updateRecord,
   deleteRecord,
   getEventSummary,

@@ -173,7 +173,7 @@ async function getProject(req, res, next) {
       return res.status(404).json({ message: 'Project not found' });
     }
     const result = withProgress(project);
-    // Progress photos: the project's own and those taken at its linked events
+    // Progress photos shown on the public project page
     result.photos = await photosForProject(project.id);
     res.json({ project: canSeeProposed(req.user) ? result : stripInternal(result) });
   } catch (err) {

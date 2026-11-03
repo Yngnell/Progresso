@@ -5,10 +5,6 @@ const includeOpts = {
   organizer: { select: { id: true, name: true, position: true } },
   relatedProject: { select: { id: true, title: true } },
   attendance: { orderBy: { createdAt: 'asc' } },
-  photos: {
-    orderBy: { createdAt: 'desc' },
-    select: { id: true, caption: true, uploadedByName: true, createdAt: true, eventId: true },
-  },
 };
 
 // GET /api/events - public. Optional ?type= and ?upcoming=true filters.

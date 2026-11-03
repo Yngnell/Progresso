@@ -5,7 +5,7 @@ import { Button } from './ui';
 import { formatDate } from '../utils/format';
 
 // Grid of progress photos with a click-to-enlarge viewer.
-// target:   { projectId } or { eventId }; when given with canUpload, shows the upload box.
+// target:   { projectId }; when given with canUpload, shows the upload box.
 // onChange: called after an upload or a delete so the page can refetch.
 export default function PhotoGallery({ photos = [], target, canUpload = false, onChange, emptyText }) {
   const [open, setOpen] = useState(null); // index of the photo shown large
@@ -33,12 +33,7 @@ export default function PhotoGallery({ photos = [], target, canUpload = false, o
                   className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
                 />
               </button>
-              {(p.caption || p.event) && (
-                <p className="mt-1 line-clamp-2 text-sm text-slate-700">
-                  {p.caption}
-                  {p.event && <span className="text-slate-500">{p.caption ? ' · ' : ''}{p.event.title}</span>}
-                </p>
-              )}
+              {p.caption && <p className="mt-1 line-clamp-2 text-sm text-slate-700">{p.caption}</p>}
               <p className="text-xs text-slate-500">{formatDate(p.createdAt)}</p>
               {canUpload && <DeleteButton photo={p} onDone={onChange} />}
             </li>

@@ -1,7 +1,7 @@
 const prisma = require('../prisma');
 const { photoPath, removePhotoFile } = require('../middleware/upload');
 
-// Progress photos of projects and events. Uploading and deleting are for the admin;
+// Progress photos of projects. Uploading and deleting are for the admin;
 // viewing is public. Photos of a project the public cannot see (proposed, rejected,
 // archived) are only listed to the admin and the chairman, since that page is hidden.
 
@@ -62,21 +62,6 @@ async function addProjectPhotos(req, res, next) {
   }
 }
 
-// POST /api/events/:id/photos — admin.
-async function addEventPhotos(req, res, next) {
-  try {
-    const event = await prisma.event.findUnique({ where: { id: req.params.id } });
-    if (!event) {
-      discard(req);
-      return res.status(404).json({ message: 'Event not found' });
-    }
-    await savePhotos(req, res, { eventId: event.id });
-  } catch (err) {
-    discard(req);
-    next(err);
-  }
-}
-
 // DELETE /api/photos/:id — admin.
 async function deletePhoto(req, res, next) {
   try {
@@ -107,19 +92,18 @@ async function getPhotoFile(req, res, next) {
   }
 }
 
-// Photos shown on a project page: the project's own and those of its linked events.
+// Photos shown on a project page.
 async function photosForProject(projectId) {
   return prisma.photo.findMany({
-    where: { OR: [{ projectId }, { event: { relatedProjectId: projectId } }] },
+    where: { projectId },
     orderBy: { createdAt: 'desc' },
-    select: { ...PHOTO_FIELDS, event: { select: { id: true, title: true } } },
+    select: PHOTO_FIELDS,
   });
 }
 
 module.exports = {
   PHOTO_FIELDS,
   addProjectPhotos,
-  addEventPhotos,
   deletePhoto,
   getPhotoFile,
   photosForProject,

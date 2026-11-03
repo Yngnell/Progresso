@@ -1,14 +1,12 @@
-﻿import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+﻿import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { eventsApi } from '../../api/events';
 import { attendanceApi } from '../../api/attendance';
-import { ArrowLeft, Plus, QrCode } from 'lucide-react';
+import { ArrowLeft, QrCode } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
-import PhotoGallery from '../../components/PhotoGallery';
-import { Button, Card, Badge, Input, Select } from '../../components/ui';
+import { Button, Card, Badge } from '../../components/ui';
 import { EVENT_TYPE, ATTENDANCE_STATUS, formatDateTime, formatTime } from '../../utils/format';
 
 const statusOptions = Object.entries(ATTENDANCE_STATUS).map(([value, v]) => ({
@@ -21,9 +19,6 @@ export default function AdminEventDetail() {
   const { user } = useAuth();
   const readOnly = user?.role === 'CHAIRMAN';
   const qc = useQueryClient();
-  const [participant, setParticipant] = useState('');
-  const [status, setStatus] = useState('PRESENT');
-  const [error, setError] = useState('');
 
   const { data: eventData, isLoading, isError } = useQuery({
     queryKey: ['events', id],
@@ -41,16 +36,6 @@ export default function AdminEventDetail() {
     qc.invalidateQueries({ queryKey: ['attendance', id] });
   };
 
-  const markMutation = useMutation({
-    mutationFn: (payload) => attendanceApi.mark(id, payload),
-    onSuccess: () => {
-      invalidate();
-      setParticipant('');
-      setStatus('PRESENT');
-    },
-    onError: (err) => setError(err.response?.data?.message || 'Failed to mark attendance'),
-  });
-
   const updateMutation = useMutation({
     mutationFn: ({ recordId, data }) => attendanceApi.updateRecord(recordId, data),
     onSuccess: invalidate,
@@ -60,13 +45,6 @@ export default function AdminEventDetail() {
     mutationFn: (recordId) => attendanceApi.removeRecord(recordId),
     onSuccess: invalidate,
   });
-
-  function handleAdd(e) {
-    e.preventDefault();
-    setError('');
-    if (!participant.trim()) return;
-    markMutation.mutate({ participant: participant.trim(), status });
-  }
 
   if (isLoading) return <p className="text-sm text-slate-500">Loading…</p>;
   if (isError || !event)
@@ -125,42 +103,19 @@ export default function AdminEventDetail() {
         ))}
       </dl>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        {/* Add attendee (admin only) */}
-        {!readOnly && (
-        <Card className="p-5 lg:col-span-1">
-          <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Mark Attendance</h2>
-          <form onSubmit={handleAdd} className="mt-4 space-y-3">
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <Input
-              label="Participant name *"
-              value={participant}
-              onChange={(e) => setParticipant(e.target.value)}
-              placeholder="e.g. Juan Dela Cruz"
-              required
-            />
-            <Select
-              label="Status"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              options={statusOptions}
-            />
-            <Button type="submit" variant="primary" className="w-full" disabled={markMutation.isPending}>
-              <Plus size={18} strokeWidth={2} aria-hidden="true" />
-              {markMutation.isPending ? 'Adding…' : 'Add Attendee'}
-            </Button>
-          </form>
-        </Card>
-        )}
-
+      {/* Attendees check themselves in with the QR code; the admin can still change a status */}
+      <div className="mt-6">
         {/* Attendance list */}
-        <Card className={`p-5 ${readOnly ? 'lg:col-span-3' : 'lg:col-span-2'}`}>
+        <Card className="p-5">
           <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">
             Attendees ({records.length})
           </h2>
           <div className="mt-4">
             {records.length === 0 ? (
-              <p className="text-slate-600">No attendees recorded yet.</p>
+              <p className="text-slate-600">
+                No attendees yet. Open <span className="font-semibold">Show QR check-in</span> at the
+                meeting so attendees can scan and check themselves in.
+              </p>
             ) : (
               <table className="w-full text-sm">
                 <thead className="text-left text-xs uppercase text-slate-400">
@@ -217,20 +172,6 @@ export default function AdminEventDetail() {
         </Card>
       </div>
 
-      {/* Photos of the event (shown on the public Events page) */}
-      <Card className="mt-6 p-5">
-        <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Photos</h2>
-        <p className="mt-1 mb-4 text-sm text-slate-600">
-          Photos appear on the public Events page.
-        </p>
-        <PhotoGallery
-          photos={event.photos}
-          target={{ eventId: event.id }}
-          canUpload={!readOnly}
-          onChange={() => qc.invalidateQueries({ queryKey: ['events', id] })}
-          emptyText="No photos yet."
-        />
-      </Card>
     </div>
   );
 }
