@@ -19,7 +19,7 @@ function Seal({ src, alt }) {
   );
 }
 
-// Official letterhead used on the project proposal form and the accomplishment report.
+// Official letterhead used on the project proposal form.
 // Seals: client/public/barangay-logo.jpg (optional) and client/public/logo.jpg (SK seal).
 export default function Letterhead() {
   return (

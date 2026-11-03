@@ -21,7 +21,6 @@ import AdminOfficials from './pages/admin/AdminOfficials';
 import AdminNews from './pages/admin/AdminNews';
 import AdminProjects from './pages/admin/AdminProjects';
 import AdminProposals from './pages/admin/AdminProposals';
-import ProjectReport from './pages/admin/ProjectReport';
 import AdminArchive from './pages/admin/AdminArchive';
 import AdminProjectDetail from './pages/admin/AdminProjectDetail';
 import AdminCalendar from './pages/admin/AdminCalendar';
@@ -54,16 +53,6 @@ export default function App() {
         element={
           <ProtectedRoute roles={['ADMIN']}>
             <EventQrCheckin />
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Printable Accomplishment Report (standalone: no admin sidebar when printing) */}
-      <Route
-        path="/admin/projects/:id/report"
-        element={
-          <ProtectedRoute roles={['ADMIN', 'CHAIRMAN']}>
-            <ProjectReport />
           </ProtectedRoute>
         }
       />

@@ -445,77 +445,6 @@ async function cancelProject(req, res, next) {
   }
 }
 
-// GET /api/projects/:id/report — admin and chairman. Everything the printable
-// Accomplishment Report needs in one response: the project with its progress,
-// the sessions (linked events) with attendance counts, and the signatories.
-async function getProjectReport(req, res, next) {
-  try {
-    const project = await prisma.project.findUnique({
-      where: { id: req.params.id },
-      include: {
-        ...includeOpts,
-        events: { orderBy: { startAt: 'asc' }, include: { attendance: true } },
-      },
-    });
-    if (!project) return res.status(404).json({ message: 'Project not found' });
-    if (project.status === 'PROPOSED' || project.approvalState === 'REJECTED') {
-      return res.status(400).json({
-        message: 'A report is only available for approved projects',
-      });
-    }
-
-    const now = new Date();
-    const sessions = project.events.map((e) => {
-      const count = (status) => e.attendance.filter((a) => a.status === status).length;
-      return {
-        id: e.id,
-        title: e.title,
-        startAt: e.startAt,
-        endAt: e.endAt,
-        location: e.location,
-        held: new Date(e.endAt || e.startAt) <= now,
-        present: count('PRESENT'),
-        late: count('LATE'),
-        excused: count('EXCUSED'),
-        absent: count('ABSENT'),
-        total: e.attendance.length,
-      };
-    });
-
-    // Signature lines come from the officials directory, matched by position.
-    const officials = await prisma.official.findMany({
-      where: { isActive: true },
-      orderBy: { displayOrder: 'asc' },
-    });
-    const byPosition = (word) =>
-      officials.find((o) => (o.position || '').toLowerCase().includes(word)) || null;
-    const pick = (o) => (o ? { name: o.name, position: o.position } : null);
-
-    // Attendance records are bulky; the report only needs the per-session counts.
-    const { events, ...rest } = withProgress(project);
-    res.json({
-      project: rest,
-      sessions,
-      signatories: {
-        chairperson: pick(byPosition('chairperson')),
-        secretary: pick(byPosition('secretary')),
-        treasurer: pick(byPosition('treasurer')),
-      },
-      generatedAt: now,
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// ---------- Deletion requests and the archive ----------
-// Records are never erased. The admin files a deletion request with a reason; when
-// the chairman approves it, the project moves to the Archive (read-only, hidden from
-// the public and from the normal lists) with all its expenses, receipts, sessions
-// and history. The chairman can restore an archived project.
-
-const MIN_REASON_LENGTH = 10;
-
 // POST /api/projects/:id/deletion-request — admin.
 async function requestDeletion(req, res, next) {
   try {
@@ -880,7 +809,6 @@ module.exports = {
   getProject,
   createProject,
   updateProject,
-  getProjectReport,
   requestDeletion,
   withdrawDeletion,
   listDeletionRequests,

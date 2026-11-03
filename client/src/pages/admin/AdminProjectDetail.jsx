@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '../../api/projects';
-import { ArrowLeft, Ban, CircleCheck, FileText, Paperclip, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Ban, CircleCheck, Paperclip, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import OverflowMenu from '../../components/OverflowMenu';
 import { ProgressRoundel, ScheduleWords, StatusRibbon } from '../../components/Roundel';
@@ -199,14 +199,6 @@ export default function AdminProjectDetail() {
               <CircleCheck size={18} strokeWidth={1.75} aria-hidden="true" />
               Mark as completed
             </Button>
-          )}
-          {project.status !== 'PROPOSED' && project.approvalState !== 'REJECTED' && (
-            <Link to={`/admin/projects/${id}/report`}>
-              <Button variant="secondary">
-                <FileText size={18} strokeWidth={1.75} aria-hidden="true" />
-                Generate report
-              </Button>
-            </Link>
           )}
           {/* The risky actions live in a quiet menu so they never compete with the main ones */}
           {!readOnly && (

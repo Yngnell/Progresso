@@ -99,13 +99,6 @@ export default function AdminArchive() {
                         View records
                       </Button>
                     </Link>
-                    {p.approvalState !== 'REJECTED' && p.status !== 'PROPOSED' && (
-                      <Link to={`/admin/projects/${p.id}/report`}>
-                        <Button size="sm" variant="secondary">
-                          Report
-                        </Button>
-                      </Link>
-                    )}
                     {isChairman && (
                       <Button
                         size="sm"

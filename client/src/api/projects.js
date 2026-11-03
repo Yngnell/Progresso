@@ -4,7 +4,6 @@ import api from './axios';
 export const projectsApi = {
   list: (params) => api.get('/projects', { params }).then((r) => r.data),
   get: (id) => api.get(`/projects/${id}`).then((r) => r.data),
-  report: (id) => api.get(`/projects/${id}/report`).then((r) => r.data),
   create: (data) => api.post('/projects', data).then((r) => r.data),
   update: (id, data) => api.put(`/projects/${id}`, data).then((r) => r.data),
   // Projects are never deleted directly: file a request with a reason, then the

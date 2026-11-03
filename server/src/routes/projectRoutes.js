@@ -6,7 +6,6 @@ const {
   getProject,
   createProject,
   updateProject,
-  getProjectReport,
   requestDeletion,
   withdrawDeletion,
   listDeletionRequests,
@@ -40,9 +39,6 @@ router.put(
 );
 
 router.get('/:id', optionalAuth, getProject);
-
-// Printable Accomplishment Report data (admin and chairman only, not public)
-router.get('/:id/report', protect, restrictTo('ADMIN', 'CHAIRMAN'), getProjectReport);
 
 // Receipts are proof of spending: only the admin and the chairman can open them
 router.get(
