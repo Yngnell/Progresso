@@ -41,6 +41,9 @@ async function getEvent(req, res, next) {
   }
 }
 
+// The add-event form has no title field: an event is named after its type.
+const TYPE_LABEL = { MEETING: 'Meeting', SESSION: 'Session', ACTIVITY: 'Activity', APPOINTMENT: 'Appointment' };
+
 // Normalize event body into Prisma-ready data.
 function parseEventBody(body) {
   const {
@@ -74,11 +77,10 @@ function parseEventBody(body) {
 // POST /api/events - admin.
 async function createEvent(req, res, next) {
   try {
-    if (!req.body.title) {
-      return res.status(400).json({ message: 'Title is required' });
-    }
     const { data, error } = parseEventBody(req.body);
     if (error) return res.status(400).json({ message: error });
+    if (!data.startAt) return res.status(400).json({ message: 'Start date/time is required' });
+    if (!data.title) data.title = TYPE_LABEL[data.type] || TYPE_LABEL.MEETING;
 
     const event = await prisma.event.create({ data, include: includeOpts });
     res.status(201).json({ event });
@@ -95,6 +97,10 @@ async function updateEvent(req, res, next) {
 
     const { data, error } = parseEventBody(req.body);
     if (error) return res.status(400).json({ message: error });
+    // A type change renames an event that still carries its old type's name.
+    if (data.type && data.title === undefined && existing.title === TYPE_LABEL[existing.type]) {
+      data.title = TYPE_LABEL[data.type] || existing.title;
+    }
 
     const event = await prisma.event.update({
       where: { id: req.params.id },

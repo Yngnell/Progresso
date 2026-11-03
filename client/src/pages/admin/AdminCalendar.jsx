@@ -2,8 +2,6 @@
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { eventsApi } from '../../api/events';
-import { officialsApi } from '../../api/officials';
-import { projectsApi } from '../../api/projects';
 import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import PageHeader from '../../components/PageHeader';
@@ -16,7 +14,6 @@ import {
   Badge,
   Modal,
   Input,
-  Textarea,
   Select,
   EmptyState,
 } from '../../components/ui';
@@ -27,16 +24,12 @@ const typeOptions = Object.entries(EVENT_TYPE).map(([value, v]) => ({
   label: v.label,
 }));
 
+// The event is named after its type ("Meeting", "Session"…) by the server.
 const emptyForm = {
-  title: '',
   type: 'MEETING',
-  description: '',
   startAt: '',
   endAt: '',
-  location: '',
   meetingLink: '',
-  organizerId: '',
-  relatedProjectId: '',
 };
 
 export default function AdminCalendar() {
@@ -56,18 +49,8 @@ export default function AdminCalendar() {
     queryKey: ['events', 'admin'],
     queryFn: () => eventsApi.list({}),
   });
-  const { data: officialsData } = useQuery({
-    queryKey: ['officials', 'active'],
-    queryFn: () => officialsApi.list({ active: 'true' }),
-  });
-  const { data: projectsData } = useQuery({
-    queryKey: ['projects', 'admin'],
-    queryFn: () => projectsApi.list({}),
-  });
 
   const events = data?.events || [];
-  const officials = officialsData?.officials || [];
-  const projects = projectsData?.projects || [];
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['events'] });
@@ -108,15 +91,10 @@ export default function AdminCalendar() {
   function openEdit(event) {
     setEditing(event);
     setForm({
-      title: event.title || '',
       type: event.type || 'MEETING',
-      description: event.description || '',
       startAt: toDateTimeLocal(event.startAt),
       endAt: toDateTimeLocal(event.endAt),
-      location: event.location || '',
       meetingLink: event.meetingLink || '',
-      organizerId: event.organizerId || '',
-      relatedProjectId: event.relatedProjectId || '',
     });
     setError('');
     setModalOpen(true);
@@ -282,12 +260,6 @@ export default function AdminCalendar() {
           {error && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
           )}
-          <Input
-            label="Title *"
-            value={form.title}
-            onChange={(e) => update('title', e.target.value)}
-            required
-          />
           <Select
             label="Type"
             value={form.type}
@@ -310,40 +282,9 @@ export default function AdminCalendar() {
             />
           </div>
           <Input
-            label="Location"
-            value={form.location}
-            onChange={(e) => update('location', e.target.value)}
-          />
-          <Input
             label="Meeting Link (optional)"
             value={form.meetingLink}
             onChange={(e) => update('meetingLink', e.target.value)}
-          />
-          <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Organizer"
-              value={form.organizerId}
-              onChange={(e) => update('organizerId', e.target.value)}
-              options={[
-                { value: '', label: '— None —' },
-                ...officials.map((o) => ({ value: o.id, label: o.name })),
-              ]}
-            />
-            <Select
-              label="Related Project"
-              value={form.relatedProjectId}
-              onChange={(e) => update('relatedProjectId', e.target.value)}
-              options={[
-                { value: '', label: '— None —' },
-                ...projects.map((p) => ({ value: p.id, label: p.title })),
-              ]}
-            />
-          </div>
-          <Textarea
-            label="Description"
-            rows={3}
-            value={form.description}
-            onChange={(e) => update('description', e.target.value)}
           />
         </form>
       </Modal>
