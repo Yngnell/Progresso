@@ -33,3 +33,7 @@ server/uploads/
 .gemini/
 .impeccable/
 client/.impeccable/
+
+# Thesis paperwork (school forms and our drafts), kept local, not part of the app
+Thesis Drafts/
+Thesis Forms 2026/
