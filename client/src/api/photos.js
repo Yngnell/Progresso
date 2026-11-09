@@ -1,12 +1,14 @@
 import api from './axios';
 
-// Progress photos of projects.
+// Pictures of projects.
 export const photosApi = {
-  // target: { projectId }. files: a FileList or array of images.
-  upload: (target, files, caption, onProgress) => {
+  // target: { projectId }. items: [{ file, caption }] (up to 10).
+  upload: (target, items, onProgress) => {
     const form = new FormData();
-    Array.from(files).forEach((f) => form.append('photos', f));
-    if (caption) form.append('caption', caption);
+    items.forEach(({ file, caption }) => {
+      form.append('photos', file);
+      form.append('captions', (caption || '').trim());
+    });
     const path = `/projects/${target.projectId}/photos`;
     return api
       .post(path, form, {

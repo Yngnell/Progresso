@@ -1,6 +1,9 @@
 const jwt = require('jsonwebtoken');
 const prisma = require('../prisma');
 
+// The linked official's position tells who the SK Chairperson is (see utils/roles.js).
+const WITH_OFFICIAL = { official: { select: { id: true, name: true, position: true } } };
+
 // Verifies the Bearer token and attaches the user to req.user.
 async function protect(req, res, next) {
   try {
@@ -20,7 +23,7 @@ async function protect(req, res, next) {
       return res.status(401).json({ message: 'Not authorized — invalid or expired token' });
     }
 
-    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+    const user = await prisma.user.findUnique({ where: { id: decoded.id }, include: WITH_OFFICIAL });
     if (!user || !user.isActive) {
       return res.status(401).json({ message: 'Not authorized — user no longer exists' });
     }
@@ -50,7 +53,7 @@ async function optionalAuth(req, res, next) {
       return next();
     }
 
-    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+    const user = await prisma.user.findUnique({ where: { id: decoded.id }, include: WITH_OFFICIAL });
     if (user && user.isActive) req.user = user;
     next();
   } catch (err) {

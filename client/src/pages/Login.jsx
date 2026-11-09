@@ -3,6 +3,8 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Button, Input } from '../components/ui';
 import AuthShell from '../components/AuthShell';
+import PasswordInput from '../components/PasswordInput';
+import { isStaff } from '../utils/roles';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -15,9 +17,11 @@ export default function Login() {
   const location = useLocation();
   // Where to go after signing in. Staff go back to the page they were sent from (or the
   // dashboard); residents have no dashboard, so they return to a public page.
-  // The query string is kept too (a QR check-in link carries the meeting and its code).
+  // The query string is kept too (a QR check-in link carries the event and its code).
   const from = location.state?.from?.pathname;
   const fromFull = from ? `${from}${location.state.from.search || ''}` : undefined;
+  // Shown after a password reset ("You can now log in with your new password").
+  const notice = location.state?.notice;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -25,8 +29,7 @@ export default function Login() {
     setLoading(true);
     try {
       const signedIn = await login(email, password);
-      const isStaff = ['ADMIN', 'CHAIRMAN'].includes(signedIn?.role);
-      const target = isStaff
+      const target = isStaff(signedIn)
         ? fromFull || '/admin'
         : from && !from.startsWith('/admin')
           ? fromFull
@@ -41,6 +44,11 @@ export default function Login() {
 
   return (
     <AuthShell title="Welcome back" description="Sign in to your account.">
+      {notice && !error && (
+        <div className="mb-4 rounded-lg bg-green-50 px-3 py-2.5 text-[15px] font-medium text-green-800" role="status">
+          {notice}
+        </div>
+      )}
       {error && (
         <div
           className="mb-4 rounded-lg bg-red-50 px-3 py-2.5 text-[15px] font-medium text-red-700"
@@ -58,14 +66,20 @@ export default function Login() {
           onChange={(e) => setEmail(e.target.value)}
           required
         />
-        <Input
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+        <div>
+          <PasswordInput
+            label="Password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <p className="mt-1.5 text-right text-sm">
+            <Link className="font-semibold text-brand-700 hover:text-brand-800" to="/forgot-password" state={{ email }}>
+              Forgot password?
+            </Link>
+          </p>
+        </div>
         <Button type="submit" variant="primary" size="lg" className="w-full" disabled={loading}>
           {loading ? 'Logging in…' : 'Login'}
         </Button>

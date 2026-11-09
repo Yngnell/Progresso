@@ -2,10 +2,11 @@ const express = require('express');
 const router = express.Router();
 
 const { deletePhoto, getPhotoFile } = require('../controllers/photoController');
-const { protect, restrictTo } = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 
-// Progress photos: anyone can open the image, only the admin can delete.
+// Pictures: anyone can open the image. The uploader, the SK Chairperson and the admin
+// can delete one (checked in deletePhoto).
 router.get('/:id/file', getPhotoFile);
-router.delete('/:id', protect, restrictTo('ADMIN'), deletePhoto);
+router.delete('/:id', protect, deletePhoto);
 
 module.exports = router;

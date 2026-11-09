@@ -1,9 +1,12 @@
 const crypto = require('crypto');
 const { canShowQr } = require('../utils/qrHolder');
+const { isSkChair } = require('../utils/roles');
+const { passwordError } = require('../utils/password');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../prisma');
-const { isMailConfigured } = require('../utils/mailer');
+const { isMailConfigured, sendMail } = require('../utils/mailer');
+const { photoPath, removePhotoFile } = require('../middleware/upload');
 const {
   startSignup,
   resendSignupCode,
@@ -22,14 +25,22 @@ function publicUser(user) {
     email: user.email,
     role: user.role,
     phone: user.phone,
-    photoUrl: user.photoUrl,
+    // Profile picture: served by GET /api/auth/avatar/:id; the version changes on upload
+    hasPhoto: Boolean(user.photoUrl),
+    photoVersion: user.photoUrl ? new Date(user.updatedAt).getTime() : null,
     // Set for SK officials: their position from the officials directory
     official: user.official ? { id: user.official.id, position: user.official.position } : null,
     // Only the SK Chairperson's account may show the attendance QR code
     canShowQr: canShowQr(user),
+    // The SK Chairperson manages checklists, the QR, accounts and the system settings
+    isSkChair: isSkChair(user),
     pendingEmail: user.pendingEmail || null,
+    // "Last login" in Settings → Security is the login before this session
+    lastLoginAt: user.previousLoginAt || null,
   };
 }
+
+const withOfficial = { official: { select: { id: true, position: true } } };
 
 function signToken(user) {
   return jwt.sign(
@@ -55,9 +66,8 @@ async function register(req, res, next) {
     if (!EMAIL_PATTERN.test(email)) {
       return res.status(400).json({ message: 'Please enter a valid email address' });
     }
-    if (String(password).length < 6) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters' });
-    }
+    const weak = passwordError(password);
+    if (weak) return res.status(400).json({ message: weak });
     if (await prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } })) {
       return res.status(400).json({ message: 'Email is already registered' });
     }
@@ -163,7 +173,13 @@ async function login(req, res, next) {
       return res.status(403).json({ message: 'Account is deactivated' });
     }
 
-    res.json({ token: signToken(user), user: publicUser(user) });
+    // Login history: the login before this one is shown as "last login" in Settings.
+    const signedIn = await prisma.user.update({
+      where: { id: user.id },
+      data: { previousLoginAt: user.lastLoginAt, lastLoginAt: new Date() },
+      include: withOfficial,
+    });
+    res.json({ token: signToken(signedIn), user: publicUser(signedIn) });
   } catch (err) {
     next(err);
   }
@@ -182,22 +198,204 @@ async function getMe(req, res, next) {
   }
 }
 
-// PUT /api/auth/profile — update the current user's own profile.
+// PUT /api/auth/profile — update the current user's own name and contact number.
+// The position is not changed here: only the SK Chairperson changes positions.
 async function updateProfile(req, res, next) {
   try {
-    const { name, phone, photoUrl } = req.body;
+    const { name, phone } = req.body;
 
     const data = {};
-    if (name !== undefined) data.name = name;
-    if (phone !== undefined) data.phone = phone;
-    if (photoUrl !== undefined) data.photoUrl = photoUrl;
+    if (name !== undefined) {
+      const clean = String(name).trim();
+      if (!clean) return res.status(400).json({ message: 'Your name is required' });
+      data.name = clean.slice(0, 120);
+    }
+    if (phone !== undefined) {
+      const clean = String(phone || '').trim();
+      if (clean && !/^[0-9+()\-\s]{7,20}$/.test(clean)) {
+        return res.status(400).json({ message: 'Enter a valid contact number, e.g. 0917 123 4567' });
+      }
+      data.phone = clean || null;
+    }
 
     const user = await prisma.user.update({
       where: { id: req.user.id },
       data,
+      include: withOfficial,
     });
+    // An official's name in the directory follows their account name.
+    if (data.name && user.officialId) {
+      await prisma.official.update({ where: { id: user.officialId }, data: { name: data.name } });
+    }
 
     res.json({ user: publicUser(user) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/auth/photo — multipart "photo": the signed-in user's profile picture.
+async function uploadAvatar(req, res, next) {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'Choose a picture to upload' });
+    const old = req.user.photoUrl;
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { photoUrl: req.file.filename },
+      include: withOfficial,
+    });
+    if (old) removePhotoFile(old);
+    res.json({ user: publicUser(user) });
+  } catch (err) {
+    if (req.file) removePhotoFile(req.file.filename);
+    next(err);
+  }
+}
+
+// DELETE /api/auth/photo — remove the profile picture.
+async function removeAvatar(req, res, next) {
+  try {
+    const old = req.user.photoUrl;
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { photoUrl: null },
+      include: withOfficial,
+    });
+    if (old) removePhotoFile(old);
+    res.json({ user: publicUser(user) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/auth/avatar/:id — the picture itself (an <img> cannot send the login token).
+async function getAvatar(req, res, next) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: { photoUrl: true },
+    });
+    if (!user?.photoUrl) return res.status(404).json({ message: 'No picture' });
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.sendFile(photoPath(user.photoUrl), (err) => {
+      if (err && !res.headersSent) res.status(404).json({ message: 'Picture file is missing' });
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ---------- Forgot password ----------
+
+const RESET_MINUTES = 15;
+const SAME_ANSWER = 'If this email is registered, we sent a reset link.';
+const APP_URL = () => (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+const hashToken = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
+
+// POST /api/auth/forgot-password — { email }. Always gives the same answer, so it never
+// reveals whether an address has an account. The emailed link works once, for 15 minutes.
+async function forgotPassword(req, res, next) {
+  try {
+    const email = String(req.body.email || '').trim();
+    if (!EMAIL_PATTERN.test(email)) {
+      return res.status(400).json({ message: 'Please enter a valid email address' });
+    }
+    if (!isMailConfigured()) {
+      return res.status(503).json({
+        message: 'Password reset by email is not set up yet. Ask the SK Admin to reset your password.',
+      });
+    }
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' }, isActive: true },
+    });
+    // One email a minute per account, so the form cannot be used to flood an inbox.
+    const recent = user?.resetTokenSentAt && Date.now() - new Date(user.resetTokenSentAt) < 60 * 1000;
+    if (user && !recent) {
+      const token = crypto.randomBytes(32).toString('hex');
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          resetTokenHash: hashToken(token),
+          resetTokenExpires: new Date(Date.now() + RESET_MINUTES * 60 * 1000),
+          resetTokenSentAt: new Date(),
+        },
+      });
+      const link = `${APP_URL()}/reset-password?token=${token}`;
+      try {
+        await sendMail({
+          to: user.email,
+          subject: 'Reset your SK Monitoring password',
+          text:
+            `Hi ${user.name},\n\nSomeone asked to reset the password of your SK Monitoring account. ` +
+            `Open this link to choose a new password:\n\n${link}\n\n` +
+            `The link works once and expires in ${RESET_MINUTES} minutes. ` +
+            'If you did not ask for this, you can ignore this email; your password stays the same.',
+          html:
+            `<p>Hi ${escapeHtml(user.name)},</p>` +
+            '<p>Someone asked to reset the password of your SK Monitoring account. Click the button to choose a new password.</p>' +
+            `<p><a href="${link}" style="display:inline-block;padding:10px 18px;background:#1e3a8a;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Reset password</a></p>` +
+            `<p>The link works once and expires in ${RESET_MINUTES} minutes.</p>` +
+            '<p>If you did not ask for this, you can ignore this email; your password stays the same.</p>',
+        });
+      } catch (err) {
+        console.error('Reset email failed:', err.message);
+      }
+    }
+    res.json({ message: SAME_ANSWER });
+  } catch (err) {
+    next(err);
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+// Finds the account a reset link belongs to, or explains why the link does not work.
+async function userForResetToken(token) {
+  if (!token || String(token).length < 32) return { code: 'INVALID' };
+  const user = await prisma.user.findUnique({ where: { resetTokenHash: hashToken(token) } });
+  if (!user || !user.isActive) return { code: 'INVALID' };
+  if (!user.resetTokenExpires || new Date(user.resetTokenExpires) < new Date()) return { code: 'EXPIRED' };
+  return { user };
+}
+
+const RESET_ERRORS = {
+  INVALID: 'This reset link is not valid or was already used.',
+  EXPIRED: 'This reset link has expired. Reset links work for 15 minutes.',
+};
+
+// GET /api/auth/reset-password/:token — checks a link before the form is shown.
+async function checkResetToken(req, res, next) {
+  try {
+    const { user, code } = await userForResetToken(req.params.token);
+    if (!user) return res.status(400).json({ code, message: RESET_ERRORS[code] });
+    res.json({ valid: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/auth/reset-password — { token, password, confirmPassword }. The link is used up.
+async function resetPassword(req, res, next) {
+  try {
+    const { token, password, confirmPassword } = req.body;
+    const { user, code } = await userForResetToken(token);
+    if (!user) return res.status(400).json({ code, message: RESET_ERRORS[code] });
+    const weak = passwordError(password);
+    if (weak) return res.status(400).json({ message: weak });
+    if (confirmPassword !== undefined && password !== confirmPassword) {
+      return res.status(400).json({ message: 'The two passwords do not match' });
+    }
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: await bcrypt.hash(password, 12),
+        resetTokenHash: null,
+        resetTokenExpires: null,
+      },
+    });
+    res.json({ message: 'Your password was reset. You can log in with your new password.' });
   } catch (err) {
     next(err);
   }
@@ -208,12 +406,14 @@ async function updateProfile(req, res, next) {
 // PUT /api/auth/password — { currentPassword, newPassword }.
 async function changePassword(req, res, next) {
   try {
-    const { currentPassword, newPassword } = req.body;
+    const { currentPassword, newPassword, confirmPassword } = req.body;
     if (!(await bcrypt.compare(String(currentPassword || ''), req.user.passwordHash))) {
       return res.status(400).json({ message: 'Your current password is not right' });
     }
-    if (String(newPassword || '').length < 8) {
-      return res.status(400).json({ message: 'The new password must be at least 8 characters' });
+    const weak = passwordError(newPassword);
+    if (weak) return res.status(400).json({ message: weak });
+    if (confirmPassword !== undefined && newPassword !== confirmPassword) {
+      return res.status(400).json({ message: 'The two new passwords do not match' });
     }
     if (newPassword === currentPassword) {
       return res.status(400).json({ message: 'The new password must be different from the current one' });
@@ -227,8 +427,6 @@ async function changePassword(req, res, next) {
     next(err);
   }
 }
-
-const withOfficial = { official: { select: { id: true, position: true } } };
 
 // PUT /api/auth/email — { newEmail, password }. With email set up on the server, a code
 // is sent to the new address and the change only happens after it is confirmed.
@@ -341,4 +539,10 @@ module.exports = {
   unsubscribe,
   getMe,
   updateProfile,
+  uploadAvatar,
+  removeAvatar,
+  getAvatar,
+  forgotPassword,
+  checkResetToken,
+  resetPassword,
 };

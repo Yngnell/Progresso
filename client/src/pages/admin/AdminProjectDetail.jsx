@@ -13,6 +13,7 @@ import PhotoGallery from '../../components/PhotoGallery';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
 import ProjectStatusDialog from '../../components/ProjectStatusDialog';
 import { formatPeso, formatDate, formatDateTime } from '../../utils/format';
+import { isManager, isWorker } from '../../utils/roles';
 
 export default function AdminProjectDetail() {
   const { id } = useParams();
@@ -93,6 +94,7 @@ export default function AdminProjectDetail() {
   const deleteTaskMutation = useMutation({
     mutationFn: (taskId) => projectsApi.removeTask(id, taskId),
     onSuccess: invalidate,
+    onError: (err) => setTaskError(err.response?.data?.message || 'Failed to delete the item'),
   });
 
   const withdrawMutation = useMutation({
@@ -132,9 +134,15 @@ export default function AdminProjectDetail() {
       </div>
     );
 
-  // The chairman only views and approves; an archived project is read-only for everyone.
+  // Only the SK Admin edits the project, its expenses and its status. The chairman views
+  // and approves; the officials check off items and add pictures. An archived project is
+  // read-only for everyone.
   const archived = Boolean(project.archivedAt);
-  const readOnly = isChairman || archived;
+  const readOnly = user?.role !== 'ADMIN' || archived;
+  const canManageChecklist = isManager(user) && !archived;
+  const canTick = isWorker(user) && !archived;
+  const canUploadPictures = isWorker(user) && !archived;
+  const canDeletePicture = (p) => !archived && (isManager(user) || (p.uploadedById && p.uploadedById === user?.id));
   const spent = totalSpent(project);
   const remaining = Number(project.budget || 0) - spent;
   // Most recent deletion request (server returns only the latest one).
@@ -408,32 +416,35 @@ export default function AdminProjectDetail() {
           <Card className="p-6">
             <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Progress &amp; Checklist</h2>
             <p className="mt-1 text-sm text-slate-600">
-              Progress is calculated automatically: with linked events (scheduled sessions) it is
-              the sessions already held; otherwise it follows the start and end dates. The
-              checklist is a to-do list and does not change the percentage. Only marking the
-              project Completed (with SK council approval) sets it to 100%.
+              Progress is calculated automatically from the checklist: checked items divided by
+              all items. Without checklist items it follows the sessions held, or the start and
+              end dates. Only marking the project Completed (with SK council approval) sets it to
+              100%.
             </p>
             <div className="mt-4">
               <ProjectChecklist
                 project={project}
                 onAdd={
-                  readOnly
-                    ? undefined
-                    : (form, reset) => addTaskMutation.mutate(form, { onSuccess: reset })
+                  canManageChecklist
+                    ? (form, reset) => addTaskMutation.mutate(form, { onSuccess: reset })
+                    : undefined
+                }
+                onRename={
+                  canManageChecklist
+                    ? (t, title) => updateTaskMutation.mutate({ taskId: t.id, title })
+                    : undefined
                 }
                 onToggle={
-                  readOnly
-                    ? undefined
-                    : (t) => updateTaskMutation.mutate({ taskId: t.id, done: !t.done })
+                  canTick ? (t) => updateTaskMutation.mutate({ taskId: t.id, done: !t.done }) : undefined
                 }
                 onRemove={
-                  readOnly
-                    ? undefined
-                    : (t) => {
-                        if (window.confirm(`Remove task "${t.title}"?`)) {
+                  canManageChecklist
+                    ? (t) => {
+                        if (window.confirm(`Delete the checklist item "${t.title}"?`)) {
                           deleteTaskMutation.mutate(t.id);
                         }
                       }
+                    : undefined
                 }
                 adding={addTaskMutation.isPending}
                 error={taskError}
@@ -442,18 +453,20 @@ export default function AdminProjectDetail() {
             </div>
           </Card>
 
-          {/* Progress photos (shown on the public project page) */}
+          {/* Pictures (also shown on the public project page) */}
           <Card className="p-6">
-            <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Photos</h2>
+            <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Pictures</h2>
             <p className="mt-1 mb-4 text-sm text-slate-600">
-              Progress photos appear on the public project page so residents can see the work.
+              Pictures of the work appear on the public project page so residents can see it.
+              The uploader and the SK Chairperson can delete a picture.
             </p>
             <PhotoGallery
               photos={project.photos}
               target={{ projectId: project.id }}
-              canUpload={!readOnly}
+              canUpload={canUploadPictures}
+              canDelete={canDeletePicture}
               onChange={() => qc.invalidateQueries({ queryKey: ['projects', id] })}
-              emptyText="No photos yet."
+              emptyText="No pictures yet."
             />
           </Card>
 
@@ -538,7 +551,10 @@ export default function AdminProjectDetail() {
                           {formatPeso(e.amount)}
                         </td>
                         <td className="py-2 pl-4">
-                          {e.receiptFile ? (
+                          {e.receiptFile && user?.role === 'OFFICIAL' ? (
+                            // Receipts are opened by the SK Admin and the Barangay Chairman only
+                            <span className="text-xs font-medium text-slate-600">Receipt on file</span>
+                          ) : e.receiptFile ? (
                             <button
                               type="button"
                               className="text-xs font-medium text-brand-600 hover:text-brand-700"

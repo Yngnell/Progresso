@@ -1,103 +1,231 @@
-﻿import { useQuery } from '@tanstack/react-query';
+﻿import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
 import PageHeader from '../../components/PageHeader';
-import EventTypeIcon from '../../components/EventTypeIcon';
-import { eventsApi } from '../../api/events';
-import { Card, Badge, Button, EmptyState } from '../../components/ui';
+import ExportMenu from '../../components/ExportMenu';
+import { reportsApi } from '../../api/reports';
+import { settingsApi } from '../../api/settings';
 import { useAuth } from '../../context/AuthContext';
-import { EVENT_TYPE, ATTENDANCE_STATUS, formatDateTime } from '../../utils/format';
+import { Badge, Button, Card, EmptyState } from '../../components/ui';
+import { ATTENDANCE_STATUS, formatDate, formatTime } from '../../utils/format';
+import { exportAttendanceExcel, exportAttendancePdf, rangeText } from '../../utils/reportExport';
 
-// Count attendance records by status for one event.
-function tally(event) {
-  const counts = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0 };
-  (event.attendance || []).forEach((r) => {
-    counts[r.status] = (counts[r.status] || 0) + 1;
-  });
-  counts.total = (event.attendance || []).length;
-  return counts;
-}
+const EMPTY = { eventId: '', from: '', to: '', userId: '', status: '' };
+const STATUS_FILTERS = ['PRESENT', 'LATE', 'ABSENT'];
 
+// Attendance records with filters. The table on screen is exactly what the export contains.
 export default function AdminAttendance() {
   const { user } = useAuth();
-  const readOnly = user?.role === 'CHAIRMAN'; // the chairman views attendance, the admin records it
-  const { data, isLoading } = useQuery({
-    queryKey: ['events', 'admin'],
-    queryFn: () => eventsApi.list({}),
+  const [filters, setFilters] = useState(EMPTY);
+  const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }));
+  const badRange = filters.from && filters.to && filters.from > filters.to;
+
+  // Only the filters that are set are sent.
+  const params = useMemo(
+    () => Object.fromEntries(Object.entries(filters).filter(([, v]) => v)),
+    [filters]
+  );
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['reports', 'attendance', params],
+    queryFn: () => reportsApi.attendance(params),
+    enabled: !badRange,
+    placeholderData: (prev) => prev,
   });
-  const events = data?.events || [];
+  // The dropdowns list every event and official, whatever the filters.
+  const { data: allData } = useQuery({
+    queryKey: ['reports', 'attendance', {}],
+    queryFn: () => reportsApi.attendance({}),
+  });
+  const events = allData?.events || [];
+  const officials = allData?.officials || [];
+  const rows = data?.rows || [];
+  const totals = data?.summary?.totals;
+
+  // "Event: SK General Assembly · Dates: Nov 1 to Nov 30, 2026 · Status: Late"
+  function filtersText() {
+    const parts = [];
+    if (filters.eventId) parts.push(`Event: ${events.find((e) => e.id === filters.eventId)?.title || 'one event'}`);
+    parts.push(`Dates: ${rangeText(filters.from, filters.to)}`);
+    if (filters.userId) parts.push(`Official: ${officials.find((o) => o.id === filters.userId)?.name || 'one official'}`);
+    parts.push(`Status: ${filters.status ? ATTENDANCE_STATUS[filters.status].label : 'All'}`);
+    return parts.join('  |  ');
+  }
+
+  async function onExport(kind) {
+    const { settings } = await settingsApi.get();
+    const args = { data, settings, user, filters: filtersText() };
+    if (kind === 'pdf') await exportAttendancePdf(args);
+    else await exportAttendanceExcel(args);
+  }
+
+  const filtered = Object.values(filters).some(Boolean);
 
   return (
     <div>
       <PageHeader
         title="Attendance Records"
-        description={
-          readOnly
-            ? 'Overview of attendance across all events. Open an event to see who attended.'
-            : 'Overview of attendance across all events. Open an event to mark or edit attendees.'
-        }
+        description="Choose filters, then export exactly what the table shows. Absent means the official did not scan and was not recorded by the time the event ended."
+        actions={<ExportMenu onExport={onExport} disabled={!data || isLoading || Boolean(badRange)} />}
       />
 
-      <div className="mt-6">
-        {isLoading ? (
-          <p className="text-sm text-slate-500">Loading…</p>
-        ) : events.length === 0 ? (
-          <EmptyState
-            title="No events yet"
-            description="Create an event in the Calendar first, then record attendance here."
-            action={
-              <Link to="/admin/calendar">
-                <Button variant="accent">Go to Calendar</Button>
-              </Link>
-            }
-          />
-        ) : (
-          <div className="space-y-4">
-            {events.map((e) => {
-              const t = EVENT_TYPE[e.type] || { label: e.type, tone: 'slate' };
-              const c = tally(e);
-              return (
-                <Card key={e.id} className="p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900">
-                          <EventTypeIcon type={e.type} size={18} className="text-brand-600" />
-                          {e.title}
-                        </h3>
-                        <Badge tone={t.tone}>{t.label}</Badge>
-                      </div>
-                      <p className="mt-1 text-sm text-slate-600">{formatDateTime(e.startAt)}</p>
-                    </div>
-                    <Link to={`/admin/calendar/${e.id}`}>
-                      <Button size="sm" variant="secondary">
-                        {readOnly ? 'View' : 'Mark / View'}
-                        <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" />
-                      </Button>
-                    </Link>
-                  </div>
+      {/* Filters */}
+      <Card className="mt-6 p-4 sm:p-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <label className="lg:col-span-2">
+            <span className="label">Event</span>
+            <select className="input" value={filters.eventId} onChange={set('eventId')}>
+              <option value="">All events</option>
+              {events.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.title} · {formatDate(e.startAt)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span className="label">From</span>
+            <input type="date" className="input" value={filters.from} max={filters.to || undefined} onChange={set('from')} />
+          </label>
+          <label>
+            <span className="label">To</span>
+            <input type="date" className="input" value={filters.to} min={filters.from || undefined} onChange={set('to')} />
+          </label>
+          <label>
+            <span className="label">Status</span>
+            <select className="input" value={filters.status} onChange={set('status')}>
+              <option value="">All</option>
+              {STATUS_FILTERS.map((s) => (
+                <option key={s} value={s}>
+                  {ATTENDANCE_STATUS[s].label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="lg:col-span-2">
+            <span className="label">Official</span>
+            <select className="input" value={filters.userId} onChange={set('userId')}>
+              <option value="">All officials</option>
+              {officials.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                  {o.position ? ` (${o.position})` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex items-end">
+            {filtered && (
+              <Button variant="ghost" onClick={() => setFilters(EMPTY)}>
+                Clear filters
+              </Button>
+            )}
+          </div>
+        </div>
+        {badRange && <p className="mt-2 text-sm font-medium text-red-700">"From" must be on or before "To".</p>}
+      </Card>
 
-                  {/* Per-status counts */}
-                  <dl className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-5">
-                    {Object.entries(ATTENDANCE_STATUS).map(([key, v]) => (
-                      <div key={key} className="bg-white p-3">
-                        <dt className="text-sm font-semibold text-slate-600">{v.label}</dt>
-                        <dd className="font-display text-3xl font-bold text-slate-900">
-                          {c[key] || 0}
-                        </dd>
-                      </div>
-                    ))}
-                    <div className="bg-brand-50 p-3">
-                      <dt className="text-sm font-semibold text-brand-800">Total</dt>
-                      <dd className="font-display text-3xl font-bold text-brand-900">{c.total}</dd>
-                    </div>
-                  </dl>
-                </Card>
-              );
-            })}
+      {/* Summary */}
+      {totals && (
+        <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-4">
+          {[
+            ['Present', totals.present],
+            ['Late', totals.late],
+            ['Absent', totals.absent],
+            ['Attendance rate', totals.rate != null ? `${totals.rate}%` : '—'],
+          ].map(([label, value]) => (
+            <div key={label} className="bg-white p-4">
+              <dt className="text-sm font-semibold text-slate-600">{label}</dt>
+              <dd className="font-display text-4xl font-bold text-slate-900">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {/* Records */}
+      <Card className="mt-6 p-0">
+        {isLoading && !data ? (
+          <p className="p-5 text-sm text-slate-600">Loading…</p>
+        ) : isError ? (
+          <p className="p-5 text-sm font-medium text-red-700">The attendance could not be loaded.</p>
+        ) : rows.length === 0 ? (
+          <div className="p-5">
+            <EmptyState
+              title={filtered ? 'No attendance matches these filters' : 'No attendance yet'}
+              description={
+                filtered
+                  ? 'Try another event, date range, official or status.'
+                  : 'Attendance appears here once officials scan an event’s QR code.'
+              }
+            />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="border-b border-slate-200 text-slate-600">
+                <tr>
+                  {['Official Name', 'Position', 'Event Name', 'Event Date', 'Time In', 'Status', 'Method'].map((h) => (
+                    <th key={h} className="px-4 py-3 font-semibold">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rows.map((r, i) => (
+                  <tr key={`${r.eventId}-${r.userId || r.officialName}-${i}`}>
+                    <td className="px-4 py-2.5 font-medium text-slate-900">{r.officialName}</td>
+                    <td className="px-4 py-2.5 text-slate-700">{r.position || '—'}</td>
+                    <td className="px-4 py-2.5">
+                      <Link to={`/admin/calendar/${r.eventId}`} className="font-medium text-brand-700 hover:text-brand-800">
+                        {r.eventName}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2.5 tabular text-slate-700">{formatDate(r.eventDate)}</td>
+                    <td className="px-4 py-2.5 tabular text-slate-700">{r.timeIn ? formatTime(r.timeIn) : '—'}</td>
+                    <td className="px-4 py-2.5">
+                      <Badge tone={ATTENDANCE_STATUS[r.status]?.tone}>{ATTENDANCE_STATUS[r.status]?.label || r.status}</Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-700">{r.method}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
-      </div>
+      </Card>
+
+      {/* Rate per official */}
+      {data?.summary?.perOfficial?.length > 0 && (
+        <Card className="mt-6 p-5">
+          <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Attendance per official</h2>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[560px] text-left text-sm">
+              <thead className="border-b border-slate-200 text-slate-600">
+                <tr>
+                  <th className="py-2 pr-3 font-semibold">Official</th>
+                  <th className="py-2 pr-3 font-semibold">Position</th>
+                  <th className="py-2 pr-3 text-right font-semibold">Present</th>
+                  <th className="py-2 pr-3 text-right font-semibold">Late</th>
+                  <th className="py-2 pr-3 text-right font-semibold">Absent</th>
+                  <th className="py-2 text-right font-semibold">Rate</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 tabular">
+                {data.summary.perOfficial.map((o) => (
+                  <tr key={o.name}>
+                    <td className="py-2 pr-3 font-medium text-slate-900">{o.name}</td>
+                    <td className="py-2 pr-3 text-slate-700">{o.position || '—'}</td>
+                    <td className="py-2 pr-3 text-right">{o.present}</td>
+                    <td className="py-2 pr-3 text-right">{o.late}</td>
+                    <td className="py-2 pr-3 text-right">{o.absent}</td>
+                    <td className="py-2 text-right font-semibold">{o.rate != null ? `${o.rate}%` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

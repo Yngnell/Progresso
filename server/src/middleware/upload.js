@@ -62,7 +62,7 @@ const PHOTO_DIR = path.join(__dirname, '..', '..', 'uploads', 'photos');
 fs.mkdirSync(PHOTO_DIR, { recursive: true });
 
 const PHOTO_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
-const MAX_PHOTOS = 6;
+const MAX_PHOTOS = 10;
 
 const photoUploader = multer({
   storage: multer.diskStorage({
@@ -72,7 +72,7 @@ const photoUploader = multer({
   limits: { fileSize: MAX_SIZE, files: MAX_PHOTOS },
   fileFilter: (_req, file, cb) => {
     if (!PHOTO_TYPES[file.mimetype]) {
-      const err = new Error('Photos must be JPG, PNG or WebP images');
+      const err = new Error('Pictures must be JPG, JPEG, PNG or WEBP images');
       err.status = 400;
       return cb(err);
     }
@@ -80,17 +80,30 @@ const photoUploader = multer({
   },
 });
 
-// Reads up to 6 images from the form field "photos".
+// Reads up to 10 images from the form field "photos".
 function photoUpload(req, res, next) {
   photoUploader.array('photos', MAX_PHOTOS)(req, res, (err) => {
     if (!err) return next();
     err.status = 400;
-    if (err.code === 'LIMIT_FILE_SIZE') err.message = 'Each photo must be 5 MB or smaller';
+    if (err.code === 'LIMIT_FILE_SIZE') err.message = 'Each picture must be 5 MB or smaller';
     if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
-      err.message = 'You can upload up to 6 photos at a time';
+      err.message = `You can upload up to ${MAX_PHOTOS} pictures at a time`;
     }
     next(err);
   });
+}
+
+// One image from the given form field: a profile picture ("photo") or the SK logo ("logo").
+function singleImage(field) {
+  return (req, res, next) => {
+    photoUploader.single(field)(req, res, (err) => {
+      if (!err) return next();
+      err.status = 400;
+      if (err.code === 'LIMIT_FILE_SIZE') err.message = 'The picture must be 5 MB or smaller';
+      if (err.code === 'LIMIT_UNEXPECTED_FILE') err.message = 'Upload one picture';
+      next(err);
+    });
+  };
 }
 
 function photoPath(fileName) {
@@ -107,6 +120,9 @@ module.exports = {
   receiptPath,
   removeReceiptFile,
   photoUpload,
+  avatarUpload: singleImage('photo'),
+  logoUpload: singleImage('logo'),
   photoPath,
   removePhotoFile,
+  MAX_PHOTOS,
 };

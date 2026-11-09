@@ -28,7 +28,8 @@ const blankForm = () => ({
 
 export default function AdminProjects() {
   const { user } = useAuth();
-  const readOnly = user?.role === 'CHAIRMAN';
+  // Only the SK Admin creates and edits projects; the chairman and the officials view them.
+const readOnly = user?.role !== 'ADMIN';
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);

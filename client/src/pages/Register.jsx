@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { Button, Input } from '../components/ui';
 import AuthShell from '../components/AuthShell';
 import VerifyCodeForm from '../components/VerifyCodeForm';
+import PasswordInput from '../components/PasswordInput';
+import PasswordChecklist, { passwordOk } from '../components/PasswordChecklist';
 
 export default function Register() {
   const [form, setForm] = useState({
@@ -13,6 +15,7 @@ export default function Register() {
     phone: '',
     receiveUpdates: false,
   });
+  const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [pendingEmail, setPendingEmail] = useState(''); // set once the code was emailed
@@ -99,13 +102,21 @@ export default function Register() {
           required
         />
         <Input label="Phone (optional)" autoComplete="tel" value={form.phone} onChange={update('phone')} />
-        <Input
-          label="Password"
-          type="password"
+        <div>
+          <PasswordInput
+            label="Password"
+            autoComplete="new-password"
+            value={form.password}
+            onChange={update('password')}
+            required
+          />
+          <PasswordChecklist password={form.password} confirm={confirm} />
+        </div>
+        <PasswordInput
+          label="Confirm Password"
           autoComplete="new-password"
-          value={form.password}
-          onChange={update('password')}
-          minLength={6}
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
           required
         />
         {/* Consent is a choice, so the box starts unticked */}
@@ -118,7 +129,13 @@ export default function Register() {
             onChange={(e) => setForm({ ...form, receiveUpdates: e.target.checked })}
           />
         </label>
-        <Button type="submit" variant="accent" size="lg" className="w-full" disabled={loading}>
+        <Button
+          type="submit"
+          variant="accent"
+          size="lg"
+          className="w-full"
+          disabled={loading || !passwordOk(form.password, confirm)}
+        >
           {loading ? 'Sending your code…' : 'Register'}
         </Button>
       </form>

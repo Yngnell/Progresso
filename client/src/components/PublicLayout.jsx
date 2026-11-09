@@ -36,7 +36,7 @@ function Nameplate({ light = false }) {
 }
 
 // Only SK staff and the Barangay Chairman have a dashboard; residents (viewers) do not.
-const STAFF = ['ADMIN', 'CHAIRMAN'];
+const STAFF = ['ADMIN', 'CHAIRMAN', 'OFFICIAL'];
 
 export default function PublicLayout() {
   const { user, logout } = useAuth();

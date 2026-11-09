@@ -13,8 +13,8 @@ const {
 } = require('../controllers/notificationController');
 const { protect, restrictTo } = require('../middleware/auth');
 
-// Notifications are for the SK admin and the Barangay Chairman.
-router.use(protect, restrictTo('ADMIN', 'CHAIRMAN'));
+// Notifications are for the SK side: the admin, the Barangay Chairman and the officials.
+router.use(protect, restrictTo('ADMIN', 'CHAIRMAN', 'OFFICIAL'));
 
 router.get('/', listNotifications);
 router.put('/read-all', markAllRead); // before '/:id/read'

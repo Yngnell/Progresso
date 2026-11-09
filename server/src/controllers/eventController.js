@@ -8,6 +8,13 @@ const includeOpts = {
   attendance: { orderBy: { createdAt: 'asc' } },
 };
 
+// The attendance QR token is a secret: only the SK Chairperson gets it (attendance/qr).
+function hideQr(event) {
+  if (!event) return event;
+  const { qrToken, ...rest } = event;
+  return rest;
+}
+
 // GET /api/events - public. Optional ?type= and ?upcoming=true filters.
 async function getEvents(req, res, next) {
   try {
@@ -21,7 +28,7 @@ async function getEvents(req, res, next) {
       orderBy: { startAt: 'asc' },
       include: includeOpts,
     });
-    res.json({ events });
+    res.json({ events: events.map(hideQr) });
   } catch (err) {
     next(err);
   }
@@ -35,7 +42,7 @@ async function getEvent(req, res, next) {
       include: includeOpts,
     });
     if (!event) return res.status(404).json({ message: 'Event not found' });
-    res.json({ event });
+    res.json({ event: hideQr(event) });
   } catch (err) {
     next(err);
   }
@@ -83,7 +90,7 @@ async function createEvent(req, res, next) {
     if (!data.title) data.title = TYPE_LABEL[data.type] || TYPE_LABEL.MEETING;
 
     const event = await prisma.event.create({ data, include: includeOpts });
-    res.status(201).json({ event });
+    res.status(201).json({ event: hideQr(event) });
   } catch (err) {
     next(err);
   }
@@ -107,7 +114,7 @@ async function updateEvent(req, res, next) {
       data,
       include: includeOpts,
     });
-    res.json({ event });
+    res.json({ event: hideQr(event) });
   } catch (err) {
     next(err);
   }

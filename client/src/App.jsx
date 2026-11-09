@@ -6,6 +6,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Unsubscribe from './pages/Unsubscribe';
 import CheckIn from './pages/CheckIn';
 import Account from './pages/Account';
@@ -28,6 +30,7 @@ import AdminProjectDetail from './pages/admin/AdminProjectDetail';
 import AdminCalendar from './pages/admin/AdminCalendar';
 import AdminEventDetail from './pages/admin/AdminEventDetail';
 import AdminAttendance from './pages/admin/AdminAttendance';
+import Settings from './pages/admin/Settings';
 
 export default function App() {
   return (
@@ -62,6 +65,8 @@ export default function App() {
       {/* Auth pages (standalone) */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/unsubscribe" element={<Unsubscribe />} />
       <Route path="/checkin" element={<CheckIn />} />
 
@@ -79,7 +84,7 @@ export default function App() {
       <Route
         path="/admin"
         element={
-          <ProtectedRoute roles={['ADMIN', 'CHAIRMAN']}>
+          <ProtectedRoute roles={['ADMIN', 'CHAIRMAN', 'OFFICIAL']}>
             <AdminLayout />
           </ProtectedRoute>
         }
@@ -102,12 +107,27 @@ export default function App() {
           }
         />
         <Route path="projects" element={<AdminProjects />} />
-        <Route path="proposals" element={<AdminProposals />} />
-        <Route path="archive" element={<AdminArchive />} />
+        <Route
+          path="proposals"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'CHAIRMAN']}>
+              <AdminProposals />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="archive"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'CHAIRMAN']}>
+              <AdminArchive />
+            </ProtectedRoute>
+          }
+        />
         <Route path="projects/:id" element={<AdminProjectDetail />} />
         <Route path="calendar" element={<AdminCalendar />} />
         <Route path="calendar/:id" element={<AdminEventDetail />} />
         <Route path="attendance" element={<AdminAttendance />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
 
       {/* Fallback */}

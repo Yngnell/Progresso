@@ -23,6 +23,7 @@ const {
   deleteTask,
 } = require('../controllers/projectController');
 const { protect, optionalAuth, restrictTo } = require('../middleware/auth');
+const { requireManager, requireStaff, requireWorker } = require('../utils/roles');
 const { receiptUpload, photoUpload } = require('../middleware/upload');
 const { addProjectPhotos } = require('../controllers/photoController');
 
@@ -70,10 +71,12 @@ router.post(
   attachReceipt
 );
 router.delete('/:id/expenses/:expenseId', protect, restrictTo('ADMIN'), deleteExpense);
-// Progress photos shown on the public project page
-router.post('/:id/photos', protect, restrictTo('ADMIN'), photoUpload, addProjectPhotos);
-router.post('/:id/tasks', protect, restrictTo('ADMIN'), addTask);
-router.put('/:id/tasks/:taskId', protect, restrictTo('ADMIN'), updateTask);
-router.delete('/:id/tasks/:taskId', protect, restrictTo('ADMIN'), deleteTask);
+// Pictures shown on the project page: the officials and the admin add them
+router.post('/:id/photos', protect, requireWorker, photoUpload, addProjectPhotos);
+// Checklist: the SK Chairperson or the admin adds, edits and deletes items; the officials
+// and the admin check them off (updateTask decides per field).
+router.post('/:id/tasks', protect, requireManager, addTask);
+router.put('/:id/tasks/:taskId', protect, requireStaff, updateTask);
+router.delete('/:id/tasks/:taskId', protect, requireManager, deleteTask);
 
 module.exports = router;

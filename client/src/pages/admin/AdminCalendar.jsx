@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import PageHeader from '../../components/PageHeader';
 import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
+import { AttendanceQrButton } from '../../components/AttendanceQr';
 import MonthCalendar, { MONTHS } from '../../components/MonthCalendar';
 import {
   Button,
@@ -34,7 +35,8 @@ const emptyForm = {
 
 export default function AdminCalendar() {
   const { user } = useAuth();
-  const readOnly = user?.role === 'CHAIRMAN';
+  // Only the SK Admin adds and edits events; the chairman and the officials view them.
+  const readOnly = user?.role !== 'ADMIN';
   const qc = useQueryClient();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -207,6 +209,7 @@ export default function AdminCalendar() {
                         <p className="text-sm text-slate-600">{formatDateTime(e.startAt)}</p>
                       </div>
                     </div>
+                    {user?.isSkChair && <AttendanceQrButton event={e} className="mt-3 w-full" />}
                     <div className="mt-3 flex gap-2">
                       <Link to={`/admin/calendar/${e.id}`} className="flex-1">
                         <Button size="sm" variant="secondary" className="w-full">

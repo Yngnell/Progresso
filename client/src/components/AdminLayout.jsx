@@ -12,12 +12,15 @@ import {
   LogOut,
   Menu,
   Newspaper,
+  Settings as SettingsIcon,
   Users,
   X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { projectsApi } from '../api/projects';
 import NotificationBell from './NotificationBell';
+import { roleLabel } from '../utils/roles';
+import { accountApi } from '../api/account';
 
 // `roles` limits a link to those roles; omit it to show the link to everyone
 // who can open the admin panel.
@@ -35,6 +38,7 @@ const groups = [
         Icon: ClipboardCheck,
         badge: true,
         firstFor: ['CHAIRMAN'],
+        roles: ['ADMIN', 'CHAIRMAN'],
       },
       { to: '/admin/calendar', label: 'Calendar', Icon: CalendarDays },
       { to: '/admin/attendance', label: 'Attendance', Icon: ListChecks },
@@ -43,14 +47,17 @@ const groups = [
   {
     label: 'Records',
     links: [
-      { to: '/admin/archive', label: 'Archive', Icon: Archive },
+      { to: '/admin/archive', label: 'Archive', Icon: Archive, roles: ['ADMIN', 'CHAIRMAN'] },
       { to: '/admin/officials', label: 'Officials', Icon: Users, roles: ['ADMIN'] },
       { to: '/admin/news', label: 'News & Updates', Icon: Newspaper, roles: ['ADMIN'] },
     ],
   },
+  {
+    label: 'Account',
+    links: [{ to: '/admin/settings', label: 'Settings', Icon: SettingsIcon }],
+  },
 ];
 
-const ROLE_LABEL = { ADMIN: 'SK Admin', CHAIRMAN: 'Barangay Chairman' };
 
 // The seal and the SK's name at the top of the rail.
 function Nameplate() {
@@ -228,12 +235,17 @@ export default function AdminLayout() {
           <div className="ml-auto flex items-center gap-1 sm:gap-3">
             <NotificationBell />
             <Link
-              to="/account"
-              className="hidden rounded-lg px-2 py-1 text-right leading-tight hover:bg-slate-100 sm:block"
-              title="My account"
+              to="/admin/settings"
+              className="hidden items-center gap-2.5 rounded-lg px-2 py-1 text-right leading-tight hover:bg-slate-100 sm:flex"
+              title="Settings"
             >
-              <p className="text-sm font-semibold text-slate-900">{user?.name}</p>
-              <p className="text-xs text-slate-600">{ROLE_LABEL[user?.role] || user?.role}</p>
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">{user?.name}</span>
+                <span className="block text-xs text-slate-600">{roleLabel(user)}</span>
+              </span>
+              {accountApi.photoUrl(user) && (
+                <img src={accountApi.photoUrl(user)} alt="" className="h-9 w-9 rounded-full border border-slate-200 object-cover" />
+              )}
             </Link>
             <button
               type="button"

@@ -1,7 +1,8 @@
-const prisma = require('../prisma');
+const prisma = require('../prisma');
 const { parsePhDate } = require('../utils/phTime');
 const { receiptPath, removeReceiptFile } = require('../middleware/upload');
 const { photosForProject } = require('./photoController');
+const { isStaff, isManager, isWorker } = require('../utils/roles');
 
 // Archived projects are kept for the record but cannot be changed.
 const ARCHIVED_MESSAGE = 'This project is archived and can no longer be changed';
@@ -26,11 +27,13 @@ const includeOpts = {
 // Points below the expected (timeline) % before a project counts as behind.
 const BEHIND_TOLERANCE = 10;
 
-// Progress is computed, never typed by admins, and follows how the SK measures it:
-// - with linked events (scheduled sessions): sessions held / sessions scheduled
+// Progress is computed, never typed by admins:
+// - with checklist items: checked items / total items x 100;
+// - otherwise, with linked events (scheduled sessions): sessions held / sessions scheduled
 //   (a session counts once its end time passes);
 // - otherwise: the timeline, days elapsed / total days from start and end dates.
-// Checklist tasks are a to-do aid and do not change the %. Only COMPLETED reaches 100.
+// Only COMPLETED reaches 100, so an ongoing project with every item checked shows 99
+// until it is marked completed with the council's approval.
 function computeProgress(project) {
   const { status, startDate, endDate, updatedAt } = project;
   const events = project.events || [];
@@ -55,7 +58,12 @@ function computeProgress(project) {
   let source = null;
   if (status === 'COMPLETED') {
     progress = 100;
-  } else if (status === 'PROPOSED' || status === 'PLANNING') {
+  } else if (status === 'PROPOSED') {
+    progress = 0;
+  } else if (tasks.length > 0) {
+    progress = Math.min(99, Math.round((tasksDone / tasks.length) * 100));
+    source = 'checklist';
+  } else if (status === 'PLANNING') {
     progress = 0;
   } else if (events.length > 0) {
     progress = Math.min(99, Math.round((eventsDone / events.length) * 100));
@@ -98,9 +106,10 @@ function effectiveStatus({ status, startDate }) {
   return status;
 }
 
-// Admin and chairman see everything; the public never sees unapproved projects.
+// The SK side (admin, chairman, officials) sees everything; the public never sees
+// unapproved projects.
 function canSeeProposed(user) {
-  return Boolean(user && (user.role === 'ADMIN' || user.role === 'CHAIRMAN'));
+  return isStaff(user);
 }
 
 function withProgress(project) {
@@ -765,15 +774,32 @@ async function updateTask(req, res, next) {
     }
 
     const { title, dueDate, done } = req.body;
+    // Renaming or re-dating an item is for the SK Chairperson or the SK Admin;
+    // checking and unchecking is for the officials and the admin.
+    if ((title !== undefined || dueDate !== undefined) && !isManager(req.user)) {
+      return res.status(403).json({ message: 'Only the SK Chairperson or the SK Admin can edit checklist items.' });
+    }
+    if (done !== undefined && !isWorker(req.user)) {
+      return res.status(403).json({ message: 'Only SK officials and the SK Admin can check off items.' });
+    }
     const data = {};
     if (title !== undefined) {
-      if (!title.trim()) return res.status(400).json({ message: 'Task title is required' });
-      data.title = title.trim();
+      if (!String(title).trim()) return res.status(400).json({ message: 'Task title is required' });
+      data.title = String(title).trim().slice(0, 200);
     }
     if (dueDate !== undefined) data.dueDate = dueDate ? new Date(dueDate) : null;
     if (done !== undefined) {
       data.done = Boolean(done);
-      data.completedAt = data.done ? existing.completedAt || new Date() : null;
+      // "Done by Juan Dela Cruz, Nov 10, 2026": who checked it and when.
+      if (data.done && !existing.done) {
+        data.completedAt = new Date();
+        data.completedById = req.user.id;
+        data.completedByName = req.user.name;
+      } else if (!data.done) {
+        data.completedAt = null;
+        data.completedById = null;
+        data.completedByName = null;
+      }
     }
 
     const task = await prisma.projectTask.update({

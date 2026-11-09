@@ -54,21 +54,20 @@ export function ProgressBar({ value = 0, breakdown, className = '', showValue = 
   );
 }
 
-// "3/4 sessions held · expected 55% · checklist 1/4" style summary.
-// Progress comes from sessions (linked events) or, without any, the timeline;
-// the checklist is shown for information only.
+// "3 of 4 checklist items done · expected 55%" style summary.
+// Progress comes from the checklist; without items, from sessions (linked events) or,
+// without any, the timeline.
 export function progressSummary(breakdown) {
   if (!breakdown) return '';
   const parts = [];
-  if (breakdown.eventsTotal > 0) {
+  if (breakdown.source === 'checklist') {
+    parts.push(`${breakdown.tasksDone} of ${breakdown.tasksTotal} checklist items done`);
+  } else if (breakdown.eventsTotal > 0) {
     parts.push(`${breakdown.eventsDone}/${breakdown.eventsTotal} sessions held`);
   }
   if (breakdown.source === 'timeline') parts.push('based on start and end dates');
   if (breakdown.expected != null && breakdown.schedule && breakdown.schedule !== 'COMPLETED') {
     parts.push(`expected by now ${breakdown.expected}%`);
-  }
-  if (breakdown.tasksTotal > 0) {
-    parts.push(`checklist ${breakdown.tasksDone}/${breakdown.tasksTotal}`);
   }
   return parts.join(' · ');
 }
@@ -133,6 +132,11 @@ export function ProjectCard({ project, footer, to, notice }) {
             breakdown={project.progressBreakdown}
             showValue={false}
           />
+          {project.progressBreakdown?.source === 'checklist' && (
+            <p className="mt-1.5 text-sm font-medium text-slate-700">
+              {project.progressBreakdown.tasksDone} of {project.progressBreakdown.tasksTotal} checklist items done
+            </p>
+          )}
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           {project.startDate && project.endDate ? (

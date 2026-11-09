@@ -1,5 +1,10 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { reportsApi } from '../../api/reports';
+import { settingsApi } from '../../api/settings';
+import ExportMenu from '../../components/ExportMenu';
+import { exportDashboardExcel, exportDashboardPdf } from '../../utils/reportExport';
 import { ArrowRight, CircleCheck, ClipboardCheck, Plus } from 'lucide-react';
 import { statsApi } from '../../api/stats';
 import { projectsApi } from '../../api/projects';
@@ -48,9 +53,10 @@ function needsAttention(projects) {
     .sort((a, b) => ended(a) - ended(b) || new Date(a.endDate) - new Date(b.endDate));
 }
 
-function Panel({ title, action, children, className = '' }) {
+// pdfChart: this panel's chart is captured as a picture in the Dashboard PDF export.
+function Panel({ title, action, children, className = '', pdfChart = false }) {
   return (
-    <Card className={`p-5 sm:p-6 ${className}`}>
+    <Card className={`p-5 sm:p-6 ${className}`} data-pdf-chart={pdfChart ? '' : undefined}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">
           {title}
@@ -73,9 +79,46 @@ function PanelLink({ to, children }) {
   );
 }
 
+// From / To dates and the Export menu. The export covers the chosen dates; the charts are
+// captured as they are shown on the Dashboard.
+function DashboardExport({ user }) {
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const badRange = from && to && from > to;
+
+  async function onExport(kind) {
+    const [report, { settings }] = await Promise.all([
+      reportsApi.dashboard({ from: from || undefined, to: to || undefined }),
+      settingsApi.get(),
+    ]);
+    if (kind === 'pdf') {
+      const chartNodes = Array.from(document.querySelectorAll('[data-pdf-chart]'));
+      await exportDashboardPdf({ report, settings, user, chartNodes });
+    } else {
+      await exportDashboardExcel({ report, settings, user });
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <label>
+        <span className="label">From</span>
+        <input type="date" className="input w-40" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+      </label>
+      <label>
+        <span className="label">To</span>
+        <input type="date" className="input w-40" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+      </label>
+      <ExportMenu onExport={onExport} disabled={Boolean(badRange)} />
+      {badRange && <p className="w-full text-sm font-medium text-red-700">"From" must be on or before "To".</p>}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const isChairman = user?.role === 'CHAIRMAN';
+  const isAdmin = user?.role === 'ADMIN';
 
   const { data } = useQuery({ queryKey: ['stats'], queryFn: statsApi.get });
   const { data: projectsData } = useQuery({
@@ -110,21 +153,24 @@ export default function Dashboard() {
           </h1>
           <p className="mt-0.5 text-slate-600">How your projects, budget and sessions are doing.</p>
         </div>
-        {isChairman ? (
+        <div className="flex flex-wrap items-end gap-3">
+          <DashboardExport user={user} />
+          {isChairman ? (
           <Link to="/admin/proposals">
             <Button variant="primary">
               <ClipboardCheck size={18} strokeWidth={1.75} aria-hidden="true" />
               Review approvals
             </Button>
           </Link>
-        ) : (
+          ) : isAdmin ? (
           <Link to="/admin/projects">
             <Button variant="accent">
               <Plus size={18} strokeWidth={2} aria-hidden="true" />
               Add Project
             </Button>
           </Link>
-        )}
+          ) : null}
+        </div>
       </div>
 
       {/* Chairman: proposals waiting for a decision */}
@@ -186,19 +232,20 @@ export default function Dashboard() {
 
       {/* Trends */}
       <div className="grid gap-6 lg:grid-cols-3">
-        <Panel title="Spending by month" className="lg:col-span-2">
+        <Panel title="Spending by month" className="lg:col-span-2" pdfChart>
           <SpendingChart data={a.monthlySpending} />
         </Panel>
-        <Panel title="Projects by status">
+        <Panel title="Projects by status" pdfChart>
           <StatusDonut data={statusData} colors={STATUS_COLOR} labels={STATUS_LABEL} />
         </Panel>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title="Budget vs spent">
+        <Panel title="Budget vs spent" pdfChart>
           <BudgetBars data={a.spendByProject} />
         </Panel>
         <Panel
+          pdfChart
           title="Attendance by session"
           action={<PanelLink to="/admin/attendance">Attendance</PanelLink>}
         >
@@ -282,7 +329,7 @@ export default function Dashboard() {
         {recent.length === 0 ? (
           <p className="text-slate-600">
             No projects yet.
-            {!isChairman && (
+            {isAdmin && (
               <>
                 {' '}
                 <Link to="/admin/projects" className="font-semibold text-brand-700">

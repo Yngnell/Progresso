@@ -15,6 +15,7 @@ datasource db {
 enum Role {
   ADMIN
   CHAIRMAN
+  OFFICIAL // an SK official's own account (limited admin panel)
   VIEWER
 }
 
@@ -76,6 +77,13 @@ model User {
   // Set when this account belongs to an SK official in the directory
   officialId            String?   @unique
   official              Official? @relation(fields: [officialId], references: [id], onDelete: SetNull)
+  // Forgot password: sha256 of the emailed one-time token, valid for 15 minutes
+  resetTokenHash        String?   @unique
+  resetTokenExpires     DateTime?
+  resetTokenSentAt      DateTime?
+  // Login history: lastLoginAt is this session; previousLoginAt is shown as "last login"
+  lastLoginAt           DateTime?
+  previousLoginAt       DateTime?
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -202,6 +210,9 @@ model ProjectTask {
   dueDate      DateTime?
   done         Boolean   @default(false)
   completedAt  DateTime?
+  // Who ticked it: "Done by Juan Dela Cruz, Nov 10, 2026"
+  completedById   String?
+  completedByName String?
   displayOrder Int       @default(0)
   createdAt    DateTime  @default(now())
 
@@ -260,6 +271,12 @@ model Event {
   organizer        Official? @relation("EventOrganizer", fields: [organizerId], references: [id])
   relatedProjectId String?
   relatedProject   Project?  @relation(fields: [relatedProjectId], references: [id])
+  // Attendance QR (SK Chairperson): one code per event, valid only inside its window.
+  // Regenerating gives a new token, so the old QR stops working.
+  qrToken          String?   @unique
+  qrActive         Boolean   @default(false)
+  qrValidFrom      DateTime?
+  qrValidUntil     DateTime?
   attendance       AttendanceRecord[]
   notifications    Notification[]
   photos           Photo[]
@@ -278,7 +295,11 @@ model AttendanceRecord {
   userId      String?          // optional link to a registered user
   status      AttendanceStatus @default(PRESENT)
   timeIn      DateTime?
+  method      String           @default("QR") // QR | MANUAL
   createdAt   DateTime         @default(now())
+
+  // One check-in per account per event (manual rows without an account are not limited)
+  @@unique([eventId, userId])
 }
 
 // Public news / announcements shown on the home page.
@@ -331,8 +352,23 @@ model Photo {
   fileName       String   // stored file name inside server/uploads/photos
   mimeType       String
   uploadedByName String
+  uploadedById   String? // the uploader may delete their own picture
   createdAt      DateTime @default(now())
 
   @@index([projectId])
   @@index([eventId])
+}
+
+// SK information and attendance defaults, edited by the SK Chairperson in Settings → System.
+// A single row with id "sk".
+model Setting {
+  id                 String   @id @default("sk")
+  barangayName       String   @default("Barangay Salinas 1, City of Bacoor, Cavite")
+  skTerm             String   @default("2023-2026")
+  logoFile           String?  // uploaded logo inside server/uploads/photos; empty = the SK seal
+  logoType           String?
+  qrDefaultBeforeMin Int      @default(30) // QR opens this many minutes before the start
+  qrDefaultLengthMin Int?     // QR stays valid this many minutes; empty = until the event ends
+  lateAfterMin       Int      @default(15) // scans later than this after the start are Late
+  updatedAt          DateTime @updatedAt
 }
