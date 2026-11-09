@@ -11,8 +11,9 @@ const {
   startSignup,
   resendSignupCode,
   finishSignup,
-  issueCode,
-  checkCode,
+  startChange,
+  resendChange,
+  finishChange,
 } = require('../utils/verification');
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -198,42 +199,6 @@ async function getMe(req, res, next) {
   }
 }
 
-// PUT /api/auth/profile — update the current user's own name and contact number.
-// The position is not changed here: only the SK Chairperson changes positions.
-async function updateProfile(req, res, next) {
-  try {
-    const { name, phone } = req.body;
-
-    const data = {};
-    if (name !== undefined) {
-      const clean = String(name).trim();
-      if (!clean) return res.status(400).json({ message: 'Your name is required' });
-      data.name = clean.slice(0, 120);
-    }
-    if (phone !== undefined) {
-      const clean = String(phone || '').trim();
-      if (clean && !/^[0-9+()\-\s]{7,20}$/.test(clean)) {
-        return res.status(400).json({ message: 'Enter a valid contact number, e.g. 0917 123 4567' });
-      }
-      data.phone = clean || null;
-    }
-
-    const user = await prisma.user.update({
-      where: { id: req.user.id },
-      data,
-      include: withOfficial,
-    });
-    // An official's name in the directory follows their account name.
-    if (data.name && user.officialId) {
-      await prisma.official.update({ where: { id: user.officialId }, data: { name: data.name } });
-    }
-
-    res.json({ user: publicUser(user) });
-  } catch (err) {
-    next(err);
-  }
-}
-
 // POST /api/auth/photo — multipart "photo": the signed-in user's profile picture.
 async function uploadAvatar(req, res, next) {
   try {
@@ -401,148 +366,126 @@ async function resetPassword(req, res, next) {
   }
 }
 
-// ---------- My Account: change your own login ----------
+// ---------- Settings: changes confirmed with an emailed code ----------
+// The name, email, position and role are read-only in Settings. The profile picture saves
+// straight away; a new contact number or password is only saved after the 6-digit code
+// sent to the account email is entered (5 minutes, 3 tries, a new code after 60 seconds).
 
-// PUT /api/auth/password — { currentPassword, newPassword }.
-async function changePassword(req, res, next) {
+const PHONE_PATTERN = /^09\d{9}$/;
+
+function needsMail(res) {
+  if (isMailConfigured()) return false;
+  res.status(503).json({ message: 'Email is not set up on the server yet, so changes cannot be verified.' });
+  return true;
+}
+
+function sendFailure(res, err) {
+  if (err.status) return res.status(err.status).json({ message: err.message });
+  console.error('Verification email failed:', err.message);
+  return res.status(502).json({ message: 'We could not send the code to your email. Try again later.' });
+}
+
+const codeSent = (user) => ({ codeSent: true, email: user.email, expiresInSec: 300, resendAfterSec: 60 });
+
+// POST /api/auth/phone/request — { phone }. 11 digits starting with 09.
+async function requestPhoneChange(req, res, next) {
+  try {
+    const phone = String(req.body.phone || '').replace(/[\s-]/g, '');
+    if (!PHONE_PATTERN.test(phone)) {
+      return res.status(400).json({ message: 'Enter an 11-digit mobile number that starts with 09, e.g. 09171234567.' });
+    }
+    if (phone === req.user.phone) return res.status(400).json({ message: 'That is already your contact number.' });
+    if (needsMail(res)) return;
+    try {
+      await startChange(req.user, `PHONE:${phone}`);
+    } catch (err) {
+      return sendFailure(res, err);
+    }
+    res.json(codeSent(req.user));
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/auth/password/request — { currentPassword, newPassword, confirmPassword }.
+async function requestPasswordChange(req, res, next) {
   try {
     const { currentPassword, newPassword, confirmPassword } = req.body;
     if (!(await bcrypt.compare(String(currentPassword || ''), req.user.passwordHash))) {
-      return res.status(400).json({ message: 'Your current password is not right' });
+      return res.status(400).json({ message: 'Your current password is not right.' });
     }
     const weak = passwordError(newPassword);
     if (weak) return res.status(400).json({ message: weak });
-    if (confirmPassword !== undefined && newPassword !== confirmPassword) {
-      return res.status(400).json({ message: 'The two new passwords do not match' });
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: 'The new password and the confirmation do not match.' });
     }
     if (newPassword === currentPassword) {
-      return res.status(400).json({ message: 'The new password must be different from the current one' });
+      return res.status(400).json({ message: 'The new password must be different from the current one.' });
     }
-    await prisma.user.update({
-      where: { id: req.user.id },
-      data: { passwordHash: await bcrypt.hash(newPassword, 12) },
-    });
-    res.json({ message: 'Your password was changed' });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// PUT /api/auth/email — { newEmail, password }. With email set up on the server, a code
-// is sent to the new address and the change only happens after it is confirmed.
-async function changeEmail(req, res, next) {
-  try {
-    const newEmail = String(req.body.newEmail || '').trim().toLowerCase();
-    if (!(await bcrypt.compare(String(req.body.password || ''), req.user.passwordHash))) {
-      return res.status(400).json({ message: 'Your password is not right' });
-    }
-    if (!EMAIL_PATTERN.test(newEmail)) {
-      return res.status(400).json({ message: 'Please enter a valid email address' });
-    }
-    if (newEmail === req.user.email.toLowerCase()) {
-      return res.status(400).json({ message: 'That is already your email' });
-    }
-    const taken = await prisma.user.findFirst({
-      where: { email: { equals: newEmail, mode: 'insensitive' }, NOT: { id: req.user.id } },
-    });
-    if (taken) return res.status(400).json({ message: 'That email is already used by another account' });
-
-    if (!isMailConfigured()) {
-      const user = await prisma.user.update({
-        where: { id: req.user.id },
-        data: { email: newEmail, pendingEmail: null, emailVerifiedAt: new Date() },
-        include: withOfficial,
-      });
-      return res.json({ changed: true, user: publicUser(user) });
-    }
-    const user = await prisma.user.update({
-      where: { id: req.user.id },
-      data: { pendingEmail: newEmail, verifyCodeSentAt: null },
-    });
+    if (needsMail(res)) return;
     try {
-      await issueCode(user, 'EMAIL_CHANGE', newEmail);
+      // Only a bcrypt hash of the new password waits for the code, never the password itself.
+      await startChange(req.user, `PASSWORD:${await bcrypt.hash(newPassword, 12)}`);
     } catch (err) {
-      console.error('Email change code failed:', err.message);
-      return res
-        .status(502)
-        .json({ message: 'We could not send the code to that address. Check it and try again.' });
+      return sendFailure(res, err);
     }
-    res.json({ codeSent: true, pendingEmail: newEmail });
+    res.json(codeSent(req.user));
   } catch (err) {
     next(err);
   }
 }
 
-// POST /api/auth/email/confirm — { code } sent to the new address.
-async function confirmEmailChange(req, res, next) {
+// POST /api/auth/verify-change — { code }. Saves the waiting change when the code is right.
+async function verifyChange(req, res, next) {
   try {
-    const me = req.user;
-    if (!me.pendingEmail) return res.status(400).json({ message: 'There is no email change waiting' });
-    await checkCode(me, 'EMAIL_CHANGE', req.body.code);
-    const taken = await prisma.user.findFirst({
-      where: { email: { equals: me.pendingEmail, mode: 'insensitive' }, NOT: { id: me.id } },
-    });
-    if (taken) {
-      await prisma.user.update({ where: { id: me.id }, data: { pendingEmail: null } });
-      return res.status(400).json({ message: 'That email is already used by another account' });
+    const { kind, value } = await finishChange(req.user, req.body.code);
+    const data = kind === 'PHONE' ? { phone: value } : { passwordHash: value };
+    const user = await prisma.user.update({ where: { id: req.user.id }, data, include: withOfficial });
+    // An official's contact number in the directory follows their account.
+    if (kind === 'PHONE' && user.officialId) {
+      await prisma.official.update({ where: { id: user.officialId }, data: { contact: value } });
     }
-    const user = await prisma.user.update({
-      where: { id: me.id },
-      data: { email: me.pendingEmail, pendingEmail: null, emailVerifiedAt: new Date() },
-      include: withOfficial,
+    res.json({
+      changed: kind,
+      message: kind === 'PHONE' ? 'Your contact number was updated.' : 'Your password was changed.',
+      user: publicUser(user),
     });
-    res.json({ changed: true, user: publicUser(user) });
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ message: err.message });
     next(err);
   }
 }
 
-// POST /api/auth/email/resend — a new code for the waiting email change.
-async function resendEmailChangeCode(req, res, next) {
+// POST /api/auth/verify-change/resend — a new code for the waiting change.
+async function resendChangeCode(req, res, next) {
   try {
-    if (!req.user.pendingEmail) return res.status(400).json({ message: 'There is no email change waiting' });
+    if (needsMail(res)) return;
     try {
-      await issueCode(req.user, 'EMAIL_CHANGE', req.user.pendingEmail);
+      await resendChange(req.user);
     } catch (err) {
-      if (err.status === 429) return res.status(429).json({ message: err.message });
-      return res.status(502).json({ message: 'We could not send the code. Try again later.' });
+      return sendFailure(res, err);
     }
-    res.json({ codeSent: true });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// DELETE /api/auth/email — cancel a waiting email change.
-async function cancelEmailChange(req, res, next) {
-  try {
-    await prisma.user.update({
-      where: { id: req.user.id },
-      data: { pendingEmail: null, verifyCodeHash: null, verifyCodeExpires: null, verifyCodeFor: null },
-    });
-    res.json({ message: 'Email change cancelled' });
+    res.json(codeSent(req.user));
   } catch (err) {
     next(err);
   }
 }
 
 module.exports = {
-  changePassword,
-  changeEmail,
-  confirmEmailChange,
-  resendEmailChangeCode,
-  cancelEmailChange,
   register,
   login,
   verifyEmail,
   resendCode,
   unsubscribe,
   getMe,
-  updateProfile,
   uploadAvatar,
   removeAvatar,
   getAvatar,
   forgotPassword,
   checkResetToken,
   resetPassword,
+  requestPhoneChange,
+  requestPasswordChange,
+  verifyChange,
+  resendChangeCode,
 };

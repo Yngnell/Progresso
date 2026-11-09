@@ -1,5 +1,5 @@
 const prisma = require('../prisma');
-const { effectiveStatus } = require('./projectController');
+const { effectiveStatus, computeProgress } = require('./projectController');
 
 // Data behind the PDF and Excel exports (Dashboard and Attendance). Dates in the filters
 // are calendar days in Philippine time (YYYY-MM-DD).
@@ -125,20 +125,54 @@ const EVENT_SELECT = {
   },
 };
 
-// GET /api/reports/dashboard?from&to
+// One project's own figures, for an export narrowed to it.
+async function projectSummary(projectId) {
+  const p = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: {
+      tasks: { select: { done: true } },
+      events: { select: { id: true, startAt: true, endAt: true } },
+      expenses: { select: { amount: true } },
+    },
+  });
+  if (!p) return null;
+  const status = effectiveStatus(p);
+  const { progress } = computeProgress({ ...p, status });
+  const spent = p.expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  return {
+    id: p.id,
+    title: p.title,
+    category: p.category,
+    status,
+    progress,
+    budget: Number(p.budget || 0),
+    spent,
+    tasksDone: p.tasks.filter((t) => t.done).length,
+    tasksTotal: p.tasks.length,
+    startDate: p.startDate,
+    endDate: p.endDate,
+    location: p.location,
+  };
+}
+
+// GET /api/reports/dashboard?from&to&projectId
+// With projectId, only that project and the events linked to it are reported.
 async function dashboardReport(req, res, next) {
   try {
     const range = readRange(req.query);
     const now = new Date();
+    const projectId = req.query.projectId ? String(req.query.projectId) : null;
+    const project = projectId ? await projectSummary(projectId) : null;
+    if (projectId && !project) return res.status(404).json({ message: 'Project not found' });
 
     // Projects active in the range: their timeline overlaps it (or, without dates, they
     // were created in it). Archived and rejected ones are left out, as on the Dashboard.
     const projects = await prisma.project.findMany({
-      where: { archivedAt: null, approvalState: { not: 'REJECTED' } },
+      where: projectId ? { id: projectId } : { archivedAt: null, approvalState: { not: 'REJECTED' } },
       select: { id: true, title: true, status: true, startDate: true, endDate: true, createdAt: true },
     });
     const inRange = projects.filter((p) => {
-      if (!range.from && !range.to) return true;
+      if (projectId || (!range.from && !range.to)) return true;
       const start = p.startDate ? new Date(p.startDate) : new Date(p.createdAt);
       const end = p.endDate ? new Date(p.endDate) : start;
       return (!range.to || start <= range.to) && (!range.from || end >= range.from);
@@ -155,7 +189,11 @@ async function dashboardReport(req, res, next) {
     const completionRate = total > 0 ? Math.round((byStatus.Completed / total) * 100) : null;
 
     const [events, officials] = await Promise.all([
-      prisma.event.findMany({ where: rangeWhere('startAt', range), orderBy: { startAt: 'asc' }, select: EVENT_SELECT }),
+      prisma.event.findMany({
+        where: { ...rangeWhere('startAt', range), ...(projectId ? { relatedProjectId: projectId } : {}) },
+        orderBy: { startAt: 'asc' },
+        select: EVENT_SELECT,
+      }),
       expectedOfficials(),
     ]);
     const rows = attendanceRows(events, officials, now);
@@ -166,6 +204,7 @@ async function dashboardReport(req, res, next) {
 
     res.json({
       range: { from: req.query.from || null, to: req.query.to || null },
+      project,
       projects: { total, byStatus, completionRate },
       events: events.map(({ attendance, ...e }) => e),
       attendance: { perEvent, perOfficial: perOfficial(rows), totals: totals(rows) },

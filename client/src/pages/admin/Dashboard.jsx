@@ -79,16 +79,16 @@ function PanelLink({ to, children }) {
   );
 }
 
-// From / To dates and the Export menu. The export covers the chosen dates; the charts are
-// captured as they are shown on the Dashboard.
-function DashboardExport({ user }) {
+// "Sort by Project", From / To dates and Export Analytics. The export covers the chosen
+// project (or all of them) and dates; the charts are captured as shown on the Dashboard.
+function DashboardExport({ user, projects, projectId, onProject }) {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const badRange = from && to && from > to;
 
   async function onExport(kind) {
     const [report, { settings }] = await Promise.all([
-      reportsApi.dashboard({ from: from || undefined, to: to || undefined }),
+      reportsApi.dashboard({ from: from || undefined, to: to || undefined, projectId: projectId || undefined }),
       settingsApi.get(),
     ]);
     if (kind === 'pdf') {
@@ -102,6 +102,17 @@ function DashboardExport({ user }) {
   return (
     <div className="flex flex-wrap items-end gap-2">
       <label>
+        <span className="label">Sort by Project</span>
+        <select className="input w-56" value={projectId} onChange={(e) => onProject(e.target.value)}>
+          <option value="">All Projects</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.title}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
         <span className="label">From</span>
         <input type="date" className="input w-40" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
       </label>
@@ -109,7 +120,7 @@ function DashboardExport({ user }) {
         <span className="label">To</span>
         <input type="date" className="input w-40" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
       </label>
-      <ExportMenu onExport={onExport} disabled={Boolean(badRange)} />
+      <ExportMenu label="Export Analytics" onExport={onExport} disabled={Boolean(badRange)} />
       {badRange && <p className="w-full text-sm font-medium text-red-700">"From" must be on or before "To".</p>}
     </div>
   );
@@ -120,7 +131,12 @@ export default function Dashboard() {
   const isChairman = user?.role === 'CHAIRMAN';
   const isAdmin = user?.role === 'ADMIN';
 
-  const { data } = useQuery({ queryKey: ['stats'], queryFn: statsApi.get });
+  // "Sort by Project": '' shows every project; an id narrows the cards, charts and lists.
+  const [projectId, setProjectId] = useState('');
+  const { data } = useQuery({
+    queryKey: ['stats', projectId || 'all'],
+    queryFn: () => statsApi.get(projectId ? { projectId } : undefined),
+  });
   const { data: projectsData } = useQuery({
     queryKey: ['projects', 'admin'],
     queryFn: () => projectsApi.list({}),
@@ -132,10 +148,16 @@ export default function Dashboard() {
 
   const s = data?.stats || {};
   const a = s.analytics || {};
-  const projects = projectsData?.projects || [];
+  const allProjects = projectsData?.projects || [];
+  const selected = projectId ? allProjects.find((p) => p.id === projectId) : null;
+  const projects = selected ? [selected] : allProjects;
   const attention = needsAttention(projects);
-  const upcoming = (eventsData?.events || []).slice(0, 5);
+  const upcoming = (eventsData?.events || [])
+    .filter((e) => !selected || e.relatedProjectId === selected.id)
+    .slice(0, 5);
   const recent = projects.slice(0, 6);
+  const tasksTotal = selected?.progressBreakdown?.tasksTotal ?? 0;
+  const tasksDone = selected?.progressBreakdown?.tasksDone ?? 0;
 
   const statusData = STATUS_ORDER.map((k) => ({
     status: k,
@@ -151,10 +173,18 @@ export default function Dashboard() {
           <h1 className="font-display text-4xl font-bold uppercase tracking-wide text-slate-900">
             Dashboard
           </h1>
-          <p className="mt-0.5 text-slate-600">How your projects, budget and sessions are doing.</p>
+          <p className="mt-0.5 text-slate-600">
+            {selected ? (
+              <>
+                Showing <span className="font-semibold text-slate-900">{selected.title}</span> only.
+              </>
+            ) : (
+              'How your projects, budget and sessions are doing.'
+            )}
+          </p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
-          <DashboardExport user={user} />
+          <DashboardExport user={user} projects={allProjects} projectId={projectId} onProject={setProjectId} />
           {isChairman ? (
           <Link to="/admin/proposals">
             <Button variant="primary">
@@ -198,11 +228,21 @@ export default function Dashboard() {
 
       {/* Key numbers */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard
-          label="Active projects"
-          value={a.activeProjects ?? '—'}
-          note={`of ${s.totalProjects ?? 0} in total`}
-        />
+        {selected ? (
+          <KpiCard
+            label="Progress"
+            value={`${selected.progress ?? 0}%`}
+            note={PROJECT_STATUS[selected.status]?.label || selected.status}
+            meter={selected.progress}
+            tone="azure"
+          />
+        ) : (
+          <KpiCard
+            label="Active projects"
+            value={a.activeProjects ?? '—'}
+            note={`of ${s.totalProjects ?? 0} in total`}
+          />
+        )}
         <KpiCard
           label="Budget used"
           value={a.budgetUsedRate != null ? `${a.budgetUsedRate}%` : '—'}
@@ -210,13 +250,23 @@ export default function Dashboard() {
           meter={a.budgetUsedRate}
           tone={a.budgetUsedRate > 100 ? 'red' : 'azure'}
         />
-        <KpiCard
-          label="Completion rate"
-          value={a.completionRate != null ? `${a.completionRate}%` : '—'}
-          note={`${s.completedProjects ?? 0} completed`}
-          meter={a.completionRate}
-          tone="green"
-        />
+        {selected ? (
+          <KpiCard
+            label="Checklist"
+            value={tasksTotal ? `${tasksDone} of ${tasksTotal}` : '—'}
+            note={tasksTotal ? 'items done' : 'No checklist items yet'}
+            meter={tasksTotal ? Math.round((tasksDone / tasksTotal) * 100) : null}
+            tone="green"
+          />
+        ) : (
+          <KpiCard
+            label="Completion rate"
+            value={a.completionRate != null ? `${a.completionRate}%` : '—'}
+            note={`${s.completedProjects ?? 0} completed`}
+            meter={a.completionRate}
+            tone="green"
+          />
+        )}
         <KpiCard
           label="Attendance rate"
           value={a.attendance?.rate != null ? `${a.attendance.rate}%` : '—'}

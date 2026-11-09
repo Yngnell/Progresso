@@ -6,7 +6,6 @@ import PageHeader from '../../components/PageHeader';
 import {
   Button,
   Card,
-  Badge,
   Modal,
   Input,
   Textarea,
@@ -23,7 +22,6 @@ const emptyForm = {
   termStart: '',
   termEnd: '',
   displayOrder: 0,
-  isActive: true,
 };
 
 export default function AdminOfficials() {
@@ -76,7 +74,6 @@ export default function AdminOfficials() {
       termStart: official.termStart ? official.termStart.slice(0, 10) : '',
       termEnd: official.termEnd ? official.termEnd.slice(0, 10) : '',
       displayOrder: official.displayOrder ?? 0,
-      isActive: official.isActive ?? true,
     });
     setError('');
     setModalOpen(true);
@@ -136,7 +133,7 @@ export default function AdminOfficials() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {officials.map((o) => (
               <Card key={o.id} className="flex flex-col p-5">
-                <div className="flex items-start justify-between">
+                <div className="flex items-start">
                   <div className="flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-100 text-brand-700 font-bold">
                       {o.name?.charAt(0) || '?'}
@@ -146,9 +143,6 @@ export default function AdminOfficials() {
                       <p className="text-sm text-brand-600">{o.position}</p>
                     </div>
                   </div>
-                  <Badge tone={o.isActive ? 'green' : 'slate'}>
-                    {o.isActive ? 'Active' : 'Inactive'}
-                  </Badge>
                 </div>
 
                 {o.committee && (
@@ -252,14 +246,6 @@ export default function AdminOfficials() {
             value={form.bio}
             onChange={(e) => update('bio', e.target.value)}
           />
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={form.isActive}
-              onChange={(e) => update('isActive', e.target.checked)}
-            />
-            Active (shown on public site)
-          </label>
         </form>
       </Modal>
     </div>

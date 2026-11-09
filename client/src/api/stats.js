@@ -2,5 +2,6 @@
 import api from './axios';
 
 export const statsApi = {
-  get: () => api.get('/stats').then((r) => r.data),
+  // params: { projectId } narrows the analytics to one project
+  get: (params) => api.get('/stats', { params }).then((r) => r.data),
 };

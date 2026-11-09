@@ -3,7 +3,7 @@ import { ChevronDown, Download, FileSpreadsheet, FileText } from 'lucide-react';
 
 // "Export" button with two choices: PDF and Excel.
 // onExport('pdf' | 'excel') may return a promise; the button shows it is working meanwhile.
-export default function ExportMenu({ onExport, disabled = false }) {
+export default function ExportMenu({ onExport, disabled = false, label = 'Export' }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
@@ -51,7 +51,7 @@ export default function ExportMenu({ onExport, disabled = false }) {
         onClick={() => setOpen((o) => !o)}
       >
         <Download size={18} strokeWidth={1.75} aria-hidden="true" />
-        {busy ? `Making ${busy === 'pdf' ? 'PDF' : 'Excel'}…` : 'Export'}
+        {busy ? `Making ${busy === 'pdf' ? 'PDF' : 'Excel'}…` : label}
         <ChevronDown size={16} strokeWidth={2} aria-hidden="true" />
       </button>
       {open && (

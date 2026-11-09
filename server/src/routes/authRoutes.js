@@ -8,18 +8,16 @@ const {
   resendCode,
   unsubscribe,
   getMe,
-  updateProfile,
   uploadAvatar,
   removeAvatar,
   getAvatar,
-  changePassword,
-  changeEmail,
-  confirmEmailChange,
-  resendEmailChangeCode,
-  cancelEmailChange,
   forgotPassword,
   checkResetToken,
   resetPassword,
+  requestPhoneChange,
+  requestPasswordChange,
+  verifyChange,
+  resendChangeCode,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 const { avatarUpload } = require('../middleware/upload');
@@ -39,15 +37,14 @@ router.post('/reset-password', resetPassword);
 
 // Authenticated
 router.get('/me', protect, getMe);
-router.put('/profile', protect, updateProfile);
+
+// Settings: the profile picture saves straight away; a new contact number or password is
+// saved only after the 6-digit code emailed to the account is entered.
 router.post('/photo', protect, avatarUpload, uploadAvatar);
 router.delete('/photo', protect, removeAvatar);
-
-// Settings: anyone signed in can change their own login
-router.put('/password', protect, changePassword);
-router.put('/email', protect, changeEmail);
-router.post('/email/confirm', protect, confirmEmailChange);
-router.post('/email/resend', protect, resendEmailChangeCode);
-router.delete('/email', protect, cancelEmailChange);
+router.post('/phone/request', protect, requestPhoneChange);
+router.post('/password/request', protect, requestPasswordChange);
+router.post('/verify-change', protect, verifyChange);
+router.post('/verify-change/resend', protect, resendChangeCode);
 
 module.exports = router;

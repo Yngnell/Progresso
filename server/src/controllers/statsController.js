@@ -3,10 +3,14 @@ const { effectiveStatus } = require('./projectController');
 
 const MONTH_KEY = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
-// GET /api/stats — admin/chairman dashboard summary numbers, status breakdown and the
-// analytics behind the dashboard charts.
+// GET /api/stats — dashboard summary numbers, status breakdown and the analytics behind
+// the dashboard charts. ?projectId= narrows everything to one project ("Sort by Project"):
+// its budget and expenses, and the events linked to it.
 async function getStats(req, res, next) {
   try {
+    const projectId = req.query.projectId ? String(req.query.projectId) : null;
+    const onlyProject = projectId ? { id: projectId } : {};
+    const onlyLinked = projectId ? { relatedProjectId: projectId } : {};
     const now = new Date();
     // First day of the month, five months back: the chart shows the last six months.
     const monthsFrom = new Date(now.getFullYear(), now.getMonth() - 5, 1);
@@ -23,10 +27,10 @@ async function getStats(req, res, next) {
       prisma.user.count({ where: { role: 'VIEWER' } }),
       prisma.official.count({ where: { isActive: true } }),
       prisma.news.count({ where: { status: 'PUBLISHED' } }),
-      prisma.event.count({ where: { startAt: { gte: now } } }),
+      prisma.event.count({ where: { startAt: { gte: now }, ...onlyLinked } }),
       // Archived projects are kept for the record but left out of the Dashboard numbers.
       prisma.project.findMany({
-        where: { archivedAt: null },
+        where: { archivedAt: null, ...onlyProject },
         select: {
           id: true,
           title: true,
@@ -40,7 +44,7 @@ async function getStats(req, res, next) {
       prisma.deletionRequest.count({ where: { status: 'PENDING' } }),
       // Sessions that already took place, with their attendance records
       prisma.event.findMany({
-        where: { startAt: { lte: now } },
+        where: { startAt: { lte: now }, ...onlyLinked },
         orderBy: { startAt: 'desc' },
         take: 40,
         select: {

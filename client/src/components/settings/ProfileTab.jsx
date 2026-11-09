@@ -1,24 +1,26 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Camera, Trash2, UserRound } from 'lucide-react';
 import { accountApi } from '../../api/account';
 import { Button, Input } from '../ui';
-import PasswordInput from '../PasswordInput';
-import VerifyCodeForm from '../VerifyCodeForm';
-import { roleLabel } from '../../utils/roles';
+import VerifyChangeModal from './VerifyChangeModal';
 import { Notice, Section, checkImage, errorText } from './shared';
 
-// Settings → Profile: name, email, contact number and picture. The position is shown but
-// only the SK Chairperson changes it (Settings → System → User Management).
+const ROLE_NAME = { ADMIN: 'SK Admin', CHAIRMAN: 'Barangay Chairman', OFFICIAL: 'SK Official', VIEWER: 'Resident' };
+const PHONE_PATTERN = /^09\d{9}$/;
+
+// Settings → Profile. Only the picture and the contact number can be changed here; the
+// name, email, position and role are read-only.
 export default function ProfileTab({ user, refreshUser }) {
   return (
     <div className="space-y-6">
       <PictureSection user={user} refreshUser={refreshUser} />
-      <DetailsSection user={user} refreshUser={refreshUser} />
-      <EmailSection user={user} refreshUser={refreshUser} />
+      <DetailsSection user={user} />
+      <ContactSection user={user} refreshUser={refreshUser} />
     </div>
   );
 }
 
+// The picture saves as soon as it is uploaded (no code needed).
 function PictureSection({ user, refreshUser }) {
   const input = useRef(null);
   const [busy, setBusy] = useState(false);
@@ -50,6 +52,7 @@ function PictureSection({ user, refreshUser }) {
     try {
       await accountApi.removePhoto();
       await refreshUser();
+      setMsg({ ok: true, text: 'Your profile picture was removed.' });
     } catch (err) {
       setMsg({ ok: false, text: errorText(err, 'The picture could not be removed.') });
     } finally {
@@ -71,7 +74,7 @@ function PictureSection({ user, refreshUser }) {
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => input.current?.click()} disabled={busy}>
               <Camera size={18} strokeWidth={1.75} aria-hidden="true" />
-              {url ? 'Change picture' : 'Upload picture'}
+              {busy ? 'Uploading…' : url ? 'Change picture' : 'Upload picture'}
             </Button>
             {url && (
               <Button variant="ghost" onClick={remove} disabled={busy}>
@@ -80,14 +83,8 @@ function PictureSection({ user, refreshUser }) {
               </Button>
             )}
           </div>
-          <p className="text-sm text-slate-600">JPG, JPEG, PNG or WEBP, up to 5 MB.</p>
-          <input
-            ref={input}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="hidden"
-            onChange={choose}
-          />
+          <p className="text-sm text-slate-600">JPG, JPEG, PNG or WEBP, up to 5 MB. Saves right after you upload it.</p>
+          <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={choose} />
         </div>
       </div>
       {msg && <div className="mt-4"><Notice ok={msg.ok}>{msg.text}</Notice></div>}
@@ -95,134 +92,100 @@ function PictureSection({ user, refreshUser }) {
   );
 }
 
-function DetailsSection({ user, refreshUser }) {
-  const [name, setName] = useState(user?.name || '');
-  const [phone, setPhone] = useState(user?.phone || '');
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState(null);
-  useEffect(() => {
-    setName(user?.name || '');
-    setPhone(user?.phone || '');
-  }, [user?.name, user?.phone]);
-
-  async function submit(e) {
-    e.preventDefault();
-    setBusy(true);
-    setMsg(null);
-    try {
-      await accountApi.updateProfile({ name: name.trim(), phone: phone.trim() });
-      await refreshUser();
-      setMsg({ ok: true, text: 'Your profile was saved.' });
-    } catch (err) {
-      setMsg({ ok: false, text: errorText(err, 'Your profile could not be saved.') });
-    } finally {
-      setBusy(false);
-    }
-  }
-
+function ReadOnly({ label, value }) {
   return (
-    <Section title="Personal details">
-      {msg && <div className="mb-4"><Notice ok={msg.ok}>{msg.text}</Notice></div>}
-      <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
-        <Input label="Full name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required />
-        <Input
-          label="Contact number"
-          type="tel"
-          autoComplete="tel"
-          placeholder="0917 123 4567"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-        />
-        <div>
-          <span className="label">Position</span>
-          <p className="input cursor-not-allowed bg-slate-50 text-slate-700" aria-readonly="true">
-            {roleLabel(user)}
-          </p>
-          <p className="mt-1 text-xs text-slate-600">Only the SK Chairperson can change positions.</p>
-        </div>
-        <div className="flex items-end sm:col-span-2">
-          <Button type="submit" variant="primary" disabled={busy || !name.trim()}>
-            {busy ? 'Saving…' : 'Save changes'}
-          </Button>
-        </div>
-      </form>
+    <div className="min-w-0">
+      <dt className="text-sm font-semibold text-slate-600">{label}</dt>
+      <dd className="mt-0.5 truncate font-semibold text-slate-900">{value || '—'}</dd>
+    </div>
+  );
+}
+
+function DetailsSection({ user }) {
+  return (
+    <Section
+      title="Account details"
+      description="These cannot be changed here. Ask the SK Chairperson if your name, email or position is wrong."
+    >
+      <dl className="grid gap-4 sm:grid-cols-2">
+        <ReadOnly label="Full name" value={user?.name} />
+        <ReadOnly label="Email" value={user?.email} />
+        <ReadOnly label="Position" value={user?.official?.position} />
+        <ReadOnly label="Role" value={ROLE_NAME[user?.role] || user?.role} />
+      </dl>
     </Section>
   );
 }
 
-function EmailSection({ user, refreshUser }) {
-  const [newEmail, setNewEmail] = useState('');
-  const [password, setPassword] = useState('');
+// A new contact number is saved only after the code sent to the account email is entered.
+function ContactSection({ user, refreshUser }) {
+  const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
-  const pending = user?.pendingEmail;
+  const [verifying, setVerifying] = useState(null); // { email } while the code dialog is open
+  const clean = phone.replace(/[\s-]/g, '');
+  const invalid = clean.length > 0 && !PHONE_PATTERN.test(clean);
 
   async function submit(e) {
     e.preventDefault();
-    setMsg(null);
+    if (!PHONE_PATTERN.test(clean)) {
+      setMsg({ ok: false, text: 'Enter an 11-digit mobile number that starts with 09, e.g. 09171234567.' });
+      return;
+    }
     setBusy(true);
+    setMsg(null);
     try {
-      const res = await accountApi.changeEmail(newEmail.trim(), password);
-      setPassword('');
-      setNewEmail('');
-      await refreshUser();
-      if (res.changed) setMsg({ ok: true, text: 'Your login email was changed.' });
+      const res = await accountApi.requestPhoneChange(clean);
+      setVerifying({ email: res.email });
     } catch (err) {
-      setMsg({ ok: false, text: errorText(err, 'The email could not be changed.') });
+      setMsg({ ok: false, text: errorText(err, 'We could not send the code. Try again.') });
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Section title="Email" description={`You log in with ${user?.email}. Changing it needs your current password.`}>
-      {msg && <div className="mb-3"><Notice ok={msg.ok}>{msg.text}</Notice></div>}
-      {pending ? (
-        <div className="max-w-md space-y-3">
-          <VerifyCodeForm
-            email={pending}
-            onVerify={async (code) => {
-              await accountApi.confirmEmail(code);
-              await refreshUser();
-              setMsg({ ok: true, text: 'Your login email was changed.' });
-            }}
-            onResend={() => accountApi.resendEmailCode()}
-          />
-          <button
-            type="button"
-            className="text-sm font-semibold text-slate-600 hover:text-slate-800"
-            onClick={async () => {
-              await accountApi.cancelEmailChange();
-              await refreshUser();
-            }}
-          >
-            Cancel the email change
-          </button>
-        </div>
-      ) : (
-        <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+    <Section
+      title="Contact number"
+      description={`Current number: ${user?.phone || 'none yet'}. A code is sent to your email before a new number is saved.`}
+    >
+      {msg && <div className="mb-4"><Notice ok={msg.ok}>{msg.text}</Notice></div>}
+      <form onSubmit={submit} className="flex flex-wrap items-start gap-3">
+        <div className="w-full max-w-xs">
           <Input
-            label="New email"
-            type="email"
-            autoComplete="email"
-            value={newEmail}
-            onChange={(e) => setNewEmail(e.target.value)}
+            label="New contact number"
+            type="tel"
+            inputMode="numeric"
+            autoComplete="tel"
+            placeholder="09171234567"
+            maxLength={13}
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
             required
           />
-          <PasswordInput
-            label="Current password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          <div className="sm:col-span-2">
-            <Button type="submit" variant="primary" disabled={busy}>
-              {busy ? 'Saving…' : 'Change email'}
-            </Button>
-          </div>
-        </form>
-      )}
+          <p className={`mt-1 text-xs ${invalid ? 'font-semibold text-red-700' : 'text-slate-600'}`}>
+            11 digits, starting with 09.
+          </p>
+        </div>
+        <Button type="submit" variant="primary" className="mt-6" disabled={busy || !PHONE_PATTERN.test(clean)}>
+          {busy ? 'Sending code…' : 'Send code'}
+        </Button>
+      </form>
+      <VerifyChangeModal
+        open={Boolean(verifying)}
+        email={verifying?.email}
+        what="contact number"
+        onClose={() => {
+          setVerifying(null);
+          setMsg({ ok: false, text: 'Your contact number was not changed.' });
+        }}
+        onDone={async (res) => {
+          setVerifying(null);
+          setPhone('');
+          await refreshUser();
+          setMsg({ ok: true, text: res.message || 'Your contact number was updated.' });
+        }}
+      />
     </Section>
   );
 }

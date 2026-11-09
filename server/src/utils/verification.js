@@ -79,6 +79,89 @@ async function checkCode(user, purpose, code) {
   return true;
 }
 
+// ---------- Settings: a new contact number or password waits for an emailed code ----------
+// The change waits in verifyCodeFor ("PHONE:09171234567" or "PASSWORD:<bcrypt hash of the
+// new password>") until the code from the account email is entered. The code works for
+// 5 minutes; after 3 wrong tries it is cancelled and a new one must be requested.
+const CHANGE_TTL_MS = 5 * 60 * 1000;
+const CHANGE_MAX_ATTEMPTS = 3;
+const CHANGE_WHAT = { PHONE: 'your new contact number', PASSWORD: 'your new password' };
+
+const changeKind = (purpose) => String(purpose || '').split(':')[0];
+
+async function mailChangeCode(code, address, kind) {
+  const what = CHANGE_WHAT[kind] || 'this change';
+  const text =
+    `Your SK Monitoring verification code is ${code}.\n` +
+    `Enter it to confirm ${what}. It expires in 5 minutes.\n` +
+    'If you did not ask for this, change your password and tell the SK Admin.';
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;max-width:480px">
+      <p style="font-size:16px;font-weight:bold;margin:0 0 12px">SK Project Monitoring: confirm ${what}</p>
+      <p style="margin:0 0 8px">Your verification code is</p>
+      <p style="font-size:32px;font-weight:bold;letter-spacing:6px;margin:0 0 12px">${code}</p>
+      <p style="color:#475569;font-size:14px;margin:0">It expires in 5 minutes. If you did not ask for this, change your password and tell the SK Admin.</p>
+    </div>`;
+  await sendMail({ to: address, subject: `SK Monitoring: confirm ${what}`, text, html });
+}
+
+// Stores the waiting change and emails a fresh code to the account email.
+async function startChange(user, purpose) {
+  if (tooSoon(user.verifyCodeSentAt)) {
+    throw httpError(429, 'A code was just sent. Wait a minute before asking for another one.');
+  }
+  const code = newCode();
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      verifyCodeHash: await bcrypt.hash(code, 8),
+      verifyCodeExpires: new Date(Date.now() + CHANGE_TTL_MS),
+      verifyCodeFor: purpose,
+      verifyAttempts: 0,
+      verifyCodeSentAt: new Date(),
+    },
+  });
+  await mailChangeCode(code, user.email, changeKind(purpose));
+}
+
+// A new code for the change that is waiting (the "Resend Code" button).
+async function resendChange(user) {
+  const kind = changeKind(user.verifyCodeFor);
+  if (!CHANGE_WHAT[kind]) throw httpError(400, 'There is no change waiting. Start again.');
+  await startChange(user, user.verifyCodeFor);
+}
+
+// Checks the code. Returns the waiting change ({ kind, value }) when it is right.
+async function finishChange(user, code) {
+  const kind = changeKind(user.verifyCodeFor);
+  if (!user.verifyCodeHash || !CHANGE_WHAT[kind]) {
+    throw httpError(400, 'There is no code waiting. Request a new one.');
+  }
+  if (!user.verifyCodeExpires || new Date(user.verifyCodeExpires) < new Date()) {
+    throw httpError(400, 'The code has expired. Request a new one.');
+  }
+  const ok = await bcrypt.compare(String(code || '').trim(), user.verifyCodeHash);
+  if (!ok) {
+    const attempts = user.verifyAttempts + 1;
+    if (attempts >= CHANGE_MAX_ATTEMPTS) {
+      // Third wrong try: the code no longer works.
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { verifyCodeHash: null, verifyCodeExpires: null, verifyAttempts: attempts },
+      });
+      throw httpError(400, '3 wrong attempts. This code no longer works; request a new one.');
+    }
+    await prisma.user.update({ where: { id: user.id }, data: { verifyAttempts: attempts } });
+    const left = CHANGE_MAX_ATTEMPTS - attempts;
+    throw httpError(400, `That code is not right. ${left} ${left === 1 ? 'try' : 'tries'} left.`);
+  }
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { verifyCodeHash: null, verifyCodeExpires: null, verifyCodeFor: null, verifyAttempts: 0 },
+  });
+  return { kind, value: user.verifyCodeFor.slice(kind.length + 1) };
+}
+
 // ---------- Sign-up: the account is only created after the emailed code is right ----------
 
 // Stores the sign-up details and emails the first code. Nothing is added to User yet.
@@ -180,4 +263,7 @@ module.exports = {
   resendSignupCode,
   finishSignup,
   cleanupPendingSignups,
+  startChange,
+  resendChange,
+  finishChange,
 };

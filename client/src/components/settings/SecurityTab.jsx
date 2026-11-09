@@ -1,33 +1,32 @@
 import { useState } from 'react';
-import { CircleCheck } from 'lucide-react';
 import { accountApi } from '../../api/account';
 import { Button } from '../ui';
 import PasswordInput from '../PasswordInput';
 import PasswordChecklist, { passwordOk } from '../PasswordChecklist';
+import VerifyChangeModal from './VerifyChangeModal';
 import { formatDateTime } from '../../utils/format';
 import { Notice, Section, errorText } from './shared';
 
 // Settings → Security: change the password (same rules and show/hide toggle as the Login
-// page) and see when the account last logged in.
+// page; saved only after the code emailed to the account is entered) and see when the
+// account last logged in.
 export default function SecurityTab({ user }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [verifying, setVerifying] = useState(null); // { email } while the code dialog is open
 
   async function submit(e) {
     e.preventDefault();
     setMsg(null);
     setBusy(true);
     try {
-      await accountApi.changePassword(current, next, confirm);
-      setCurrent('');
-      setNext('');
-      setConfirm('');
-      setMsg({ ok: true, text: 'Your password was changed.' });
+      const res = await accountApi.requestPasswordChange(current, next, confirm);
+      setVerifying({ email: res.email });
     } catch (err) {
-      setMsg({ ok: false, text: errorText(err, 'The password could not be changed.') });
+      setMsg({ ok: false, text: errorText(err, 'We could not send the code. Try again.') });
     } finally {
       setBusy(false);
     }
@@ -48,13 +47,10 @@ export default function SecurityTab({ user }) {
         <p className="mt-1 text-sm text-slate-600">If you do not remember that login, change your password now.</p>
       </Section>
 
-      <Section title="Change password">
+      <Section title="Change password" description="A code is sent to your email before the new password is saved.">
         {msg && (
           <div className="mb-4">
-            <Notice ok={msg.ok}>
-              {msg.ok && <CircleCheck size={16} strokeWidth={1.75} className="mr-1 inline align-[-3px]" aria-hidden="true" />}
-              {msg.text}
-            </Notice>
+            <Notice ok={msg.ok}>{msg.text}</Notice>
           </div>
         )}
         <form onSubmit={submit} className="max-w-md space-y-4">
@@ -83,10 +79,27 @@ export default function SecurityTab({ user }) {
             required
           />
           <Button type="submit" variant="primary" disabled={busy || !current || !passwordOk(next, confirm)}>
-            {busy ? 'Saving…' : 'Change password'}
+            {busy ? 'Sending code…' : 'Send code'}
           </Button>
         </form>
       </Section>
+
+      <VerifyChangeModal
+        open={Boolean(verifying)}
+        email={verifying?.email}
+        what="password"
+        onClose={() => {
+          setVerifying(null);
+          setMsg({ ok: false, text: 'Your password was not changed.' });
+        }}
+        onDone={(res) => {
+          setVerifying(null);
+          setCurrent('');
+          setNext('');
+          setConfirm('');
+          setMsg({ ok: true, text: res.message || 'Your password was changed.' });
+        }}
+      />
     </div>
   );
 }
