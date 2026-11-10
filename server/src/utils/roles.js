@@ -18,6 +18,8 @@ function isSkChair(user) {
 const isStaff = (user) => STAFF_ROLES.includes(user?.role);
 // Admin-level access: the SK Admin and every SK official.
 const isAdminLevel = (user) => user?.role === 'ADMIN' || user?.role === 'OFFICIAL';
+// The SK Admin account itself (not the officials who share its access).
+const isSkAdmin = (user) => user?.role === 'ADMIN';
 // Manages everyone's project pictures: admin-level accounts.
 const isManager = isAdminLevel;
 // Does the work on a project (uploads pictures): the admin and the officials.
@@ -35,8 +37,11 @@ module.exports = {
   isSkChair,
   isStaff,
   isAdminLevel,
+  isSkAdmin,
   isManager,
   isWorker,
+  // Only the SK Admin account (e.g. editing an official in the Officials module).
+  requireSkAdmin: guard(isSkAdmin, 'Only the SK Admin can do this.'),
   requireSkChair: guard(isSkChair, 'Only the SK Chairperson can do this.'),
   requireManager: guard(isManager, 'Only the SK Admin and the SK officials can do this.'),
   requireStaff: guard(isStaff, 'Forbidden — you do not have permission'),

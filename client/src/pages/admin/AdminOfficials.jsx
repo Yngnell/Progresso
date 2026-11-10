@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { officialsApi } from '../../api/officials';
+import { useAuth } from '../../context/AuthContext';
 import PageHeader from '../../components/PageHeader';
 import OfficialAvatar from '../../components/OfficialAvatar';
 import {
@@ -27,6 +28,9 @@ const emptyForm = {
 
 export default function AdminOfficials() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  // Only the SK Admin account edits an official.
+  const canEdit = user?.role === 'ADMIN';
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -140,11 +144,13 @@ export default function AdminOfficials() {
                   <p className="mt-1 text-sm text-slate-600">Contact: {o.contact}</p>
                 )}
 
-                <div className="mt-4 flex gap-2 border-t border-slate-100 pt-4">
-                  <Button size="sm" variant="secondary" onClick={() => openEdit(o)}>
-                    Edit
-                  </Button>
-                </div>
+                {canEdit && (
+                  <div className="mt-4 flex gap-2 border-t border-slate-100 pt-4">
+                    <Button size="sm" variant="secondary" onClick={() => openEdit(o)}>
+                      Edit
+                    </Button>
+                  </div>
+                )}
               </Card>
             ))}
           </div>
