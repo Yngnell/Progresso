@@ -11,7 +11,7 @@ import { ATTENDANCE_STATUS, formatDate, formatTime } from '../../utils/format';
 import { exportAttendanceExcel, exportAttendancePdf, rangeText } from '../../utils/reportExport';
 
 const EMPTY = { eventId: '', from: '', to: '', userId: '', status: '' };
-const STATUS_FILTERS = ['PRESENT', 'LATE', 'ABSENT'];
+const STATUS_FILTERS = ['PRESENT', 'ABSENT'];
 
 // Attendance records with filters. The table on screen is exactly what the export contains.
 export default function AdminAttendance() {
@@ -41,7 +41,7 @@ export default function AdminAttendance() {
   const rows = data?.rows || [];
   const totals = data?.summary?.totals;
 
-  // "Event: SK General Assembly · Dates: Nov 1 to Nov 30, 2026 · Status: Late"
+  // "Event: SK General Assembly · Dates: Nov 1 to Nov 30, 2026 · Status: Absent"
   function filtersText() {
     const parts = [];
     if (filters.eventId) parts.push(`Event: ${events.find((e) => e.id === filters.eventId)?.title || 'one event'}`);
@@ -64,7 +64,7 @@ export default function AdminAttendance() {
     <div>
       <PageHeader
         title="Attendance Records"
-        description="Choose filters, then export exactly what the table shows. Absent means the official did not scan and was not recorded by the time the event ended."
+        description="Choose filters, then export exactly what the table shows. Present: the official scanned the event's QR code. Absent: the official had not scanned when the event ended."
         actions={<ExportMenu onExport={onExport} disabled={!data || isLoading || Boolean(badRange)} />}
       />
 
@@ -126,10 +126,9 @@ export default function AdminAttendance() {
 
       {/* Summary */}
       {totals && (
-        <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-4">
+        <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-3">
           {[
             ['Present', totals.present],
-            ['Late', totals.late],
             ['Absent', totals.absent],
             ['Attendance rate', totals.rate != null ? `${totals.rate}%` : '—'],
           ].map(([label, value]) => (
@@ -160,10 +159,10 @@ export default function AdminAttendance() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
+            <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="border-b border-slate-200 text-slate-600">
                 <tr>
-                  {['Official Name', 'Position', 'Event Name', 'Event Date', 'Time In', 'Status', 'Method'].map((h) => (
+                  {['Official Name', 'Position', 'Event Name', 'Event Date', 'Status', 'Time Checked In'].map((h) => (
                     <th key={h} className="px-4 py-3 font-semibold">
                       {h}
                     </th>
@@ -181,11 +180,10 @@ export default function AdminAttendance() {
                       </Link>
                     </td>
                     <td className="px-4 py-2.5 tabular text-slate-700">{formatDate(r.eventDate)}</td>
-                    <td className="px-4 py-2.5 tabular text-slate-700">{r.timeIn ? formatTime(r.timeIn) : '—'}</td>
                     <td className="px-4 py-2.5">
                       <Badge tone={ATTENDANCE_STATUS[r.status]?.tone}>{ATTENDANCE_STATUS[r.status]?.label || r.status}</Badge>
                     </td>
-                    <td className="px-4 py-2.5 text-slate-700">{r.method}</td>
+                    <td className="px-4 py-2.5 tabular text-slate-700">{r.status === 'PRESENT' && r.timeIn ? formatTime(r.timeIn) : ''}</td>
                   </tr>
                 ))}
               </tbody>
@@ -205,7 +203,6 @@ export default function AdminAttendance() {
                   <th className="py-2 pr-3 font-semibold">Official</th>
                   <th className="py-2 pr-3 font-semibold">Position</th>
                   <th className="py-2 pr-3 text-right font-semibold">Present</th>
-                  <th className="py-2 pr-3 text-right font-semibold">Late</th>
                   <th className="py-2 pr-3 text-right font-semibold">Absent</th>
                   <th className="py-2 text-right font-semibold">Rate</th>
                 </tr>
@@ -216,7 +213,6 @@ export default function AdminAttendance() {
                     <td className="py-2 pr-3 font-medium text-slate-900">{o.name}</td>
                     <td className="py-2 pr-3 text-slate-700">{o.position || '—'}</td>
                     <td className="py-2 pr-3 text-right">{o.present}</td>
-                    <td className="py-2 pr-3 text-right">{o.late}</td>
                     <td className="py-2 pr-3 text-right">{o.absent}</td>
                     <td className="py-2 text-right font-semibold">{o.rate != null ? `${o.rate}%` : '—'}</td>
                   </tr>

@@ -1,29 +1,21 @@
-﻿import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+﻿import { useParams, Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft } from 'lucide-react';
 import { eventsApi } from '../../api/events';
 import { attendanceApi } from '../../api/attendance';
-import { reportsApi } from '../../api/reports';
-import { ArrowLeft, Plus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { isAdmin } from '../../utils/roles';
 import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
 import { AttendanceQrButton } from '../../components/AttendanceQr';
-import { Card, Badge, Button } from '../../components/ui';
+import { Card, Badge } from '../../components/ui';
 import { EVENT_TYPE, ATTENDANCE_STATUS, formatDateTime, formatTime } from '../../utils/format';
 
-const statusOptions = Object.entries(ATTENDANCE_STATUS).map(([value, v]) => ({
-  value,
-  label: v.label,
-}));
-
+// An event and its attendance. Attendance is recorded only by scanning the SK Chairperson's
+// QR code (Present, with the time). Once the event is over, every official who did not
+// scan is recorded as Absent automatically. Nobody records or changes it by hand.
 export default function AdminEventDetail() {
   const { id } = useParams();
   const { user } = useAuth();
-  // Only the SK Admin changes attendance by hand; the others view it.
-  const readOnly = !isAdmin(user);
-  const qc = useQueryClient();
 
   const { data: eventData, isLoading, isError } = useQuery({
     queryKey: ['events', id],
@@ -32,20 +24,11 @@ export default function AdminEventDetail() {
   const { data: attData } = useQuery({
     queryKey: ['attendance', id],
     queryFn: () => attendanceApi.list(id),
+    refetchInterval: 30 * 1000, // new scans show up while the QR is on screen
   });
 
   const event = eventData?.event;
   const records = attData?.records || [];
-
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['attendance', id] });
-    qc.invalidateQueries({ queryKey: ['reports'] });
-  };
-
-  const updateMutation = useMutation({
-    mutationFn: ({ recordId, data }) => attendanceApi.updateRecord(recordId, data),
-    onSuccess: invalidate,
-  });
 
   if (isLoading) return <p className="text-sm text-slate-500">Loading…</p>;
   if (isError || !event)
@@ -59,10 +42,10 @@ export default function AdminEventDetail() {
     );
 
   const t = EVENT_TYPE[event.type] || { label: event.type };
-
-  // Tally counts.
-  const counts = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0 };
-  records.forEach((r) => { counts[r.status] = (counts[r.status] || 0) + 1; });
+  const counts = { PRESENT: 0, ABSENT: 0 };
+  records.forEach((r) => {
+    counts[r.status] = (counts[r.status] || 0) + 1;
+  });
 
   return (
     <div>
@@ -87,8 +70,8 @@ export default function AdminEventDetail() {
         {user?.isSkChair && <AttendanceQrButton event={event} size="md" />}
       </div>
 
-      {/* Summary: the four attendance counts in a single strip */}
-      <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-4">
+      {/* Summary: Present and Absent */}
+      <dl className="mt-6 grid max-w-md grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200">
         {Object.entries(ATTENDANCE_STATUS).map(([key, v]) => (
           <div key={key} className="bg-white p-4">
             <dt className="text-sm font-semibold text-slate-600">{v.label}</dt>
@@ -97,28 +80,29 @@ export default function AdminEventDetail() {
         ))}
       </dl>
 
-      {/* Officials check themselves in with the QR code; the admin can still record or change one */}
       <div className="mt-6">
         <Card className="p-5">
           <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">
-            Attendees ({records.length})
+            Attendance ({records.length})
           </h2>
-          {!readOnly && <ManualRecordForm eventId={id} records={records} onDone={invalidate} />}
+          <p className="mt-1 text-sm text-slate-600">
+            Officials record their attendance by scanning the SK Chairperson&apos;s QR code. When the event
+            ends, every official who did not scan is marked Absent.
+          </p>
           <div className="mt-4">
             {records.length === 0 ? (
               <p className="text-slate-600">
-                No attendees yet. The SK Chairperson shows the attendance QR code at the event, and
+                No attendance yet. The SK Chairperson shows the attendance QR code at the event, and
                 officials scan it to record their attendance.
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[480px] text-sm">
+                <table className="w-full min-w-[420px] text-sm">
                   <thead className="text-left text-xs uppercase text-slate-500">
                     <tr>
                       <th className="py-2">Participant</th>
                       <th className="py-2">Status</th>
-                      <th className="py-2">Time In</th>
-                      <th className="py-2">Method</th>
+                      <th className="py-2">Time Checked In</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -126,30 +110,13 @@ export default function AdminEventDetail() {
                       <tr key={r.id}>
                         <td className="py-2 text-slate-700">{r.participant}</td>
                         <td className="py-2">
-                          {readOnly ? (
-                            <Badge tone={ATTENDANCE_STATUS[r.status]?.tone}>
-                              {ATTENDANCE_STATUS[r.status]?.label || r.status}
-                            </Badge>
-                          ) : (
-                            <select
-                              className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
-                              aria-label={`Status of ${r.participant}`}
-                              value={r.status}
-                              onChange={(e) =>
-                                updateMutation.mutate({
-                                  recordId: r.id,
-                                  data: { status: e.target.value },
-                                })
-                              }
-                            >
-                              {statusOptions.map((o) => (
-                                <option key={o.value} value={o.value}>{o.label}</option>
-                              ))}
-                            </select>
-                          )}
+                          <Badge tone={ATTENDANCE_STATUS[r.status]?.tone}>
+                            {ATTENDANCE_STATUS[r.status]?.label || r.status}
+                          </Badge>
                         </td>
-                        <td className="py-2 text-slate-600">{formatTime(r.timeIn) || '—'}</td>
-                        <td className="py-2 text-slate-600">{r.method === 'MANUAL' ? 'Manual' : 'QR'}</td>
+                        <td className="py-2 text-slate-600">
+                          {r.status === 'PRESENT' && r.timeIn ? formatTime(r.timeIn) : ''}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -160,69 +127,5 @@ export default function AdminEventDetail() {
         </Card>
       </div>
     </div>
-  );
-}
-
-// Admin: record an official who could not scan (e.g. no phone), or mark someone Absent or
-// Excused. Saved with the method "Manual".
-function ManualRecordForm({ eventId, records, onDone }) {
-  const { data } = useQuery({
-    queryKey: ['reports', 'attendance', { eventId }],
-    queryFn: () => reportsApi.attendance({ eventId }),
-  });
-  const [userId, setUserId] = useState('');
-  const [status, setStatus] = useState('PRESENT');
-  const [error, setError] = useState('');
-  const recorded = new Set(records.map((r) => r.userId).filter(Boolean));
-  const officials = (data?.officials || []).filter((o) => !recorded.has(o.id));
-
-  const add = useMutation({
-    mutationFn: () => attendanceApi.addManual(eventId, { userId, status }),
-    onSuccess: () => {
-      setUserId('');
-      setError('');
-      onDone();
-    },
-    onError: (err) => setError(err.response?.data?.message || 'The attendance could not be recorded.'),
-  });
-
-  return (
-    <form
-      className="mt-4 flex flex-wrap items-end gap-2 rounded-lg bg-slate-50 p-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (userId) add.mutate();
-      }}
-    >
-      <label className="min-w-[12rem] flex-1">
-        <span className="label">Record by hand</span>
-        <select className="input" value={userId} onChange={(e) => setUserId(e.target.value)}>
-          <option value="">Choose an official…</option>
-          {officials.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-              {o.position ? ` (${o.position})` : ''}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        <span className="label">Status</span>
-        <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
-          {statusOptions.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-      </label>
-      <Button type="submit" variant="secondary" disabled={!userId || add.isPending}>
-        <Plus size={16} strokeWidth={2} aria-hidden="true" />
-        Add
-      </Button>
-      {error && (
-        <p className="w-full text-sm font-medium text-red-700" role="alert">
-          {error}
-        </p>
-      )}
-    </form>
   );
 }

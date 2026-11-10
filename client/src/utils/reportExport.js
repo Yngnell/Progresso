@@ -13,7 +13,7 @@ const clean = (v) =>
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"');
 
-const STATUS = { PRESENT: 'Present', LATE: 'Late', ABSENT: 'Absent', EXCUSED: 'Excused' };
+const STATUS = { PRESENT: 'Present', ABSENT: 'Absent' };
 const pct = (v) => (v == null ? '-' : `${v}%`);
 
 export function rangeText(from, to) {
@@ -288,11 +288,11 @@ export async function exportDashboardPdf({ report, settings, user, chartNodes = 
     doc,
     autoTable,
     y,
-    ['Event', 'Date', 'Present', 'Late', 'Absent', 'Excused', 'Rate'],
+    ['Event', 'Date', 'Present', 'Absent', 'Rate'],
     att.perEvent.length
-      ? att.perEvent.map((e) => [e.title, formatDateTime(e.startAt), e.present, e.late, e.absent, e.excused, e.held ? pct(e.rate) : 'Upcoming'].map(String))
-      : [['No events in this date range.', '', '', '', '', '', '']],
-    { columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' } } }
+      ? att.perEvent.map((e) => [e.title, formatDateTime(e.startAt), e.present, e.absent, e.held ? pct(e.rate) : 'Upcoming'].map(String))
+      : [['No events in this date range.', '', '', '', '']],
+    { columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } } }
   );
 
   y = sectionTitle(doc, 'Attendance per official', y);
@@ -300,11 +300,11 @@ export async function exportDashboardPdf({ report, settings, user, chartNodes = 
     doc,
     autoTable,
     y,
-    ['Official', 'Position', 'Present', 'Late', 'Absent', 'Rate'],
+    ['Official', 'Position', 'Present', 'Absent', 'Rate'],
     att.perOfficial.length
-      ? att.perOfficial.map((o) => [o.name, o.position || '-', o.present, o.late, o.absent, pct(o.rate)].map(String))
-      : [['No attendance in this date range.', '', '', '', '', '']],
-    { columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } } }
+      ? att.perOfficial.map((o) => [o.name, o.position || '-', o.present, o.absent, pct(o.rate)].map(String))
+      : [['No attendance in this date range.', '', '', '', '']],
+    { columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } } }
   );
 
   y = sectionTitle(doc, 'Events within the date range', y);
@@ -394,15 +394,15 @@ export async function exportDashboardExcel({ report, settings, user }) {
   const att = report.attendance;
   addSheet(wb, 'Attendance per Event', {
     ...base,
-    head: ['Event', 'Date', 'Present', 'Late', 'Absent', 'Excused', 'Rate (%)'],
-    rows: att.perEvent.map((e) => [e.title, clean(formatDateTime(e.startAt)), e.present, e.late, e.absent, e.excused, e.held ? e.rate ?? '' : 'Upcoming']),
-    widths: [32, 24, 10, 10, 10, 10, 10],
+    head: ['Event', 'Date', 'Present', 'Absent', 'Rate (%)'],
+    rows: att.perEvent.map((e) => [e.title, clean(formatDateTime(e.startAt)), e.present, e.absent, e.held ? e.rate ?? '' : 'Upcoming']),
+    widths: [32, 24, 10, 10, 10],
   });
   addSheet(wb, 'Attendance per Official', {
     ...base,
-    head: ['Official', 'Position', 'Present', 'Late', 'Absent', 'Rate (%)'],
-    rows: att.perOfficial.map((o) => [o.name, o.position, o.present, o.late, o.absent, o.rate ?? '']),
-    widths: [28, 20, 10, 10, 10, 10],
+    head: ['Official', 'Position', 'Present', 'Absent', 'Rate (%)'],
+    rows: att.perOfficial.map((o) => [o.name, o.position, o.present, o.absent, o.rate ?? '']),
+    widths: [28, 20, 10, 10, 10],
   });
   addSheet(wb, 'Events', {
     ...base,
@@ -415,15 +415,14 @@ export async function exportDashboardExcel({ report, settings, user }) {
 
 // ---------------- Attendance ----------------
 
-const ATT_HEAD = ['Official Name', 'Position', 'Event Name', 'Event Date', 'Time In', 'Status', 'Method'];
+const ATT_HEAD = ['Official Name', 'Position', 'Event Name', 'Event Date', 'Status', 'Time Checked In'];
 const attRow = (r) => [
   r.officialName,
   r.position || '-',
   r.eventName,
   clean(formatDate(r.eventDate)),
-  r.timeIn ? clean(formatTime(r.timeIn)) : '-',
   STATUS[r.status] || r.status,
-  r.method,
+  r.status === 'PRESENT' && r.timeIn ? clean(formatTime(r.timeIn)) : '',
 ];
 
 // Name of whoever holds a position, for the signature lines.
@@ -445,25 +444,25 @@ export async function exportAttendancePdf({ data, settings, user, filters }) {
     ],
   });
 
-  y = table(doc, autoTable, y, ATT_HEAD, data.rows.length ? data.rows.map(attRow) : [['No attendance matches these filters.', '', '', '', '', '', '']]);
+  y = table(doc, autoTable, y, ATT_HEAD, data.rows.length ? data.rows.map(attRow) : [['No attendance matches these filters.', '', '', '', '', '']]);
 
   const t = data.summary.totals;
   y = sectionTitle(doc, 'Summary', y);
-  y = table(doc, autoTable, y, ['Total Present', 'Total Late', 'Total Absent', 'Total Excused', 'Attendance rate'], [
-    [t.present, t.late, t.absent, t.excused, pct(t.rate)].map(String),
+  y = table(doc, autoTable, y, ['Total Present', 'Total Absent', 'Attendance rate'], [
+    [t.present, t.absent, pct(t.rate)].map(String),
   ]);
   y = sectionTitle(doc, 'Attendance rate per official', y);
   y = table(
     doc,
     autoTable,
     y,
-    ['Official', 'Position', 'Present', 'Late', 'Absent', 'Attendance rate'],
-    data.summary.perOfficial.map((o) => [o.name, o.position || '-', o.present, o.late, o.absent, pct(o.rate)].map(String)),
-    { columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } } }
+    ['Official', 'Position', 'Present', 'Absent', 'Attendance rate'],
+    data.summary.perOfficial.map((o) => [o.name, o.position || '-', o.present, o.absent, pct(o.rate)].map(String)),
+    { columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } } }
   );
   doc.setFontSize(8.5);
   doc.setTextColor(98, 114, 144);
-  doc.text('Attendance rate = (Present + Late) / (Present + Late + Absent). Absent: no scan or record once the event ended.', M, y - 4);
+  doc.text('Attendance rate = Present / (Present + Absent). Absent: the official had not scanned the QR code when the event ended.', M, y - 4);
 
   // Signature lines
   if (y > H - 45) {
@@ -505,16 +504,16 @@ export async function exportAttendanceExcel({ data, settings, user, filters }) {
       ['Generated by', generatedBy(user)],
     ],
   };
-  addSheet(wb, 'Attendance', { ...base, head: ATT_HEAD, rows: data.rows.map(attRow), widths: [26, 18, 30, 16, 12, 12, 12] });
+  addSheet(wb, 'Attendance', { ...base, head: ATT_HEAD, rows: data.rows.map(attRow), widths: [26, 18, 30, 16, 12, 16] });
   const t = data.summary.totals;
   const ws = addSheet(wb, 'Summary', {
     ...base,
-    head: ['Official', 'Position', 'Present', 'Late', 'Absent', 'Attendance rate (%)'],
-    rows: data.summary.perOfficial.map((o) => [o.name, o.position, o.present, o.late, o.absent, o.rate ?? '']),
-    widths: [26, 18, 10, 10, 10, 18],
+    head: ['Official', 'Position', 'Present', 'Absent', 'Attendance rate (%)'],
+    rows: data.summary.perOfficial.map((o) => [o.name, o.position, o.present, o.absent, o.rate ?? '']),
+    widths: [26, 18, 10, 10, 18],
   });
   ws.addRow([]);
-  const totals = ws.addRow(['Total', '', t.present, t.late, t.absent, t.rate ?? '']);
+  const totals = ws.addRow(['Total', '', t.present, t.absent, t.rate ?? '']);
   totals.font = { bold: true };
   await saveBook(wb, `attendance-report-${fileStamp()}.xlsx`);
 }

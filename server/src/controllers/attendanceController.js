@@ -1,69 +1,22 @@
 ﻿const crypto = require('crypto');
 const prisma = require('../prisma');
 const { getSettings } = require('../utils/settings');
+const { markAbsentees } = require('../utils/absentees');
 
-// GET /api/attendance/event/:eventId - list attendance for an event (SK side).
+// Attendance is recorded only by scanning the event's QR code (Present). Once the event is
+// over, the officials who did not scan are recorded as Absent automatically.
+
+// GET /api/attendance/event/:eventId - list attendance for an event (SK side):
+// Present first in the order they checked in, then Absent by name.
 async function getEventAttendance(req, res, next) {
   try {
+    await markAbsentees({ eventId: req.params.eventId });
     const records = await prisma.attendanceRecord.findMany({
       where: { eventId: req.params.eventId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ status: 'asc' }, { timeIn: 'asc' }, { participant: 'asc' }],
+      select: { id: true, eventId: true, userId: true, participant: true, status: true, timeIn: true },
     });
     res.json({ records });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// PUT /api/attendance/record/:id - admin. Update a record's status.
-async function updateRecord(req, res, next) {
-  try {
-    const existing = await prisma.attendanceRecord.findUnique({
-      where: { id: req.params.id },
-    });
-    if (!existing) return res.status(404).json({ message: 'Record not found' });
-
-    const { status, participant, timeIn } = req.body;
-    const data = {};
-    if (status !== undefined) data.status = status;
-    if (participant !== undefined) data.participant = participant;
-    if (timeIn !== undefined) data.timeIn = timeIn ? new Date(timeIn) : null;
-
-    const record = await prisma.attendanceRecord.update({
-      where: { id: req.params.id },
-      data,
-    });
-    res.json({ record });
-  } catch (err) {
-    next(err);
-  }
-}
-
-const STATUSES = ['PRESENT', 'LATE', 'ABSENT', 'EXCUSED'];
-
-// POST /api/attendance/event/:eventId/manual - admin. { userId } (an official's account)
-// or { participant } (a name), plus status and optional timeIn. Recorded as Manual.
-async function addManualRecord(req, res, next) {
-  try {
-    const event = await prisma.event.findUnique({ where: { id: req.params.eventId }, select: { id: true } });
-    if (!event) return res.status(404).json({ message: 'Event not found' });
-    const status = STATUSES.includes(req.body.status) ? req.body.status : 'PRESENT';
-    let participant = String(req.body.participant || '').trim();
-    let userId = null;
-    if (req.body.userId) {
-      const u = await prisma.user.findUnique({ where: { id: String(req.body.userId) }, select: { id: true, name: true } });
-      if (!u) return res.status(404).json({ message: 'Account not found' });
-      userId = u.id;
-      participant = u.name;
-      const already = await prisma.attendanceRecord.findFirst({ where: { eventId: event.id, userId } });
-      if (already) return res.status(409).json({ message: `${u.name} already has attendance for this event` });
-    }
-    if (!participant) return res.status(400).json({ message: 'Choose an official or type a name' });
-    const timeIn = req.body.timeIn ? new Date(req.body.timeIn) : ['PRESENT', 'LATE'].includes(status) ? new Date() : null;
-    const record = await prisma.attendanceRecord.create({
-      data: { eventId: event.id, userId, participant: participant.slice(0, 120), status, timeIn, method: 'MANUAL' },
-    });
-    res.status(201).json({ record });
   } catch (err) {
     next(err);
   }
@@ -72,12 +25,13 @@ async function addManualRecord(req, res, next) {
 // GET /api/attendance/summary/:eventId - SK side. Tally by status.
 async function getEventSummary(req, res, next) {
   try {
+    await markAbsentees({ eventId: req.params.eventId });
     const grouped = await prisma.attendanceRecord.groupBy({
       by: ['status'],
       where: { eventId: req.params.eventId },
       _count: { _all: true },
     });
-    const summary = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0 };
+    const summary = { PRESENT: 0, ABSENT: 0 };
     grouped.forEach((g) => {
       summary[g.status] = g._count._all;
     });
@@ -129,7 +83,6 @@ function qrState(event, settings) {
       ? { token: qrToken, active: info.qrActive, validFrom: info.qrValidFrom, validUntil: info.qrValidUntil }
       : null,
     defaults: defaultWindow(event, settings),
-    lateAfterMin: settings.lateAfterMin,
     minMinutes: MIN_WINDOW_MIN,
   };
 }
@@ -222,7 +175,9 @@ function sameToken(a, b) {
 const publicEvent = (e) => ({ id: e.id, title: e.title, startAt: e.startAt, endAt: e.endAt, location: e.location });
 
 // POST /api/attendance/checkin - anyone signed in. { eventId, token } from the scanned QR.
-// Within the late threshold after the start: Present; later: Late. Once per event.
+// The first scan records Present with the time; later scans change nothing. If the official
+// was already marked Absent (the event ended while the QR code was still valid), the
+// scan turns that into Present.
 async function checkIn(req, res, next) {
   try {
     const { eventId } = req.body;
@@ -250,6 +205,13 @@ async function checkIn(req, res, next) {
     }
 
     const already = await prisma.attendanceRecord.findFirst({ where: { eventId: event.id, userId: req.user.id } });
+    if (already && already.status === 'ABSENT') {
+      const record = await prisma.attendanceRecord.update({
+        where: { id: already.id },
+        data: { status: 'PRESENT', timeIn: new Date(now) },
+      });
+      return res.status(201).json({ record, event: info });
+    }
     if (already) {
       return res.status(409).json({
         code: 'ALREADY',
@@ -259,17 +221,14 @@ async function checkIn(req, res, next) {
       });
     }
 
-    const { lateAfterMin } = await getSettings();
-    const start = new Date(event.startAt).getTime();
     try {
       const record = await prisma.attendanceRecord.create({
         data: {
           eventId: event.id,
           userId: req.user.id,
           participant: req.user.name,
-          status: now > start + lateAfterMin * MIN ? 'LATE' : 'PRESENT',
+          status: 'PRESENT',
           timeIn: new Date(now),
-          method: 'QR',
         },
       });
       res.status(201).json({ record, event: info });
@@ -291,7 +250,5 @@ module.exports = {
   updateQr,
   checkIn,
   getEventAttendance,
-  updateRecord,
-  addManualRecord,
   getEventSummary,
 };

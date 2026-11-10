@@ -34,11 +34,11 @@ enum EventType {
   APPOINTMENT
 }
 
+// Present: scanned the event's QR code. Absent: an SK official who had not scanned by
+// the time the event ended (recorded automatically).
 enum AttendanceStatus {
   PRESENT
   ABSENT
-  LATE
-  EXCUSED
 }
 
 enum NewsStatus {
@@ -285,10 +285,9 @@ model AttendanceRecord {
   userId      String?          // optional link to a registered user
   status      AttendanceStatus @default(PRESENT)
   timeIn      DateTime?
-  method      String           @default("QR") // QR | MANUAL
   createdAt   DateTime         @default(now())
 
-  // One check-in per account per event (manual rows without an account are not limited)
+  // One record per account per event (older rows typed in by name have no account)
   @@unique([eventId, userId])
 }
 
@@ -359,6 +358,5 @@ model Setting {
   logoType           String?
   qrDefaultBeforeMin Int      @default(30) // QR opens this many minutes before the start
   qrDefaultLengthMin Int?     // QR stays valid this many minutes; empty = until the event ends
-  lateAfterMin       Int      @default(15) // scans later than this after the start are Late
   updatedAt          DateTime @updatedAt
 }

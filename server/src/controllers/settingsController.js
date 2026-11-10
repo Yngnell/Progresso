@@ -15,7 +15,6 @@ function publicSettings(s) {
     logoVersion: s.logoFile ? new Date(s.updatedAt).getTime() : null,
     qrDefaultBeforeMin: s.qrDefaultBeforeMin,
     qrDefaultLengthMin: s.qrDefaultLengthMin,
-    lateAfterMin: s.lateAfterMin,
   };
 }
 
@@ -57,7 +56,6 @@ async function saveSettings(req, res, next) {
     const checks = [
       ['qrDefaultBeforeMin', { min: 0, max: 240, label: 'Opening time before the event' }],
       ['qrDefaultLengthMin', { min: 10, max: 1440, label: 'QR validity', allowEmpty: true }],
-      ['lateAfterMin', { min: 0, max: 240, label: 'Late threshold' }],
     ];
     for (const [key, opts] of checks) {
       if (b[key] === undefined) continue;

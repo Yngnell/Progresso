@@ -15,6 +15,7 @@ const photoRoutes = require('./routes/photoRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const { syncNotifications } = require('./utils/notifications');
+const { markAbsentees } = require('./utils/absentees');
 const { cleanupPendingSignups } = require('./utils/verification');
 const errorHandler = require('./middleware/error');
 
@@ -62,4 +63,10 @@ app.listen(PORT, () => {
   };
   runSync();
   setInterval(runSync, 10 * 60 * 1000);
+
+  // Officials who did not scan an event's QR are recorded Absent once the event is over.
+  const runAbsent = () =>
+    markAbsentees({ force: true }).catch((err) => console.error('Absent check failed:', err.message));
+  runAbsent();
+  setInterval(runAbsent, 60 * 1000);
 });

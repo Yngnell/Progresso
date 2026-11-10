@@ -123,7 +123,7 @@ async function syncNotifications({ force = false } = {}) {
       approvalState: 'APPROVED',
       status: { in: ['PLANNING', 'ONGOING'] },
     },
-    include: { events: { select: { id: true, startAt: true, endAt: true, _count: { select: { attendance: { where: { status: { in: ['PRESENT', 'LATE'] } } } } } } } },
+    include: { events: { select: { id: true, startAt: true, endAt: true, _count: { select: { attendance: { where: { status: 'PRESENT' } } } } } } },
   });
 
   const rows = [];

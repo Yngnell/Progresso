@@ -92,19 +92,19 @@ async function getStats(req, res, next) {
     });
 
     // Attendance across the sessions that already happened
-    const attendance = { present: 0, late: 0, absent: 0, excused: 0 };
+    const attendance = { present: 0, absent: 0 };
     const sessionAttendance = [];
     heldEvents.forEach((e) => {
       if (e.attendance.length === 0) return;
-      const row = { id: e.id, title: e.title, startAt: e.startAt, present: 0, late: 0, absent: 0, excused: 0 };
+      const row = { id: e.id, title: e.title, startAt: e.startAt, present: 0, absent: 0 };
       e.attendance.forEach((a) => {
-        const k = a.status.toLowerCase();
+        const k = a.status === 'PRESENT' ? 'present' : 'absent';
         row[k] += 1;
         attendance[k] += 1;
       });
       if (sessionAttendance.length < 8) sessionAttendance.push(row);
     });
-    const recorded = attendance.present + attendance.late + attendance.absent + attendance.excused;
+    const recorded = attendance.present + attendance.absent;
 
     const closed = (counts.COMPLETED || 0) + (counts.ONGOING || 0) + (counts.CANCELLED || 0);
 
@@ -131,7 +131,7 @@ async function getStats(req, res, next) {
           attendance: {
             ...attendance,
             recorded,
-            rate: recorded > 0 ? Math.round(((attendance.present + attendance.late) / recorded) * 100) : null,
+            rate: recorded > 0 ? Math.round((attendance.present / recorded) * 100) : null,
           },
           sessionAttendance: sessionAttendance.reverse(), // oldest first, so the chart reads left to right
         },

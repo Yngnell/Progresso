@@ -1,5 +1,6 @@
 const prisma = require('../prisma');
 const { effectiveStatus, computeProgress } = require('./projectController');
+const { markAbsentees } = require('../utils/absentees');
 
 // Data behind the PDF and Excel exports (Dashboard and Attendance). Dates in the filters
 // are calendar days in Philippine time (YYYY-MM-DD).
@@ -38,15 +39,13 @@ async function expectedOfficials() {
 
 const ended = (e, now) => new Date(e.endAt || e.startAt) <= now;
 
-// Every attendance row for the events: the recorded ones, plus an Absent row for each
-// expected official with no record once the event has ended.
-function attendanceRows(events, officials, now) {
+// Every attendance row for the events: Present (scanned the QR) and Absent (recorded
+// automatically for the officials who had not scanned once the event was over).
+function attendanceRows(events, officials) {
   const byId = new Map(officials.map((o) => [o.id, o]));
   const rows = [];
   events.forEach((e) => {
-    const seen = new Set();
     e.attendance.forEach((r) => {
-      if (r.userId) seen.add(r.userId);
       const o = r.userId ? byId.get(r.userId) : null;
       rows.push({
         userId: r.userId,
@@ -55,55 +54,38 @@ function attendanceRows(events, officials, now) {
         eventId: e.id,
         eventName: e.title,
         eventDate: e.startAt,
-        timeIn: r.timeIn,
+        timeIn: r.status === 'PRESENT' ? r.timeIn : null,
         status: r.status,
-        method: r.method === 'MANUAL' ? 'Manual' : 'QR',
       });
     });
-    if (ended(e, now)) {
-      officials.forEach((o) => {
-        if (seen.has(o.id)) return;
-        rows.push({
-          userId: o.id,
-          officialName: o.name,
-          position: o.official?.position || '',
-          eventId: e.id,
-          eventName: e.title,
-          eventDate: e.startAt,
-          timeIn: null,
-          status: 'ABSENT',
-          method: 'No scan',
-        });
-      });
-    }
   });
   return rows;
 }
 
-// Present / Late / Absent per official, and their attendance rate.
+// Present / Absent per official, and their attendance rate.
 function perOfficial(rows) {
   const map = new Map();
   rows.forEach((r) => {
     const key = r.userId || `name:${r.officialName}`;
-    if (!map.has(key)) {
-      map.set(key, { name: r.officialName, position: r.position, present: 0, late: 0, absent: 0, excused: 0 });
-    }
+    if (!map.has(key)) map.set(key, { name: r.officialName, position: r.position, present: 0, absent: 0 });
     const m = map.get(key);
-    m[r.status.toLowerCase()] += 1;
+    if (r.status === 'PRESENT') m.present += 1;
+    else m.absent += 1;
   });
   return [...map.values()].map((m) => {
-    const counted = m.present + m.late + m.absent;
-    return { ...m, rate: counted > 0 ? Math.round(((m.present + m.late) / counted) * 100) : null };
+    const counted = m.present + m.absent;
+    return { ...m, rate: counted > 0 ? Math.round((m.present / counted) * 100) : null };
   });
 }
 
 function totals(rows) {
-  const t = { present: 0, late: 0, absent: 0, excused: 0 };
+  const t = { present: 0, absent: 0 };
   rows.forEach((r) => {
-    t[r.status.toLowerCase()] += 1;
+    if (r.status === 'PRESENT') t.present += 1;
+    else t.absent += 1;
   });
-  const counted = t.present + t.late + t.absent;
-  return { ...t, rate: counted > 0 ? Math.round(((t.present + t.late) / counted) * 100) : null };
+  const counted = t.present + t.absent;
+  return { ...t, rate: counted > 0 ? Math.round((t.present / counted) * 100) : null };
 }
 
 const EVENT_SELECT = {
@@ -120,7 +102,6 @@ const EVENT_SELECT = {
       participant: true,
       status: true,
       timeIn: true,
-      method: true,
     },
   },
 };
@@ -130,7 +111,7 @@ async function projectSummary(projectId) {
   const p = await prisma.project.findUnique({
     where: { id: projectId },
     include: {
-      events: { select: { id: true, startAt: true, endAt: true, _count: { select: { attendance: { where: { status: { in: ['PRESENT', 'LATE'] } } } } } } },
+      events: { select: { id: true, startAt: true, endAt: true, _count: { select: { attendance: { where: { status: 'PRESENT' } } } } } },
       expenses: { select: { amount: true } },
     },
   });
@@ -164,6 +145,7 @@ async function dashboardReport(req, res, next) {
     const projectId = req.query.projectId ? String(req.query.projectId) : null;
     const project = projectId ? await projectSummary(projectId) : null;
     if (projectId && !project) return res.status(404).json({ message: 'Project not found' });
+    await markAbsentees();
 
     // Projects active in the range: their timeline overlaps it (or, without dates, they
     // were created in it). Archived and rejected ones are left out, as on the Dashboard.
@@ -196,7 +178,7 @@ async function dashboardReport(req, res, next) {
       }),
       expectedOfficials(),
     ]);
-    const rows = attendanceRows(events, officials, now);
+    const rows = attendanceRows(events, officials);
     const perEvent = events.map((e) => {
       const t = totals(rows.filter((r) => r.eventId === e.id));
       return { id: e.id, title: e.title, type: e.type, startAt: e.startAt, ...t, held: ended(e, now) };
@@ -218,14 +200,14 @@ async function dashboardReport(req, res, next) {
 async function attendanceReport(req, res, next) {
   try {
     const range = readRange(req.query);
-    const now = new Date();
+    await markAbsentees();
     const where = rangeWhere('startAt', range);
     if (req.query.eventId) where.id = String(req.query.eventId);
     const [events, officials] = await Promise.all([
       prisma.event.findMany({ where, orderBy: { startAt: 'asc' }, select: EVENT_SELECT }),
       expectedOfficials(),
     ]);
-    let rows = attendanceRows(events, officials, now);
+    let rows = attendanceRows(events, officials);
     if (req.query.userId) rows = rows.filter((r) => r.userId === String(req.query.userId));
     if (req.query.status) rows = rows.filter((r) => r.status === String(req.query.status));
     rows.sort((a, b) => new Date(a.eventDate) - new Date(b.eventDate) || a.officialName.localeCompare(b.officialName));

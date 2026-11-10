@@ -19,11 +19,10 @@ export const EVENT_TYPE = {
   APPOINTMENT: { label: 'Appointment', tone: 'amber' },
 };
 
+// Present: scanned the event's QR code. Absent: an official who had not scanned when the event ended.
 export const ATTENDANCE_STATUS = {
   PRESENT: { label: 'Present', tone: 'green' },
   ABSENT: { label: 'Absent', tone: 'red' },
-  LATE: { label: 'Late', tone: 'amber' },
-  EXCUSED: { label: 'Excused', tone: 'slate' },
 };
 
 // Format a number as Philippine Peso.

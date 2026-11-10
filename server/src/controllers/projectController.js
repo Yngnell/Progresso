@@ -25,7 +25,7 @@ const includeOpts = {
       title: true,
       startAt: true,
       endAt: true,
-      _count: { select: { attendance: { where: { status: { in: ['PRESENT', 'LATE'] } } } } },
+      _count: { select: { attendance: { where: { status: 'PRESENT' } } } },
     },
     orderBy: { startAt: 'asc' },
   },
@@ -38,7 +38,7 @@ const BEHIND_TOLERANCE = 10;
 
 // Progress is computed, never typed in. It follows the project type chosen in the form:
 // - DATETIME ("Date and Time Based"): the elapsed share of the time from start to end;
-// - ATTENDEE ("Attendee Based"): people who checked in (Present or Late) at the events
+// - ATTENDEE ("Attendee Based"): people who checked in (Present) at the events
 //   linked to the project, divided by the target number of attendees.
 // Only COMPLETED reaches 100, so a finished project shows 99 until the SK Chairperson
 // marks it as complete.

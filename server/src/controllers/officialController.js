@@ -89,15 +89,5 @@ async function updateOfficial(req, res, next) {
 }
 
 // DELETE /api/officials/:id — admin
-async function deleteOfficial(req, res, next) {
-  try {
-    const existing = await prisma.official.findUnique({ where: { id: req.params.id } });
-    if (!existing) return res.status(404).json({ message: 'Official not found' });
-    await prisma.official.delete({ where: { id: req.params.id } });
-    res.json({ message: 'Official deleted' });
-  } catch (err) {
-    next(err);
-  }
-}
-
-module.exports = { getOfficials, getOfficial, createOfficial, updateOfficial, deleteOfficial };
+// Officials are never deleted (their records stay); an official who left is set inactive.
+module.exports = { getOfficials, getOfficial, createOfficial, updateOfficial };

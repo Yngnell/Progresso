@@ -271,7 +271,7 @@ export default function Dashboard() {
           value={a.attendance?.rate != null ? `${a.attendance.rate}%` : '—'}
           note={
             a.attendance?.recorded
-              ? `${a.attendance.present + a.attendance.late} of ${a.attendance.recorded} present or late`
+              ? `${a.attendance.present} of ${a.attendance.recorded} present`
               : 'No attendance recorded yet'
           }
           meter={a.attendance?.rate}

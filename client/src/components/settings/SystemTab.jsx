@@ -414,7 +414,6 @@ function AddAccountModal({ open, onClose, onDone }) {
 function AttendanceSection({ settings }) {
   const [before, setBefore] = useState(String(settings.qrDefaultBeforeMin));
   const [length, setLength] = useState(settings.qrDefaultLengthMin ? String(settings.qrDefaultLengthMin) : '');
-  const [late, setLate] = useState(String(settings.lateAfterMin));
   const [msg, setMsg] = useState(null);
   const save = useSaveSettings(setMsg, 'Attendance settings saved. New QR codes use them.');
   const lengthTooShort = length !== '' && Number(length) < 10;
@@ -426,14 +425,13 @@ function AttendanceSection({ settings }) {
     >
       {msg && <div className="mb-4"><Notice ok={msg.ok}>{msg.text}</Notice></div>}
       <form
-        className="grid gap-4 sm:grid-cols-3"
+        className="grid gap-4 sm:grid-cols-2"
         onSubmit={(e) => {
           e.preventDefault();
           setMsg(null);
           save.mutate({
             qrDefaultBeforeMin: Number(before),
             qrDefaultLengthMin: length === '' ? null : Number(length),
-            lateAfterMin: Number(late),
           });
         }}
       >
@@ -463,19 +461,7 @@ function AttendanceSection({ settings }) {
             Minutes, at least 10. Leave empty to keep it valid until the event ends.
           </p>
         </div>
-        <div>
-          <Input
-            label="Late after"
-            type="number"
-            min={0}
-            max={240}
-            value={late}
-            onChange={(e) => setLate(e.target.value)}
-            required
-          />
-          <p className="mt-1 text-xs text-slate-600">Minutes after the start. Later scans are marked Late. Default: 15.</p>
-        </div>
-        <div className="sm:col-span-3">
+        <div className="sm:col-span-2">
           <Button type="submit" variant="primary" disabled={save.isPending || lengthTooShort}>
             {save.isPending ? 'Saving…' : 'Save attendance settings'}
           </Button>

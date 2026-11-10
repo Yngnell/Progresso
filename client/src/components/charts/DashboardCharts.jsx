@@ -181,8 +181,6 @@ export function AttendanceBars({ data = [] }) {
             wrapperStyle={{ fontSize: 13, fontFamily: 'Barlow, sans-serif', color: CHART.slate }}
           />
           <Bar dataKey="present" name="Present" stackId="a" fill={CHART.azure} />
-          <Bar dataKey="late" name="Late" stackId="a" fill={CHART.gold} />
-          <Bar dataKey="excused" name="Excused" stackId="a" fill={CHART.slate} />
           <Bar dataKey="absent" name="Absent" stackId="a" fill={CHART.red} radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>

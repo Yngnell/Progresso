@@ -90,7 +90,7 @@ export function AttendanceQrPanel({ eventId }) {
       <Input label="Valid until" type="datetime-local" value={until} onChange={(e) => setUntil(e.target.value)} required />
       <p className={`text-sm sm:col-span-2 ${problem ? 'font-semibold text-red-700' : 'text-slate-600'}`}>
         {problem ||
-          `At least 10 minutes. Scans more than ${data.lateAfterMin} minutes after the start (${formatTime(event.startAt)}) are marked Late.`}
+          'At least 10 minutes. Every scan is recorded as Present; officials who have not scanned when the event ends are marked Absent.'}
       </p>
     </div>
   );

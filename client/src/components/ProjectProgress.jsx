@@ -46,7 +46,7 @@ export default function ProjectProgress({ project, eventLink }) {
       <h3 className="mt-7 text-lg font-bold text-slate-900">Linked events</h3>
       <p className="text-sm text-slate-600">
         {attendeeBased
-          ? 'Everyone who checks in (Present or Late) at these events counts toward the target attendees.'
+          ? 'Everyone who checks in (Present) at these events counts toward the target attendees.'
           : 'Events scheduled for this project. Link one from the Calendar by choosing this project.'}
       </p>
       {events.length === 0 ? (

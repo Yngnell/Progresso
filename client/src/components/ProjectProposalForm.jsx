@@ -334,7 +334,7 @@ export default function ProjectProposalForm({
       </table>
       <p className="mt-2 text-xs text-slate-500">
         {form.progressType === 'ATTENDEE'
-          ? 'Progress = people who checked in (Present or Late) at the events linked to this project ÷ the target number of attendees. Link the project’s events from the Calendar.'
+          ? 'Progress = people who checked in (Present) at the events linked to this project ÷ the target number of attendees. Link the project’s events from the Calendar.'
           : 'Progress follows the time passed between the start and the end date and time.'}
       </p>
     </div>

@@ -3,9 +3,6 @@
 export const attendanceApi = {
   list: (eventId) => api.get(`/attendance/event/${eventId}`).then((r) => r.data),
   summary: (eventId) => api.get(`/attendance/summary/${eventId}`).then((r) => r.data),
-  updateRecord: (id, data) => api.put(`/attendance/record/${id}`, data).then((r) => r.data),
-  // Admin: record someone by hand ({ userId } or { participant }, status, timeIn)
-  addManual: (eventId, data) => api.post(`/attendance/event/${eventId}/manual`, data).then((r) => r.data),
 
   // Attendance QR (SK Chairperson): the event's code and how long it stays valid
   qr: (eventId) => api.get(`/attendance/qr/${eventId}`).then((r) => r.data),

@@ -51,11 +51,6 @@ export default function AdminOfficials() {
       setError(err.response?.data?.message || 'Failed to save official'),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id) => officialsApi.remove(id),
-    onSuccess: invalidate,
-  });
-
   function openCreate() {
     setEditing(null);
     setForm(emptyForm);
@@ -95,12 +90,6 @@ export default function AdminOfficials() {
     e.preventDefault();
     setError('');
     saveMutation.mutate(form);
-  }
-
-  function handleDelete(official) {
-    if (window.confirm(`Delete ${official.name}? This cannot be undone.`)) {
-      deleteMutation.mutate(official.id);
-    }
   }
 
   return (
@@ -154,14 +143,6 @@ export default function AdminOfficials() {
                 <div className="mt-4 flex gap-2 border-t border-slate-100 pt-4">
                   <Button size="sm" variant="secondary" onClick={() => openEdit(o)}>
                     Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-red-700 hover:bg-red-50"
-                    onClick={() => handleDelete(o)}
-                  >
-                    Delete
                   </Button>
                 </div>
               </Card>
