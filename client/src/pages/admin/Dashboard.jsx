@@ -10,6 +10,7 @@ import { statsApi } from '../../api/stats';
 import { projectsApi } from '../../api/projects';
 import { eventsApi } from '../../api/events';
 import { useAuth } from '../../context/AuthContext';
+import { isAdmin } from '../../utils/roles';
 import { Button, Card } from '../../components/ui';
 import { PROJECT_STATUS, formatPeso, formatDateTime } from '../../utils/format';
 import { ProgressBar, totalSpent } from '../../components/ProjectCard';
@@ -129,7 +130,7 @@ function DashboardExport({ user, projects, projectId, onProject }) {
 export default function Dashboard() {
   const { user } = useAuth();
   const isChairman = user?.role === 'CHAIRMAN';
-  const isAdmin = user?.role === 'ADMIN';
+  const canManage = isAdmin(user);
 
   // "Sort by Project": '' shows every project; an id narrows the cards, charts and lists.
   const [projectId, setProjectId] = useState('');
@@ -191,7 +192,7 @@ export default function Dashboard() {
               Review approvals
             </Button>
           </Link>
-          ) : isAdmin ? (
+          ) : canManage ? (
           <Link to="/admin/projects">
             <Button variant="accent">
               <Plus size={18} strokeWidth={2} aria-hidden="true" />
@@ -377,7 +378,7 @@ export default function Dashboard() {
         {recent.length === 0 ? (
           <p className="text-slate-600">
             No projects yet.
-            {isAdmin && (
+            {canManage && (
               <>
                 {' '}
                 <Link to="/admin/projects" className="font-semibold text-brand-700">

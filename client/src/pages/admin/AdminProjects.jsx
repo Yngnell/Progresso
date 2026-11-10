@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '../../api/projects';
 import { officialsApi } from '../../api/officials';
 import { useAuth } from '../../context/AuthContext';
+import { isAdmin } from '../../utils/roles';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import OverflowMenu from '../../components/OverflowMenu';
 import { Button, Modal, EmptyState } from '../../components/ui';
@@ -32,7 +33,7 @@ const blankForm = () => ({
 export default function AdminProjects() {
   const { user } = useAuth();
   // Only the SK Admin creates and edits projects; the chairman and the officials view them.
-  const readOnly = user?.role !== 'ADMIN';
+  const readOnly = !isAdmin(user);
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);

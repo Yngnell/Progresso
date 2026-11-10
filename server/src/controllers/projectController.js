@@ -6,6 +6,8 @@ const { isStaff } = require('../utils/roles');
 
 // Archived projects are kept for the record but cannot be changed.
 const ARCHIVED_MESSAGE = 'This project is archived and can no longer be changed';
+// Cancelling a project or asking to delete one needs a real reason (the client checks the same).
+const MIN_REASON_LENGTH = 10;
 
 // Shared include so lists and details always carry expenses, team, creator, and the
 // linked events with how many people checked in at each (attendee-based progress).

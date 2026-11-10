@@ -344,7 +344,7 @@ function PositionModal({ account, busy, onClose, onSave }) {
       <p className="mb-4 text-slate-700">{account?.name}</p>
       <PositionField value={position} onChange={setPosition} />
       <p className="mt-2 text-sm text-slate-600">
-        The account with the position "SK Chairperson" marks projects as complete and manages the attendance QR and these settings.
+        The account with the position "SK Chairperson" is the only one who shows the attendance QR, marks projects as complete and cancels projects; it also manages these settings. Every other official account has the same access as the SK Admin.
       </p>
     </Modal>
   );

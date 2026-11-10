@@ -63,9 +63,14 @@ async function optionalAuth(req, res, next) {
 
 // Restricts a route to specific roles, e.g. restrictTo('ADMIN').
 // Must be used AFTER protect.
+// SK officials have the same access as the SK Admin, so an OFFICIAL passes wherever
+// 'ADMIN' is allowed. The SK Chairperson-only actions (attendance QR, Mark as Complete,
+// Cancel project) use requireSkChair instead.
 function restrictTo(...roles) {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    const role = req.user && req.user.role;
+    const allowed = roles.includes(role) || (role === 'OFFICIAL' && roles.includes('ADMIN'));
+    if (!allowed) {
       return res.status(403).json({ message: 'Forbidden — you do not have permission' });
     }
     next();

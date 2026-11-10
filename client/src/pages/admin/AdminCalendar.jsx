@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { eventsApi } from '../../api/events';
 import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { isAdmin } from '../../utils/roles';
 import PageHeader from '../../components/PageHeader';
 import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
@@ -36,7 +37,7 @@ const emptyForm = {
 export default function AdminCalendar() {
   const { user } = useAuth();
   // Only the SK Admin adds and edits events; the chairman and the officials view them.
-  const readOnly = user?.role !== 'ADMIN';
+  const readOnly = !isAdmin(user);
   const qc = useQueryClient();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());

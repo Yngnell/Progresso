@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { accessRole } from '../utils/roles';
 
 // Guards a route. Redirects to /login if not authenticated,
 // and redirects users whose role is not allowed here.
@@ -18,7 +19,9 @@ export default function ProtectedRoute({ children, roles, allow }) {
 
   // Signed in but not allowed here: residents go to the public site, staff to the
   // dashboard (e.g. the chairman opening an admin-only page).
-  if ((roles && !roles.includes(user.role)) || (allow && !allow(user))) {
+  // An SK official counts as the admin (same access).
+  const roleOk = !roles || roles.includes(user.role) || roles.includes(accessRole(user));
+  if (!roleOk || (allow && !allow(user))) {
     const staff = ['ADMIN', 'CHAIRMAN', 'OFFICIAL'].includes(user.role);
     return <Navigate to={staff ? '/admin' : '/'} replace />;
   }

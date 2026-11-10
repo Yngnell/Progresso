@@ -1,10 +1,11 @@
 const prisma = require('../prisma');
 const { sendNewsEmail } = require('../utils/residentEmails');
+const { isAdminLevel } = require('../utils/roles');
 
 // GET /api/news — public sees PUBLISHED only; admin sees all.
 async function getNews(req, res, next) {
   try {
-    const isAdmin = req.user && req.user.role === 'ADMIN';
+    const isAdmin = isAdminLevel(req.user);
     const { status, category, featured } = req.query;
 
     const where = {};
@@ -30,7 +31,7 @@ async function getNews(req, res, next) {
 // GET /api/news/:id — public sees PUBLISHED only; admin sees any.
 async function getNewsItem(req, res, next) {
   try {
-    const isAdmin = req.user && req.user.role === 'ADMIN';
+    const isAdmin = isAdminLevel(req.user);
     const item = await prisma.news.findUnique({
       where: { id: req.params.id },
       include: { author: { select: { id: true, name: true } } },

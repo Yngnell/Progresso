@@ -6,6 +6,7 @@ import { attendanceApi } from '../../api/attendance';
 import { reportsApi } from '../../api/reports';
 import { ArrowLeft, Plus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { isAdmin } from '../../utils/roles';
 import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
 import { AttendanceQrButton } from '../../components/AttendanceQr';
@@ -21,7 +22,7 @@ export default function AdminEventDetail() {
   const { id } = useParams();
   const { user } = useAuth();
   // Only the SK Admin changes attendance by hand; the others view it.
-  const readOnly = user?.role !== 'ADMIN';
+  const readOnly = !isAdmin(user);
   const qc = useQueryClient();
 
   const { data: eventData, isLoading, isError } = useQuery({

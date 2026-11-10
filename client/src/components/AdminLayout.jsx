@@ -20,7 +20,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { projectsApi } from '../api/projects';
 import NotificationBell from './NotificationBell';
-import { roleLabel } from '../utils/roles';
+import { accessRole, roleLabel } from '../utils/roles';
 import { accountApi } from '../api/account';
 
 // `roles` limits a link to those roles; omit it to show the link to everyone
@@ -128,7 +128,7 @@ export default function AdminLayout() {
 
   // Each role sees only its own links, under the name that fits what it can do there.
   // A link marked `firstFor` a role moves to the top of its group for that role.
-  const role = user?.role;
+  const role = accessRole(user); // an SK official sees what the admin sees
   const links = groups
     .map((g) => {
       const visible = g.links

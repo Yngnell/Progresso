@@ -55,7 +55,7 @@ router.post('/:id/restore', protect, restrictTo('CHAIRMAN'), restoreProject);
 // Only the SK Chairperson marks a project as complete (completeProject also checks that
 // every expense has its proof and that the expenses equal the budget).
 router.post('/:id/complete', protect, requireSkChair, completeProject);
-router.post('/:id/cancel', protect, restrictTo('ADMIN'), cancelProject);
+router.post('/:id/cancel', protect, requireSkChair, cancelProject);
 router.post('/', protect, restrictTo('ADMIN'), createProject);
 router.put('/:id', protect, restrictTo('ADMIN'), updateProject);
 // No direct DELETE /:id: removal only happens through an approved deletion request.

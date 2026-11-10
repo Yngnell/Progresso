@@ -2,13 +2,19 @@
 //   ADMIN     SK Admin: full access
 //   CHAIRMAN  Barangay Chairman: approves, otherwise views
 //   OFFICIAL  an SK official's own account; the one whose position is "SK Chairperson"
-//             (user.isSkChair) also marks projects complete and manages the QR, accounts and settings
+//             (user.isSkChair) also marks projects complete, cancels projects and manages the QR,
+//             accounts and settings. Every other official has the same access as ADMIN.
 //   VIEWER    a registered resident (public site only)
 export const STAFF_ROLES = ['ADMIN', 'CHAIRMAN', 'OFFICIAL'];
 
 export const isStaff = (user) => STAFF_ROLES.includes(user?.role);
+// SK officials have the same access as the SK Admin. Only the SK Chairperson
+// (user.isSkChair) shows the attendance QR, marks projects complete and cancels projects.
+export const isAdmin = (user) => user?.role === 'ADMIN' || user?.role === 'OFFICIAL';
+// The role used for access checks: an official counts as the admin.
+export const accessRole = (user) => (user?.role === 'OFFICIAL' ? 'ADMIN' : user?.role);
 // Deletes anyone's project pictures.
-export const isManager = (user) => user?.role === 'ADMIN' || Boolean(user?.isSkChair);
+export const isManager = (user) => isAdmin(user);
 // Adds project pictures.
 export const isWorker = (user) => user?.role === 'ADMIN' || user?.role === 'OFFICIAL';
 

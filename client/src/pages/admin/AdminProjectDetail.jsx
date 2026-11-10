@@ -13,7 +13,7 @@ import PhotoGallery from '../../components/PhotoGallery';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
 import ProjectStatusDialog from '../../components/ProjectStatusDialog';
 import { formatPeso, formatDate, formatDateTime } from '../../utils/format';
-import { isManager, isWorker } from '../../utils/roles';
+import { isAdmin, isManager, isWorker } from '../../utils/roles';
 
 export default function AdminProjectDetail() {
   const { id } = useParams();
@@ -123,7 +123,7 @@ export default function AdminProjectDetail() {
   // the officials add pictures; only the SK Chairperson marks a project as complete.
   // An archived project is read-only for everyone.
   const archived = Boolean(project.archivedAt);
-  const readOnly = user?.role !== 'ADMIN' || archived;
+  const readOnly = !isAdmin(user) || archived;
   const canMarkComplete =
     Boolean(user?.isSkChair) && !archived && (project.status === 'PLANNING' || project.status === 'ONGOING');
   const canUploadPictures = isWorker(user) && !archived;
@@ -202,7 +202,9 @@ export default function AdminProjectDetail() {
           {!readOnly && (
             <OverflowMenu
               items={[
-                project.status !== 'COMPLETED' &&
+                // Only the SK Chairperson cancels a project
+                user?.isSkChair &&
+                  project.status !== 'COMPLETED' &&
                   project.status !== 'CANCELLED' && {
                     label: 'Cancel project',
                     Icon: Ban,
@@ -526,10 +528,7 @@ export default function AdminProjectDetail() {
                           {formatPeso(e.amount)}
                         </td>
                         <td className="py-2 pl-4">
-                          {e.receiptFile && user?.role === 'OFFICIAL' ? (
-                            // Receipts are opened by the SK Admin and the Barangay Chairman only
-                            <span className="text-xs font-medium text-slate-600">Receipt on file</span>
-                          ) : e.receiptFile ? (
+                          {e.receiptFile ? (
                             <button
                               type="button"
                               className="text-xs font-medium text-brand-600 hover:text-brand-700"
