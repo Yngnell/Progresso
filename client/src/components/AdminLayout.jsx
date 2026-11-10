@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  UserRound,
   Archive,
   CalendarDays,
   ClipboardCheck,
@@ -236,16 +237,27 @@ export default function AdminLayout() {
             <NotificationBell />
             <Link
               to="/admin/settings"
-              className="hidden items-center gap-2.5 rounded-lg px-2 py-1 text-right leading-tight hover:bg-slate-100 sm:flex"
+              className="flex items-center gap-2.5 rounded-lg px-1.5 py-1 text-left leading-tight hover:bg-slate-100 sm:px-2"
               title="Settings"
             >
-              <span>
-                <span className="block text-sm font-semibold text-slate-900">{user?.name}</span>
+              {accountApi.photoUrl(user) ? (
+                <img
+                  src={accountApi.photoUrl(user)}
+                  alt=""
+                  className="h-9 w-9 shrink-0 rounded-full border border-slate-200 object-cover"
+                />
+              ) : (
+                <span
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700"
+                  aria-hidden="true"
+                >
+                  <UserRound size={20} strokeWidth={1.75} />
+                </span>
+              )}
+              <span className="hidden sm:block">
+                <span className="block text-sm font-semibold text-slate-900">{user?.displayName || user?.name}</span>
                 <span className="block text-xs text-slate-600">{roleLabel(user)}</span>
               </span>
-              {accountApi.photoUrl(user) && (
-                <img src={accountApi.photoUrl(user)} alt="" className="h-9 w-9 rounded-full border border-slate-200 object-cover" />
-              )}
             </Link>
             <button
               type="button"

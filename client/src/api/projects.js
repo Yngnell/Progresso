@@ -51,9 +51,7 @@ export const projectsApi = {
   },
   removeExpense: (id, expenseId) =>
     api.delete(`/projects/${id}/expenses/${expenseId}`).then((r) => r.data),
-  addTask: (id, data) => api.post(`/projects/${id}/tasks`, data).then((r) => r.data),
-  updateTask: (id, taskId, data) =>
-    api.put(`/projects/${id}/tasks/${taskId}`, data).then((r) => r.data),
-  removeTask: (id, taskId) =>
-    api.delete(`/projects/${id}/tasks/${taskId}`).then((r) => r.data),
+  // Removes a wrong proof file from an expense so the right one can be uploaded.
+  removeReceipt: (id, expenseId) =>
+    api.delete(`/projects/${id}/expenses/${expenseId}/receipt`).then((r) => r.data),
 };

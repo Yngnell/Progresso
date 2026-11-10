@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Camera, Trash2, UserRound } from 'lucide-react';
 import { accountApi } from '../../api/account';
 import { Button, Input } from '../ui';
@@ -26,6 +27,12 @@ function PictureSection({ user, refreshUser }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const url = accountApi.photoUrl(user);
+  const qc = useQueryClient();
+  // The header follows the refreshed user; the Officials pages read the officials list.
+  const refreshPictures = async () => {
+    await refreshUser();
+    qc.invalidateQueries({ queryKey: ['officials'] });
+  };
 
   async function choose(e) {
     const file = e.target.files?.[0];
@@ -37,7 +44,7 @@ function PictureSection({ user, refreshUser }) {
     setMsg(null);
     try {
       await accountApi.uploadPhoto(file);
-      await refreshUser();
+      await refreshPictures();
       setMsg({ ok: true, text: 'Your profile picture was updated.' });
     } catch (err) {
       setMsg({ ok: false, text: errorText(err, 'The picture could not be uploaded.') });
@@ -51,7 +58,7 @@ function PictureSection({ user, refreshUser }) {
     setMsg(null);
     try {
       await accountApi.removePhoto();
-      await refreshUser();
+      await refreshPictures();
       setMsg({ ok: true, text: 'Your profile picture was removed.' });
     } catch (err) {
       setMsg({ ok: false, text: errorText(err, 'The picture could not be removed.') });
@@ -110,7 +117,7 @@ function DetailsSection({ user }) {
       <dl className="grid gap-4 sm:grid-cols-2">
         <ReadOnly label="Full name" value={user?.name} />
         <ReadOnly label="Email" value={user?.email} />
-        <ReadOnly label="Position" value={user?.official?.position} />
+        <ReadOnly label="Position" value={user?.position || user?.official?.position} />
         <ReadOnly label="Role" value={ROLE_NAME[user?.role] || user?.role} />
       </dl>
     </Section>

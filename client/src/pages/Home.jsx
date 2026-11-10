@@ -1,3 +1,4 @@
+import OfficialAvatar from '../components/OfficialAvatar';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight } from 'lucide-react';
@@ -137,9 +138,11 @@ function NewsCard({ item, wide = false }) {
 function OfficialChip({ official }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand-100 font-display text-xl font-bold text-brand-800 ring-2 ring-ink">
-        {official.name?.charAt(0) || '?'}
-      </div>
+      <OfficialAvatar
+        official={official}
+        className="h-12 w-12 ring-2 ring-ink"
+        letterClass="font-display text-xl font-bold text-brand-800"
+      />
       <div className="min-w-0">
         <p className="truncate font-semibold text-slate-900">{official.name}</p>
         <p className="truncate text-sm text-slate-600">{official.position}</p>

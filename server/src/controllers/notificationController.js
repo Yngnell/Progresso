@@ -2,17 +2,25 @@ const prisma = require('../prisma');
 const { syncNotifications, sendPendingEmails } = require('../utils/notifications');
 const { isMailConfigured, sendMail } = require('../utils/mailer');
 const { issueCode, checkCode } = require('../utils/verification');
+const { isSkChair } = require('../utils/roles');
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// GET /api/notifications — admin and chairman. Newest first, with a per-user read flag.
+// Alerts with an audience are only for that person: "SK_CHAIR" = the SK Chairperson.
+function visibleTo(user) {
+  return isSkChair(user) ? {} : { audience: null };
+}
+
+// GET /api/notifications — the SK side. Newest first, with a per-user read flag.
 async function listNotifications(req, res, next) {
   try {
     await syncNotifications(); // throttled; keeps the list fresh without waiting for the timer
 
     const uid = req.user.id;
+    const visible = visibleTo(req.user);
     const [rows, unread] = await Promise.all([
       prisma.notification.findMany({
+        where: visible,
         orderBy: { createdAt: 'desc' },
         take: 50,
         include: {
@@ -20,7 +28,7 @@ async function listNotifications(req, res, next) {
           event: { select: { id: true, title: true } },
         },
       }),
-      prisma.notification.count({ where: { NOT: { readByIds: { has: uid } } } }),
+      prisma.notification.count({ where: { AND: [visible, { NOT: { readByIds: { has: uid } } }] } }),
     ]);
 
     const notifications = rows.map(({ readByIds, ...n }) => ({

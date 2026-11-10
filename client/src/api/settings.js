@@ -18,4 +18,6 @@ export const settingsApi = {
   accounts: () => api.get('/settings/accounts').then((r) => r.data),
   createAccount: (data) => api.post('/settings/accounts', data).then((r) => r.data),
   updateAccount: (id, data) => api.put(`/settings/accounts/${id}`, data).then((r) => r.data),
+  // The official the SK Admin account acts as (shown in the header); null to clear.
+  setAdminOfficial: (id, officialId) => api.put(`/settings/admins/${id}`, { officialId }).then((r) => r.data),
 };

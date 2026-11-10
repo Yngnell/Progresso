@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { officialsApi } from '../../api/officials';
 import PageHeader from '../../components/PageHeader';
+import OfficialAvatar from '../../components/OfficialAvatar';
 import {
   Button,
   Card,
@@ -135,9 +136,7 @@ export default function AdminOfficials() {
               <Card key={o.id} className="flex flex-col p-5">
                 <div className="flex items-start">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-100 text-brand-700 font-bold">
-                      {o.name?.charAt(0) || '?'}
-                    </div>
+                    <OfficialAvatar official={o} className="h-12 w-12" />
                     <div>
                       <p className="font-semibold text-slate-800">{o.name}</p>
                       <p className="text-sm text-brand-600">{o.position}</p>

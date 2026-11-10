@@ -5,7 +5,7 @@ import { projectsApi } from '../api/projects';
 import { Card } from '../components/ui';
 import { totalSpent, progressSummary } from '../components/ProjectCard';
 import { ProgressRoundel, ScheduleWords, StatusRibbon } from '../components/Roundel';
-import ProjectChecklist from '../components/ProjectChecklist';
+import ProjectProgress from '../components/ProjectProgress';
 import PhotoGallery from '../components/PhotoGallery';
 import { formatPeso, formatDate, formatDateTime } from '../utils/format';
 
@@ -88,7 +88,7 @@ export default function ProjectDetailPublic() {
           Progress details
         </h2>
         <div className="mt-4">
-          <ProjectChecklist project={project} />
+          <ProjectProgress project={project} />
         </div>
       </Card>
 

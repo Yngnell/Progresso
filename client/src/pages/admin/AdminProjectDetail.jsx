@@ -7,8 +7,8 @@ import { useAuth } from '../../context/AuthContext';
 import OverflowMenu from '../../components/OverflowMenu';
 import { ProgressRoundel, ScheduleWords, StatusRibbon } from '../../components/Roundel';
 import { Button, Card } from '../../components/ui';
-import { totalSpent } from '../../components/ProjectCard';
-import ProjectChecklist from '../../components/ProjectChecklist';
+import { SpendingTag, totalSpent } from '../../components/ProjectCard';
+import ProjectProgress from '../../components/ProjectProgress';
 import PhotoGallery from '../../components/PhotoGallery';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
 import ProjectStatusDialog from '../../components/ProjectStatusDialog';
@@ -24,7 +24,6 @@ export default function AdminProjectDetail() {
   const [receiptFile, setReceiptFile] = useState(null);
   const [fileKey, setFileKey] = useState(0); // changing it clears the file input
   const [error, setError] = useState('');
-  const [taskError, setTaskError] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [statusDialog, setStatusDialog] = useState(null); // 'complete' | 'cancel' | null
 
@@ -76,25 +75,11 @@ export default function AdminProjectDetail() {
     onSuccess: invalidate,
   });
 
-  const addTaskMutation = useMutation({
-    mutationFn: (payload) => projectsApi.addTask(id, payload),
-    onSuccess: () => {
-      setTaskError('');
-      invalidate();
-    },
-    onError: (err) => setTaskError(err.response?.data?.message || 'Failed to add task'),
-  });
-
-  const updateTaskMutation = useMutation({
-    mutationFn: ({ taskId, ...payload }) => projectsApi.updateTask(id, taskId, payload),
+  // Removes a wrong proof file so the right one can be uploaded.
+  const removeReceiptMutation = useMutation({
+    mutationFn: (expenseId) => projectsApi.removeReceipt(id, expenseId),
     onSuccess: invalidate,
-    onError: (err) => setTaskError(err.response?.data?.message || 'Failed to update task'),
-  });
-
-  const deleteTaskMutation = useMutation({
-    mutationFn: (taskId) => projectsApi.removeTask(id, taskId),
-    onSuccess: invalidate,
-    onError: (err) => setTaskError(err.response?.data?.message || 'Failed to delete the item'),
+    onError: (err) => setError(err.response?.data?.message || 'Could not remove the file'),
   });
 
   const withdrawMutation = useMutation({
@@ -134,13 +119,13 @@ export default function AdminProjectDetail() {
       </div>
     );
 
-  // Only the SK Admin edits the project, its expenses and its status. The chairman views
-  // and approves; the officials check off items and add pictures. An archived project is
-  // read-only for everyone.
+  // Only the SK Admin edits the project and its expenses. The chairman views and approves;
+  // the officials add pictures; only the SK Chairperson marks a project as complete.
+  // An archived project is read-only for everyone.
   const archived = Boolean(project.archivedAt);
   const readOnly = user?.role !== 'ADMIN' || archived;
-  const canManageChecklist = isManager(user) && !archived;
-  const canTick = isWorker(user) && !archived;
+  const canMarkComplete =
+    Boolean(user?.isSkChair) && !archived && (project.status === 'PLANNING' || project.status === 'ONGOING');
   const canUploadPictures = isWorker(user) && !archived;
   const canDeletePicture = (p) => !archived && (isManager(user) || (p.uploadedById && p.uploadedById === user?.id));
   const spent = totalSpent(project);
@@ -202,10 +187,15 @@ export default function AdminProjectDetail() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {!readOnly && (project.status === 'PLANNING' || project.status === 'ONGOING') && (
-            <Button variant="primary" onClick={() => setStatusDialog('complete')}>
+          {canMarkComplete && (
+            <Button
+              variant="primary"
+              disabled={!project.canComplete}
+              title={project.canComplete ? undefined : (project.completeBlockers || []).join(' ')}
+              onClick={() => setStatusDialog('complete')}
+            >
               <CircleCheck size={18} strokeWidth={1.75} aria-hidden="true" />
-              Mark as completed
+              Mark as Complete
             </Button>
           )}
           {/* The risky actions live in a quiet menu so they never compete with the main ones */}
@@ -230,6 +220,18 @@ export default function AdminProjectDetail() {
           )}
         </div>
       </div>
+
+      {canMarkComplete && !project.canComplete && (
+        <div className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+          <p className="font-semibold">Mark as Complete is not available yet:</p>
+          <ul className="mt-1 list-disc pl-5">
+            {(project.completeBlockers || []).map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+          <p className="mt-1 text-amber-800">Every expense needs its proof (image or PDF), and the total expenses must match the budget.</p>
+        </div>
+      )}
 
       {/* Deletion request state */}
       {deletion?.status === 'PENDING' && (
@@ -412,44 +414,17 @@ export default function AdminProjectDetail() {
             </Card>
           )}
 
-          {/* Progress & checklist */}
+          {/* Progress */}
           <Card className="p-6">
-            <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Progress &amp; Checklist</h2>
+            <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Progress</h2>
             <p className="mt-1 text-sm text-slate-600">
-              Progress is calculated automatically from the checklist: checked items divided by
-              all items. Without checklist items it follows the sessions held, or the start and
-              end dates. Only marking the project Completed (with SK council approval) sets it to
-              100%.
+              Progress is calculated automatically from the project type: the time passed between the
+              start and the end for Date and Time Based projects, or the people who checked in at the
+              linked events against the target for Attendee Based projects. It reaches 100% only when
+              the SK Chairperson marks the project as complete.
             </p>
             <div className="mt-4">
-              <ProjectChecklist
-                project={project}
-                onAdd={
-                  canManageChecklist
-                    ? (form, reset) => addTaskMutation.mutate(form, { onSuccess: reset })
-                    : undefined
-                }
-                onRename={
-                  canManageChecklist
-                    ? (t, title) => updateTaskMutation.mutate({ taskId: t.id, title })
-                    : undefined
-                }
-                onToggle={
-                  canTick ? (t) => updateTaskMutation.mutate({ taskId: t.id, done: !t.done }) : undefined
-                }
-                onRemove={
-                  canManageChecklist
-                    ? (t) => {
-                        if (window.confirm(`Delete the checklist item "${t.title}"?`)) {
-                          deleteTaskMutation.mutate(t.id);
-                        }
-                      }
-                    : undefined
-                }
-                adding={addTaskMutation.isPending}
-                error={taskError}
-                eventLink={(ev) => `/admin/calendar/${ev.id}`}
-              />
+              <ProjectProgress project={project} eventLink={(ev) => `/admin/calendar/${ev.id}`} />
             </div>
           </Card>
 
@@ -568,7 +543,7 @@ export default function AdminProjectDetail() {
                           )}
                           {!readOnly && (
                             <label className="ml-2 cursor-pointer text-sm text-slate-600 hover:text-slate-700">
-                              {e.receiptFile ? 'Replace' : 'Attach'}
+                              {e.receiptFile ? 'Replace' : 'Attach file'}
                               <input
                                 type="file"
                                 className="hidden"
@@ -580,6 +555,20 @@ export default function AdminProjectDetail() {
                                 }}
                               />
                             </label>
+                          )}
+                          {!readOnly && e.receiptFile && (
+                            <button
+                              type="button"
+                              className="ml-2 text-sm text-red-600 hover:text-red-700"
+                              disabled={removeReceiptMutation.isPending}
+                              onClick={() => {
+                                if (window.confirm(`Remove the proof file "${e.receiptName || 'receipt'}"? You can then upload the correct one.`)) {
+                                  removeReceiptMutation.mutate(e.id);
+                                }
+                              }}
+                            >
+                              Remove File
+                            </button>
                           )}
                         </td>
                         <td className="py-2 text-right">
@@ -614,6 +603,11 @@ export default function AdminProjectDetail() {
                 <span className="text-slate-500">Spent</span>
                 <span className="font-semibold text-slate-800">{formatPeso(spent)}</span>
               </div>
+              {project.spendingTag && (
+                <div className="flex justify-end">
+                  <SpendingTag tag={project.spendingTag} />
+                </div>
+              )}
               <div className="flex justify-between border-t border-slate-100 pt-2">
                 <span className="text-slate-500">Remaining</span>
                 <span className={`font-semibold ${remaining < 0 ? 'text-red-600' : 'text-green-600'}`}>

@@ -156,8 +156,7 @@ export default function Dashboard() {
     .filter((e) => !selected || e.relatedProjectId === selected.id)
     .slice(0, 5);
   const recent = projects.slice(0, 6);
-  const tasksTotal = selected?.progressBreakdown?.tasksTotal ?? 0;
-  const tasksDone = selected?.progressBreakdown?.tasksDone ?? 0;
+  const spendingLabel = { OVERSPENDING: 'Overspending', UNDERSPENDING: 'Underspending' };
 
   const statusData = STATUS_ORDER.map((k) => ({
     status: k,
@@ -252,10 +251,9 @@ export default function Dashboard() {
         />
         {selected ? (
           <KpiCard
-            label="Checklist"
-            value={tasksTotal ? `${tasksDone} of ${tasksTotal}` : '—'}
-            note={tasksTotal ? 'items done' : 'No checklist items yet'}
-            meter={tasksTotal ? Math.round((tasksDone / tasksTotal) * 100) : null}
+            label="Spending"
+            value={spendingLabel[selected.spendingTag] || ((selected.expenses || []).length ? 'On budget' : '—')}
+            note={selected.canComplete ? 'Ready to mark as complete' : `${selected.missingProof || 0} expense(s) without proof`}
             tone="green"
           />
         ) : (

@@ -10,6 +10,7 @@ const {
   listAccounts,
   createAccount,
   updateAccount,
+  setAdminOfficial,
 } = require('../controllers/settingsController');
 const { protect } = require('../middleware/auth');
 const { requireSkChair } = require('../utils/roles');
@@ -26,5 +27,6 @@ router.delete('/logo', protect, requireSkChair, removeLogo);
 router.get('/accounts', protect, requireSkChair, listAccounts);
 router.post('/accounts', protect, requireSkChair, createAccount);
 router.put('/accounts/:id', protect, requireSkChair, updateAccount);
+router.put('/admins/:id', protect, requireSkChair, setAdminOfficial);
 
 module.exports = router;

@@ -244,49 +244,98 @@ export default function ProjectProposalForm({
         </p>
       </div>
 
-      {/* Schedule used for progress monitoring: kept last */}
+      {/* Progress monitoring: the project type decides how progress is measured,
+          and only that type's fields are shown. Kept last. */}
       <table className="mt-6 w-full border-collapse">
         <thead>
           <tr>
             <th colSpan={2} className={`${headCell} text-xs uppercase`}>
-              Progress monitoring · target implementation schedule
+              Progress monitoring · project type
             </th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <th scope="row" className={`${cell} w-52 px-3 py-2 text-left text-xs font-bold uppercase text-black`}>
-              Start (date &amp; time) *
+              Project type *
             </th>
-            <td className={cell}>
-              <input
-                className={cellInput}
-                type="datetime-local"
-                value={form.startDate}
-                onChange={(e) => update('startDate', e.target.value)}
-                required
-              />
+            <td className={`${cell} px-3 py-2`}>
+              <div className="flex flex-wrap gap-x-6 gap-y-2" role="radiogroup" aria-label="Project type">
+                {[
+                  ['DATETIME', 'Date and Time Based'],
+                  ['ATTENDEE', 'Attendee Based'],
+                ].map(([value, label]) => (
+                  <label key={value} className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-black">
+                    <input
+                      type="radio"
+                      name="progressType"
+                      className="h-4 w-4 accent-brand-600"
+                      value={value}
+                      checked={form.progressType === value}
+                      onChange={() => update('progressType', value)}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
             </td>
           </tr>
-          <tr>
-            <th scope="row" className={`${cell} w-52 px-3 py-2 text-left text-xs font-bold uppercase text-black`}>
-              End (date &amp; time) *
-            </th>
-            <td className={cell}>
-              <input
-                className={cellInput}
-                type="datetime-local"
-                value={form.endDate}
-                onChange={(e) => update('endDate', e.target.value)}
-                required
-              />
-            </td>
-          </tr>
+          {form.progressType === 'ATTENDEE' ? (
+            <tr>
+              <th scope="row" className={`${cell} w-52 px-3 py-2 text-left text-xs font-bold uppercase text-black`}>
+                Target number of attendees *
+              </th>
+              <td className={cell}>
+                <input
+                  className={cellInput}
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.targetAttendees}
+                  onChange={(e) => update('targetAttendees', e.target.value)}
+                  placeholder="e.g. 100"
+                  required
+                />
+              </td>
+            </tr>
+          ) : (
+            <>
+              <tr>
+                <th scope="row" className={`${cell} w-52 px-3 py-2 text-left text-xs font-bold uppercase text-black`}>
+                  Start (date &amp; time) *
+                </th>
+                <td className={cell}>
+                  <input
+                    className={cellInput}
+                    type="datetime-local"
+                    value={form.startDate}
+                    onChange={(e) => update('startDate', e.target.value)}
+                    required
+                  />
+                </td>
+              </tr>
+              <tr>
+                <th scope="row" className={`${cell} w-52 px-3 py-2 text-left text-xs font-bold uppercase text-black`}>
+                  End (date &amp; time) *
+                </th>
+                <td className={cell}>
+                  <input
+                    className={cellInput}
+                    type="datetime-local"
+                    value={form.endDate}
+                    onChange={(e) => update('endDate', e.target.value)}
+                    required
+                  />
+                </td>
+              </tr>
+            </>
+          )}
         </tbody>
       </table>
       <p className="mt-2 text-xs text-slate-500">
-        Progress is calculated automatically from the sessions held when events are linked to the
-        project, otherwise from this start and end date and time.
+        {form.progressType === 'ATTENDEE'
+          ? 'Progress = people who checked in (Present or Late) at the events linked to this project ÷ the target number of attendees. Link the project’s events from the Calendar.'
+          : 'Progress follows the time passed between the start and the end date and time.'}
       </p>
     </div>
   );

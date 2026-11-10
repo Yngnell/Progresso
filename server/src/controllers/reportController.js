@@ -130,14 +130,13 @@ async function projectSummary(projectId) {
   const p = await prisma.project.findUnique({
     where: { id: projectId },
     include: {
-      tasks: { select: { done: true } },
-      events: { select: { id: true, startAt: true, endAt: true } },
+      events: { select: { id: true, startAt: true, endAt: true, _count: { select: { attendance: { where: { status: { in: ['PRESENT', 'LATE'] } } } } } } },
       expenses: { select: { amount: true } },
     },
   });
   if (!p) return null;
   const status = effectiveStatus(p);
-  const { progress } = computeProgress({ ...p, status });
+  const { progress, progressBreakdown } = computeProgress({ ...p, status });
   const spent = p.expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
   return {
     id: p.id,
@@ -147,8 +146,9 @@ async function projectSummary(projectId) {
     progress,
     budget: Number(p.budget || 0),
     spent,
-    tasksDone: p.tasks.filter((t) => t.done).length,
-    tasksTotal: p.tasks.length,
+    progressType: progressBreakdown.type,
+    attendees: progressBreakdown.attendees,
+    targetAttendees: progressBreakdown.targetAttendees,
     startDate: p.startDate,
     endDate: p.endDate,
     location: p.location,
@@ -169,7 +169,7 @@ async function dashboardReport(req, res, next) {
     // were created in it). Archived and rejected ones are left out, as on the Dashboard.
     const projects = await prisma.project.findMany({
       where: projectId ? { id: projectId } : { archivedAt: null, approvalState: { not: 'REJECTED' } },
-      select: { id: true, title: true, status: true, startDate: true, endDate: true, createdAt: true },
+      select: { id: true, title: true, status: true, startDate: true, endDate: true, createdAt: true, progressType: true, events: { select: { startAt: true } } },
     });
     const inRange = projects.filter((p) => {
       if (projectId || (!range.from && !range.to)) return true;

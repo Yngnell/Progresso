@@ -2,13 +2,13 @@ const prisma = require('../prisma');
 const { parsePhDate } = require('../utils/phTime');
 const { receiptPath, removeReceiptFile } = require('../middleware/upload');
 const { photosForProject } = require('./photoController');
-const { isStaff, isManager, isWorker } = require('../utils/roles');
+const { isStaff } = require('../utils/roles');
 
 // Archived projects are kept for the record but cannot be changed.
 const ARCHIVED_MESSAGE = 'This project is archived and can no longer be changed';
 
-// Shared include so lists and details always carry expenses, team, creator,
-// checklist tasks, and linked events (the last two drive progress).
+// Shared include so lists and details always carry expenses, team, creator, and the
+// linked events with how many people checked in at each (attendee-based progress).
 const includeOpts = {
   expenses: { orderBy: { date: 'desc' } },
   officials: { orderBy: { displayOrder: 'asc' } },
@@ -16,37 +16,44 @@ const includeOpts = {
   reviewedBy: { select: { id: true, name: true } },
   // Latest deletion request (any status) so the UI can show pending/rejected.
   deletionRequests: { orderBy: { createdAt: 'desc' }, take: 1 },
-  tasks: { orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }] },
   requestItems: { orderBy: { displayOrder: 'asc' } },
   events: {
-    select: { id: true, title: true, startAt: true, endAt: true },
+    select: {
+      id: true,
+      title: true,
+      startAt: true,
+      endAt: true,
+      _count: { select: { attendance: { where: { status: { in: ['PRESENT', 'LATE'] } } } } },
+    },
     orderBy: { startAt: 'asc' },
   },
 };
 
+const PROGRESS_TYPES = ['DATETIME', 'ATTENDEE'];
+
 // Points below the expected (timeline) % before a project counts as behind.
 const BEHIND_TOLERANCE = 10;
 
-// Progress is computed, never typed by admins:
-// - with checklist items: checked items / total items x 100;
-// - otherwise, with linked events (scheduled sessions): sessions held / sessions scheduled
-//   (a session counts once its end time passes);
-// - otherwise: the timeline, days elapsed / total days from start and end dates.
-// Only COMPLETED reaches 100, so an ongoing project with every item checked shows 99
-// until it is marked completed with the council's approval.
+// Progress is computed, never typed in. It follows the project type chosen in the form:
+// - DATETIME ("Date and Time Based"): the elapsed share of the time from start to end;
+// - ATTENDEE ("Attendee Based"): people who checked in (Present or Late) at the events
+//   linked to the project, divided by the target number of attendees.
+// Only COMPLETED reaches 100, so a finished project shows 99 until the SK Chairperson
+// marks it as complete.
 function computeProgress(project) {
   const { status, startDate, endDate, updatedAt } = project;
+  const type = project.progressType === 'ATTENDEE' ? 'ATTENDEE' : 'DATETIME';
   const events = project.events || [];
-  const tasks = project.tasks || [];
 
   // A cancelled project freezes at the moment it was cancelled.
   const now = status === 'CANCELLED' && updatedAt ? new Date(updatedAt) : new Date();
 
   const eventsDone = events.filter((e) => new Date(e.endAt || e.startAt) <= now).length;
-  const tasksDone = tasks.filter((t) => t.done).length;
+  const attendees = events.reduce((sum, e) => sum + ((e._count && e._count.attendance) || 0), 0);
+  const target = project.targetAttendees || 0;
 
   let expected = null;
-  if (startDate && endDate) {
+  if (type === 'DATETIME' && startDate && endDate) {
     const start = new Date(startDate).getTime();
     const end = new Date(endDate).getTime();
     const span = end - start;
@@ -55,29 +62,16 @@ function computeProgress(project) {
   }
 
   let progress = 0;
-  let source = null;
-  if (status === 'COMPLETED') {
-    progress = 100;
-  } else if (status === 'PROPOSED') {
-    progress = 0;
-  } else if (tasks.length > 0) {
-    progress = Math.min(99, Math.round((tasksDone / tasks.length) * 100));
-    source = 'checklist';
-  } else if (status === 'PLANNING') {
-    progress = 0;
-  } else if (events.length > 0) {
-    progress = Math.min(99, Math.round((eventsDone / events.length) * 100));
-    source = 'sessions';
-  } else if (expected !== null) {
-    progress = Math.min(99, expected);
-    source = 'timeline';
-  }
+  if (status === 'COMPLETED') progress = 100;
+  else if (status === 'PROPOSED' || status === 'PLANNING') progress = 0;
+  else if (type === 'ATTENDEE') progress = target > 0 ? Math.min(99, Math.round((attendees / target) * 100)) : 0;
+  else if (expected !== null) progress = Math.min(99, expected);
 
   let schedule = null;
   if (status === 'COMPLETED') schedule = 'COMPLETED';
   else if (status === 'ONGOING') {
     // No "overdue" state: a project past its end date stays Ongoing until it is marked
-    // completed (or cancelled) by the admin.
+    // completed (or cancelled).
     if (expected !== null && progress < expected - BEHIND_TOLERANCE) schedule = 'BEHIND';
     else schedule = 'ON_TRACK';
   }
@@ -85,24 +79,30 @@ function computeProgress(project) {
   return {
     progress,
     progressBreakdown: {
+      type,
+      source: type === 'ATTENDEE' ? 'attendees' : 'timeline',
+      attendees,
+      targetAttendees: target || null,
       eventsDone,
       eventsTotal: events.length,
-      tasksDone,
-      tasksTotal: tasks.length,
       expected,
-      source,
       schedule,
     },
   };
 }
 
-// Status is never typed in. PROPOSED only changes through the chairman's
-// approval, which moves it to PLANNING. A PLANNING project becomes ONGOING by
-// itself once its start date arrives. COMPLETED/CANCELLED are set explicitly.
-function effectiveStatus({ status, startDate }) {
-  if (status === 'PLANNING' && startDate && new Date(startDate) <= new Date()) {
-    return 'ONGOING';
+// Status is never typed in. PROPOSED only changes through the chairman's approval,
+// which moves it to PLANNING. A PLANNING project becomes ONGOING by itself: a date and
+// time based project once its start date arrives, an attendee-based one once its first
+// linked event starts. COMPLETED/CANCELLED are set explicitly.
+function effectiveStatus(project) {
+  const { status, startDate } = project;
+  if (status !== 'PLANNING') return status;
+  if (project.progressType === 'ATTENDEE') {
+    const started = (project.events || []).some((e) => new Date(e.startAt) <= new Date());
+    return started ? 'ONGOING' : status;
   }
+  if (startDate && new Date(startDate) <= new Date()) return 'ONGOING';
   return status;
 }
 
@@ -112,9 +112,41 @@ function canSeeProposed(user) {
   return isStaff(user);
 }
 
+// Spending against the budget, and whether the project can be marked as complete:
+// every expense needs its proof (image or PDF) and the total must equal the budget.
+// Overspending: the expenses are over the budget; Underspending: below it (once any
+// expense has been recorded).
+function spendingInfo(project) {
+  const expenses = project.expenses || [];
+  const budget = Math.round(Number(project.budget || 0) * 100);
+  const spent = Math.round(expenses.reduce((s, e) => s + Number(e.amount || 0), 0) * 100);
+  let spendingTag = null;
+  if (spent > budget) spendingTag = 'OVERSPENDING';
+  else if (spent < budget && expenses.length > 0) spendingTag = 'UNDERSPENDING';
+  const missingProof = expenses.filter((e) => !e.receiptFile).length;
+  const blockers = [];
+  if (missingProof > 0) {
+    blockers.push(`${missingProof} expense${missingProof === 1 ? ' has' : 's have'} no proof file yet.`);
+  }
+  if (spent !== budget) {
+    blockers.push(
+      spent > budget
+        ? 'The total expenses are over the budget (Overspending).'
+        : 'The total expenses are below the budget (Underspending).'
+    );
+  }
+  return {
+    spent: spent / 100,
+    spendingTag,
+    missingProof,
+    canComplete: blockers.length === 0,
+    completeBlockers: blockers,
+  };
+}
+
 function withProgress(project) {
   const resolved = { ...project, status: effectiveStatus(project) };
-  return { ...resolved, ...computeProgress(resolved) };
+  return { ...resolved, ...computeProgress(resolved), ...spendingInfo(resolved) };
 }
 
 // True when the (possibly partial) update would not leave the end after the start.
@@ -250,6 +282,15 @@ function parseProjectBody(body) {
   if (proposedByName !== undefined) data.proposedByName = proposedByName || null;
   if (proposedByPosition !== undefined) data.proposedByPosition = proposedByPosition || null;
 
+  // Project type: how progress is measured. Each type keeps only its own fields.
+  if (body.progressType !== undefined) {
+    data.progressType = PROGRESS_TYPES.includes(body.progressType) ? body.progressType : 'DATETIME';
+  }
+  if (body.targetAttendees !== undefined) {
+    const n = Number(body.targetAttendees);
+    data.targetAttendees = Number.isInteger(n) && n > 0 ? n : null;
+  }
+
   // The budget is the total of the purchase request amounts, when any are given.
   const requestItems = cleanRequestItems(body.requestItems);
   if (requestItems) {
@@ -260,14 +301,24 @@ function parseProjectBody(body) {
   return { data, officialIds, requestItems };
 }
 
-// Every project goes through the SK's four stages; they start as a checklist
-// that the admin can edit or remove.
-const DEFAULT_STAGES = [
-  'Planning',
-  'Execution',
-  'Documents',
-  'Finalizing the project',
-];
+// Checks the fields of the chosen project type and drops the other type's fields.
+// Returns an error message, or null when the data is fine.
+function checkTypeFields(data, existing = {}) {
+  const type = data.progressType || existing.progressType || 'DATETIME';
+  if (type === 'ATTENDEE') {
+    const target = data.targetAttendees !== undefined ? data.targetAttendees : existing.targetAttendees;
+    if (!target) return 'Enter the target number of attendees (1 or more)';
+    data.startDate = null;
+    data.endDate = null;
+    return null;
+  }
+  data.targetAttendees = null;
+  const start = data.startDate !== undefined ? data.startDate : existing.startDate;
+  const end = data.endDate !== undefined ? data.endDate : existing.endDate;
+  if (!start || !end) return 'Start date and end date are required';
+  if (invalidDateRange(data, existing)) return 'The end date and time must be after the start';
+  return null;
+}
 
 // POST /api/projects — admin.
 async function createProject(req, res, next) {
@@ -279,17 +330,10 @@ async function createProject(req, res, next) {
     if (requestItems && requestItems.length > 0) {
       data.requestItems = { create: requestItems };
     }
-    // A proposal always needs its target implementation timeline.
-    if (!data.startDate || !data.endDate) {
-      return res.status(400).json({ message: 'Start date and end date are required' });
-    }
-    if (invalidDateRange(data)) {
-      return res.status(400).json({ message: 'The end date and time must be after the start' });
-    }
+    // A date and time based proposal needs its timeline; an attendee-based one its target.
+    const typeError = checkTypeFields(data);
+    if (typeError) return res.status(400).json({ message: typeError });
     data.createdById = req.user.id;
-    data.tasks = {
-      create: DEFAULT_STAGES.map((title, i) => ({ title, displayOrder: i })),
-    };
     if (Array.isArray(officialIds)) {
       data.officials = { connect: officialIds.map((id) => ({ id })) };
     }
@@ -317,12 +361,8 @@ async function updateProject(req, res, next) {
       // The sheet is saved as a whole: replace all rows with the ones sent.
       data.requestItems = { deleteMany: {}, create: requestItems };
     }
-    if (data.startDate === null || data.endDate === null) {
-      return res.status(400).json({ message: 'Start date and end date are required' });
-    }
-    if (invalidDateRange(data, existing)) {
-      return res.status(400).json({ message: 'The end date and time must be after the start' });
-    }
+    const typeError = checkTypeFields(data, existing);
+    if (typeError) return res.status(400).json({ message: typeError });
     if (Array.isArray(officialIds)) {
       // "set" replaces the whole team with the provided ids.
       data.officials = { set: officialIds.map((id) => ({ id })) };
@@ -393,13 +433,21 @@ async function reviewProject(req, res, next) {
   }
 }
 
-// POST /api/projects/:id/complete — admin. Completion is confirmed by SK council
-// approval, so the council approval date is required (resolution number optional).
+// POST /api/projects/:id/complete — the SK Chairperson only. Completion is confirmed by
+// SK council approval, so the council approval date is required (resolution number
+// optional). Every expense must have its proof file and the expenses must equal the budget.
 async function completeProject(req, res, next) {
   try {
-    const existing = await prisma.project.findUnique({ where: { id: req.params.id } });
+    const existing = await prisma.project.findUnique({
+      where: { id: req.params.id },
+      include: { expenses: { select: { amount: true, receiptFile: true } } },
+    });
     if (!existing) return res.status(404).json({ message: 'Project not found' });
     if (existing.archivedAt) return res.status(400).json({ message: ARCHIVED_MESSAGE });
+    const { canComplete, completeBlockers } = spendingInfo(existing);
+    if (!canComplete) {
+      return res.status(400).json({ message: `This project cannot be marked as complete yet. ${completeBlockers.join(' ')}` });
+    }
     // PLANNING in the database may already be ONGOING by its start date.
     if (existing.status !== 'PLANNING' && existing.status !== 'ONGOING') {
       return res.status(400).json({
@@ -733,99 +781,26 @@ async function deleteExpense(req, res, next) {
   }
 }
 
-// POST /api/projects/:id/tasks — admin. Add a checklist task.
-async function addTask(req, res, next) {
+// DELETE /api/projects/:id/expenses/:expenseId/receipt — admin. Removes a wrong proof
+// file so the right one can be uploaded. The expense stays; until it has a proof file
+// again, the project cannot be marked as complete.
+async function removeReceipt(req, res, next) {
   try {
-    const project = await prisma.project.findUnique({ where: { id: req.params.id } });
-    if (!project) return res.status(404).json({ message: 'Project not found' });
-    if (project.archivedAt) return res.status(400).json({ message: ARCHIVED_MESSAGE });
-
-    const { title, dueDate } = req.body;
-    if (!title || !title.trim()) {
-      return res.status(400).json({ message: 'Task title is required' });
+    const expense = await prisma.expense.findUnique({ where: { id: req.params.expenseId } });
+    if (!expense || expense.projectId !== req.params.id) {
+      return res.status(404).json({ message: 'Expense not found' });
     }
-
-    const count = await prisma.projectTask.count({ where: { projectId: req.params.id } });
-    const task = await prisma.projectTask.create({
-      data: {
-        projectId: req.params.id,
-        title: title.trim(),
-        dueDate: dueDate ? new Date(dueDate) : null,
-        displayOrder: count,
-      },
-    });
-    res.status(201).json({ task });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// PUT /api/projects/:id/tasks/:taskId — admin. Tick/untick or rename a task.
-async function updateTask(req, res, next) {
-  try {
-    const existing = await prisma.projectTask.findUnique({
-      where: { id: req.params.taskId },
-    });
-    if (!existing || existing.projectId !== req.params.id) {
-      return res.status(404).json({ message: 'Task not found' });
-    }
-    if (await isArchivedProject(existing.projectId)) {
+    if (await isArchivedProject(req.params.id)) {
       return res.status(400).json({ message: ARCHIVED_MESSAGE });
     }
-
-    const { title, dueDate, done } = req.body;
-    // Renaming or re-dating an item is for the SK Chairperson or the SK Admin;
-    // checking and unchecking is for the officials and the admin.
-    if ((title !== undefined || dueDate !== undefined) && !isManager(req.user)) {
-      return res.status(403).json({ message: 'Only the SK Chairperson or the SK Admin can edit checklist items.' });
-    }
-    if (done !== undefined && !isWorker(req.user)) {
-      return res.status(403).json({ message: 'Only SK officials and the SK Admin can check off items.' });
-    }
-    const data = {};
-    if (title !== undefined) {
-      if (!String(title).trim()) return res.status(400).json({ message: 'Task title is required' });
-      data.title = String(title).trim().slice(0, 200);
-    }
-    if (dueDate !== undefined) data.dueDate = dueDate ? new Date(dueDate) : null;
-    if (done !== undefined) {
-      data.done = Boolean(done);
-      // "Done by Juan Dela Cruz, Nov 10, 2026": who checked it and when.
-      if (data.done && !existing.done) {
-        data.completedAt = new Date();
-        data.completedById = req.user.id;
-        data.completedByName = req.user.name;
-      } else if (!data.done) {
-        data.completedAt = null;
-        data.completedById = null;
-        data.completedByName = null;
-      }
-    }
-
-    const task = await prisma.projectTask.update({
-      where: { id: req.params.taskId },
-      data,
+    if (!expense.receiptFile) return res.status(400).json({ message: 'This expense has no proof file' });
+    const updated = await prisma.expense.update({
+      where: { id: expense.id },
+      data: { receiptFile: null, receiptName: null, receiptType: null },
     });
-    res.json({ task });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// DELETE /api/projects/:id/tasks/:taskId — admin.
-async function deleteTask(req, res, next) {
-  try {
-    const existing = await prisma.projectTask.findUnique({
-      where: { id: req.params.taskId },
-    });
-    if (!existing || existing.projectId !== req.params.id) {
-      return res.status(404).json({ message: 'Task not found' });
-    }
-    if (await isArchivedProject(existing.projectId)) {
-      return res.status(400).json({ message: ARCHIVED_MESSAGE });
-    }
-    await prisma.projectTask.delete({ where: { id: req.params.taskId } });
-    res.json({ message: 'Task deleted' });
+    removeReceiptFile(expense.receiptFile);
+    const { receiptFile, ...rest } = updated;
+    res.json({ expense: rest, message: 'The proof file was removed. Upload the correct one.' });
   } catch (err) {
     next(err);
   }
@@ -848,9 +823,7 @@ module.exports = {
   attachReceipt,
   getReceipt,
   deleteExpense,
-  addTask,
-  updateTask,
-  deleteTask,
+  removeReceipt,
   computeProgress,
   effectiveStatus,
 };

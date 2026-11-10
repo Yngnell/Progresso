@@ -37,6 +37,8 @@ async function getStats(req, res, next) {
           budget: true,
           status: true,
           startDate: true,
+          progressType: true,
+          events: { select: { startAt: true } },
           approvalState: true,
           expenses: { select: { amount: true, date: true } },
         },

@@ -18,12 +18,10 @@ const {
   attachReceipt,
   getReceipt,
   deleteExpense,
-  addTask,
-  updateTask,
-  deleteTask,
+  removeReceipt,
 } = require('../controllers/projectController');
 const { protect, optionalAuth, restrictTo } = require('../middleware/auth');
-const { requireManager, requireStaff, requireWorker } = require('../utils/roles');
+const { requireSkChair, requireWorker } = require('../utils/roles');
 const { receiptUpload, photoUpload } = require('../middleware/upload');
 const { addProjectPhotos } = require('../controllers/photoController');
 
@@ -54,7 +52,9 @@ router.put('/:id/review', protect, restrictTo('CHAIRMAN'), reviewProject);
 router.post('/:id/restore', protect, restrictTo('CHAIRMAN'), restoreProject);
 
 // Admin only
-router.post('/:id/complete', protect, restrictTo('ADMIN'), completeProject);
+// Only the SK Chairperson marks a project as complete (completeProject also checks that
+// every expense has its proof and that the expenses equal the budget).
+router.post('/:id/complete', protect, requireSkChair, completeProject);
 router.post('/:id/cancel', protect, restrictTo('ADMIN'), cancelProject);
 router.post('/', protect, restrictTo('ADMIN'), createProject);
 router.put('/:id', protect, restrictTo('ADMIN'), updateProject);
@@ -71,12 +71,9 @@ router.post(
   attachReceipt
 );
 router.delete('/:id/expenses/:expenseId', protect, restrictTo('ADMIN'), deleteExpense);
+// Remove a wrong proof file so the right one can be uploaded
+router.delete('/:id/expenses/:expenseId/receipt', protect, restrictTo('ADMIN'), removeReceipt);
 // Pictures shown on the project page: the officials and the admin add them
 router.post('/:id/photos', protect, requireWorker, photoUpload, addProjectPhotos);
-// Checklist: the SK Chairperson or the admin adds, edits and deletes items; the officials
-// and the admin check them off (updateTask decides per field).
-router.post('/:id/tasks', protect, requireManager, addTask);
-router.put('/:id/tasks/:taskId', protect, requireStaff, updateTask);
-router.delete('/:id/tasks/:taskId', protect, requireManager, deleteTask);
 
 module.exports = router;

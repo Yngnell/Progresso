@@ -84,12 +84,15 @@ model User {
   // Login history: lastLoginAt is this session; previousLoginAt is shown as "last login"
   lastLoginAt           DateTime?
   previousLoginAt       DateTime?
+  // The SK Admin account can act as an official (e.g. the SK Secretary): the header then
+  // shows that official's name and position. Not a link: the official keeps their own account.
+  actsAsOfficialId      String?
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   // Relations
-  news          News[]    // articles authored (admin)
+  news         News[]    // articles authored (admin)
   createdProjects  Project[] @relation("ProjectCreator")
   reviewedProjects Project[] @relation("ProjectReviewer")
 
@@ -126,7 +129,11 @@ model Project {
   category       String?
   status         ProjectStatus @default(PROPOSED)
   budget         Decimal       @default(0) @db.Decimal(12, 2)
-  progress       Int           @default(0) // legacy; progress is now computed from events + tasks
+  progress       Int           @default(0) // legacy; progress is now computed
+  // How progress is measured: DATETIME (elapsed share of the start-to-end time) or
+  // ATTENDEE (people who checked in at the linked events / targetAttendees)
+  progressType    String       @default("DATETIME")
+  targetAttendees Int?
   startDate      DateTime?
   endDate        DateTime?
   location       String?
@@ -153,7 +160,6 @@ model Project {
   officials      Official[]    // team
   expenses       Expense[]
   events         Event[]
-  tasks          ProjectTask[]
   requestItems   ProjectRequestItem[]
   notifications  Notification[]
   deletionRequests DeletionRequest[]
@@ -201,24 +207,6 @@ model DeletionRequest {
   @@index([projectId])
 }
 
-// A checklist item under a project; ticking it counts toward progress.
-model ProjectTask {
-  id           String    @id @default(uuid())
-  projectId    String
-  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  title        String
-  dueDate      DateTime?
-  done         Boolean   @default(false)
-  completedAt  DateTime?
-  // Who ticked it: "Done by Juan Dela Cruz, Nov 10, 2026"
-  completedById   String?
-  completedByName String?
-  displayOrder Int       @default(0)
-  createdAt    DateTime  @default(now())
-
-  @@index([projectId])
-}
-
 // A single expense line item under a project.
 model Expense {
   id        String   @id @default(uuid())
@@ -248,6 +236,8 @@ model Notification {
   title     String
   message   String
   readByIds String[] @default([])
+  // Who sees it: empty = the whole SK side; "SK_CHAIR" = only the SK Chairperson
+  audience  String?
   emailedAt DateTime? // set once the alert has been emailed to everyone who opted in
   viewerEmailedAt DateTime? // same, for the residents who ticked "email me updates"
   createdAt DateTime @default(now())

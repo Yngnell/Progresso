@@ -1,3 +1,4 @@
+import OfficialAvatar from '../components/OfficialAvatar';
 import { useQuery } from '@tanstack/react-query';
 import { officialsApi } from '../api/officials';
 import { Card, EmptyState } from '../components/ui';
@@ -30,9 +31,11 @@ export default function OfficialsPublic() {
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {officials.map((o) => (
               <Card key={o.id} className="flex flex-col items-center p-6 text-center">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-brand-100 font-display text-4xl font-bold text-brand-800 ring-[3px] ring-ink">
-                  {o.name?.charAt(0) || '?'}
-                </div>
+                <OfficialAvatar
+                  official={o}
+                  className="h-20 w-20 ring-[3px] ring-ink"
+                  letterClass="font-display text-4xl font-bold text-brand-800"
+                />
                 <h3 className="mt-4 text-lg font-bold text-slate-900">{o.name}</h3>
                 <p className="font-semibold text-brand-700">{o.position}</p>
                 {o.committee && <p className="mt-1 text-sm text-slate-600">{o.committee}</p>}

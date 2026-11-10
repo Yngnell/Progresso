@@ -3,7 +3,7 @@
 A web-based project development and monitoring system for the Sangguniang Kabataan of
 Barangay Salinas 1, Bacoor City, Cavite: project proposals with Barangay Chairman approval,
 automatic progress, receipt-backed expenses, calendar and attendance, notifications (in-app
-and Gmail), accomplishment reports, and a public transparency portal.
+and Gmail), accomplishment reports, and a public website for residents.
 
 ```
 client/   React 18 + Vite + Tailwind CSS (frontend)

@@ -22,14 +22,17 @@ const statusOptions = Object.entries(PROJECT_STATUS).map(([value, v]) => ({
 const blankForm = () => ({
   purpose: '', // first line = project name, the rest = description
   items: [{ ...emptyItem }],
+  // How progress is measured: DATETIME (start to end) or ATTENDEE (target attendees)
+  progressType: 'DATETIME',
   startDate: '',
   endDate: '',
+  targetAttendees: '',
 });
 
 export default function AdminProjects() {
   const { user } = useAuth();
   // Only the SK Admin creates and edits projects; the chairman and the officials view them.
-const readOnly = user?.role !== 'ADMIN';
+  const readOnly = user?.role !== 'ADMIN';
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -87,8 +90,10 @@ const readOnly = user?.role !== 'ADMIN';
       // Name on the first line and the description below it, so saving keeps both.
       purpose: project.description ? `${project.title}\n${project.description}` : project.title || '',
       items: rows.length > 0 ? rows : [{ ...emptyItem }],
+      progressType: project.progressType || 'DATETIME',
       startDate: toDateTimeLocal(project.startDate),
       endDate: toDateTimeLocal(project.endDate),
+      targetAttendees: project.targetAttendees ? String(project.targetAttendees) : '',
     });
     setError('');
     setModalOpen(true);
@@ -130,7 +135,14 @@ const readOnly = user?.role !== 'ADMIN';
   function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    if (new Date(form.endDate) <= new Date(form.startDate)) {
+    const attendeeBased = form.progressType === 'ATTENDEE';
+    if (attendeeBased) {
+      const n = Number(form.targetAttendees);
+      if (!Number.isInteger(n) || n < 1) {
+        setError('Enter the target number of attendees (1 or more).');
+        return;
+      }
+    } else if (new Date(form.endDate) <= new Date(form.startDate)) {
       setError('The end date and time must be after the start.');
       return;
     }
@@ -152,8 +164,11 @@ const readOnly = user?.role !== 'ADMIN';
     saveMutation.mutate({
       title,
       description: rest.join('\n').trim(),
-      startDate: new Date(form.startDate).toISOString(),
-      endDate: new Date(form.endDate).toISOString(),
+      progressType: form.progressType,
+      // Each type sends only its own fields; the server clears the other type's fields.
+      ...(attendeeBased
+        ? { targetAttendees: Number(form.targetAttendees) }
+        : { startDate: new Date(form.startDate).toISOString(), endDate: new Date(form.endDate).toISOString() }),
       requestItems: form.items,
       proposedByName: treasurer ? treasurer.name : '',
       proposedByPosition: treasurer ? treasurer.position : '',

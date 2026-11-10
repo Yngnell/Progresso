@@ -54,22 +54,37 @@ export function ProgressBar({ value = 0, breakdown, className = '', showValue = 
   );
 }
 
-// "3 of 4 checklist items done · expected 55%" style summary.
-// Progress comes from the checklist; without items, from sessions (linked events) or,
-// without any, the timeline.
+// "45 of 100 attendees checked in" or "Based on the start and end date · expected 55%".
+// Progress follows the project type: attendees for Attendee Based projects, the time
+// passed for Date and Time Based ones.
 export function progressSummary(breakdown) {
   if (!breakdown) return '';
   const parts = [];
-  if (breakdown.source === 'checklist') {
-    parts.push(`${breakdown.tasksDone} of ${breakdown.tasksTotal} checklist items done`);
-  } else if (breakdown.eventsTotal > 0) {
-    parts.push(`${breakdown.eventsDone}/${breakdown.eventsTotal} sessions held`);
-  }
-  if (breakdown.source === 'timeline') parts.push('based on start and end dates');
-  if (breakdown.expected != null && breakdown.schedule && breakdown.schedule !== 'COMPLETED') {
-    parts.push(`expected by now ${breakdown.expected}%`);
+  if (breakdown.type === 'ATTENDEE') {
+    parts.push(`${breakdown.attendees || 0} of ${breakdown.targetAttendees || 0} attendees checked in`);
+  } else {
+    parts.push('Based on the start and end date and time');
+    if (breakdown.expected != null && breakdown.schedule && breakdown.schedule !== 'COMPLETED') {
+      parts.push(`expected by now ${breakdown.expected}%`);
+    }
   }
   return parts.join(' · ');
+}
+
+// "Overspending" / "Underspending" tag from the server's spendingTag.
+export function SpendingTag({ tag, className = '' }) {
+  if (!tag) return null;
+  const over = tag === 'OVERSPENDING';
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[13px] font-semibold ${
+        over ? 'bg-red-100 text-red-800' : 'bg-accent-100 text-accent-800'
+      } ${className}`}
+      title={over ? 'The total expenses are over the budget' : 'The total expenses are below the budget'}
+    >
+      {over ? 'Overspending' : 'Underspending'}
+    </span>
+  );
 }
 
 // Sum of a project's expense amounts.
@@ -132,9 +147,10 @@ export function ProjectCard({ project, footer, to, notice }) {
             breakdown={project.progressBreakdown}
             showValue={false}
           />
-          {project.progressBreakdown?.source === 'checklist' && (
+          {project.progressBreakdown?.type === 'ATTENDEE' && (
             <p className="mt-1.5 text-sm font-medium text-slate-700">
-              {project.progressBreakdown.tasksDone} of {project.progressBreakdown.tasksTotal} checklist items done
+              {project.progressBreakdown.attendees || 0} of {project.progressBreakdown.targetAttendees || 0} attendees
+              checked in
             </p>
           )}
         </div>
@@ -167,7 +183,9 @@ export function ProjectCard({ project, footer, to, notice }) {
           </dd>
         </div>
         <div>
-          <dt className="text-sm text-slate-600">Spent</dt>
+          <dt className="flex flex-wrap items-center gap-1.5 text-sm text-slate-600">
+            Spent <SpendingTag tag={project.spendingTag} />
+          </dt>
           <dd className="font-display text-xl font-bold text-slate-900">{formatPeso(spent)}</dd>
         </div>
       </dl>

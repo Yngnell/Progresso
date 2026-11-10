@@ -8,10 +8,16 @@ async function getOfficials(req, res, next) {
     if (active === 'true') where.isActive = true;
     else if (active === 'false') where.isActive = false;
 
-    const officials = await prisma.official.findMany({
+    const rows = await prisma.official.findMany({
       where,
       orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
+      include: { account: { select: { id: true, photoUrl: true, updatedAt: true } } },
     });
+    // The profile picture an official uploaded in Settings (served by /api/auth/avatar/:id).
+    const officials = rows.map(({ account, ...o }) => ({
+      ...o,
+      accountPhoto: account && account.photoUrl ? { userId: account.id, version: new Date(account.updatedAt).getTime() } : null,
+    }));
     res.json({ officials });
   } catch (err) {
     next(err);

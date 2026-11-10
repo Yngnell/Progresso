@@ -196,7 +196,7 @@ function projectRows(p) {
     ['Category', p.category || '-'],
     ['Status', PROJECT_STATUS_LABEL[p.status] || p.status],
     ['Progress', `${p.progress}%`],
-    ['Checklist', p.tasksTotal ? `${p.tasksDone} of ${p.tasksTotal} items done` : 'No checklist items'],
+    ['Project type', p.progressType === 'ATTENDEE' ? `Attendee Based (${p.attendees || 0} of ${p.targetAttendees || 0} attendees)` : 'Date and Time Based'],
     ['Timeline', timeline],
     ['Location', p.location || '-'],
     ['Budget', peso(p.budget)],

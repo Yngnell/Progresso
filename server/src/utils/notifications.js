@@ -43,6 +43,19 @@ function evaluateProject(project, now = new Date()) {
     });
   }
 
+  // At 99% the project is waiting for the SK Chairperson to mark it as complete.
+  // Only the SK Chairperson gets this one; the unique (project, type) key sends it once.
+  if (project.progress >= 99) {
+    alerts.push({
+      type: 'READY_TO_COMPLETE',
+      audience: 'SK_CHAIR',
+      title: `Ready to mark as complete: ${project.title}`,
+      message:
+        `${project.title} has reached 99% progress. Check that every expense has its proof ` +
+        'and that the expenses match the budget, then mark the project as complete.',
+    });
+  }
+
   if (project.endDate) {
     const left = new Date(project.endDate).getTime() - now.getTime();
     if (left <= 0) {
@@ -110,7 +123,7 @@ async function syncNotifications({ force = false } = {}) {
       approvalState: 'APPROVED',
       status: { in: ['PLANNING', 'ONGOING'] },
     },
-    include: { events: { select: { startAt: true, endAt: true } }, tasks: true },
+    include: { events: { select: { id: true, startAt: true, endAt: true, _count: { select: { attendance: { where: { status: { in: ['PRESENT', 'LATE'] } } } } } } } },
   });
 
   const rows = [];
@@ -197,9 +210,11 @@ async function sendPendingEmails() {
   if (emailing || !isMailConfigured()) return 0;
   emailing = true;
   try {
+    await emailSkChairAlerts();
     const pending = await prisma.notification.findMany({
       where: {
         emailedAt: null,
+        audience: null,
         createdAt: { gt: new Date(Date.now() - EMAIL_WINDOW_MS) },
       },
       orderBy: { createdAt: 'asc' },
@@ -230,6 +245,28 @@ async function sendPendingEmails() {
   } finally {
     emailing = false;
   }
+}
+
+// Alerts meant only for the SK Chairperson ("ready to mark as complete") go to their
+// verified alert email, or else their login email.
+async function emailSkChairAlerts() {
+  const pending = await prisma.notification.findMany({
+    where: { emailedAt: null, audience: 'SK_CHAIR', createdAt: { gt: new Date(Date.now() - EMAIL_WINDOW_MS) } },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (pending.length === 0) return;
+  const chairs = await prisma.user.findMany({
+    where: { isActive: true, official: { position: { equals: 'SK Chairperson', mode: 'insensitive' } } },
+    select: { email: true, notifyEmail: true, notifyEmailVerifiedAt: true },
+  });
+  const addresses = [...new Set(chairs.map((u) => (u.notifyEmail && u.notifyEmailVerifiedAt ? u.notifyEmail : u.email)).filter(Boolean))];
+  if (addresses.length === 0) return;
+  const { subject, text, html } = buildDigest(pending);
+  for (const to of addresses) await sendMail({ to, subject, text, html });
+  await prisma.notification.updateMany({
+    where: { id: { in: pending.map((n) => n.id) } },
+    data: { emailedAt: new Date() },
+  });
 }
 
 module.exports = { evaluateProject, evaluateEvent, syncNotifications, buildDigest, sendPendingEmails };

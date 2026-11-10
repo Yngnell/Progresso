@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ImageUp, Plus, RotateCcw, UserX, UserCheck } from 'lucide-react';
 import { settingsApi } from '../../api/settings';
+import { officialsApi } from '../../api/officials';
 import { Badge, Button, Input, Modal } from '../ui';
 import PasswordInput from '../PasswordInput';
 import PasswordChecklist, { passwordOk } from '../PasswordChecklist';
 import { formatDateTime } from '../../utils/format';
+import { useAuth } from '../../context/AuthContext';
 import { Notice, Section, checkImage, errorText } from './shared';
 
 // Settings → System (SK Chairperson only): SK information and logo (printed on the PDF
@@ -18,6 +20,7 @@ export default function SystemTab({ user }) {
     <div className="space-y-6">
       <SkInfoSection settings={settings} />
       <UsersSection me={user} />
+      <AdminOfficialSection />
       <AttendanceSection settings={settings} />
     </div>
   );
@@ -247,6 +250,58 @@ function UsersSection({ me }) {
   );
 }
 
+// The SK Admin account is shared, so it has no official of its own. Choosing an official
+// here makes the header show that official's name and position when the admin is logged in.
+function AdminOfficialSection() {
+  const qc = useQueryClient();
+  const { refreshUser, user } = useAuth();
+  const { data } = useQuery({ queryKey: ['settings', 'accounts'], queryFn: settingsApi.accounts });
+  const { data: officialsData } = useQuery({ queryKey: ['officials', 'all'], queryFn: () => officialsApi.list() });
+  const officials = officialsData?.officials || [];
+  const admins = data?.admins || [];
+  const [msg, setMsg] = useState(null);
+
+  const save = useMutation({
+    mutationFn: ({ id, officialId }) => settingsApi.setAdminOfficial(id, officialId),
+    onSuccess: async (_res, vars) => {
+      qc.invalidateQueries({ queryKey: ['settings', 'accounts'] });
+      if (vars.id === user?.id) await refreshUser();
+      setMsg({ ok: true, text: 'Saved. The header shows the new name and position when the SK Admin logs in.' });
+    },
+    onError: (err) => setMsg({ ok: false, text: errorText(err, 'The change could not be saved.') }),
+  });
+
+  if (!admins.length) return null;
+  return (
+    <Section
+      title="SK Admin account"
+      description="Choose the official who uses the SK Admin account. Their name and position are shown in the header instead of “SK Admin”."
+    >
+      {msg && <div className="mb-4"><Notice ok={msg.ok}>{msg.text}</Notice></div>}
+      <div className="space-y-4">
+        {admins.map((a) => (
+          <label key={a.id} className="block max-w-md">
+            <span className="mb-1 block text-sm font-semibold text-slate-700">{a.email}</span>
+            <select
+              className="input"
+              value={a.actsAsOfficialId || ''}
+              disabled={save.isPending}
+              onChange={(e) => save.mutate({ id: a.id, officialId: e.target.value || null })}
+            >
+              <option value="">No official (show “SK Admin”)</option>
+              {officials.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name} — {o.position}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
 function PositionField({ value, onChange }) {
   return (
     <div>
@@ -289,7 +344,7 @@ function PositionModal({ account, busy, onClose, onSave }) {
       <p className="mb-4 text-slate-700">{account?.name}</p>
       <PositionField value={position} onChange={setPosition} />
       <p className="mt-2 text-sm text-slate-600">
-        The account with the position "SK Chairperson" manages checklists, the attendance QR and these settings.
+        The account with the position "SK Chairperson" marks projects as complete and manages the attendance QR and these settings.
       </p>
     </Modal>
   );
