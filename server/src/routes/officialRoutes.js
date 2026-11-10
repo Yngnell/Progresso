@@ -7,15 +7,15 @@ const {
   createOfficial,
   updateOfficial,
 } = require('../controllers/officialController');
-const { protect, restrictTo } = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 const { requireSkAdmin } = require('../utils/roles');
 
 // Public
 router.get('/', getOfficials);
 router.get('/:id', getOfficial);
 
-// Adding: the SK Admin and the officials. Editing: the SK Admin account only.
-router.post('/', protect, restrictTo('ADMIN'), createOfficial);
+// Adding and editing: the SK Admin account only.
+router.post('/', protect, requireSkAdmin, createOfficial);
 router.put('/:id', protect, requireSkAdmin, updateOfficial);
 
 module.exports = router;

@@ -29,7 +29,7 @@ const emptyForm = {
 export default function AdminOfficials() {
   const qc = useQueryClient();
   const { user } = useAuth();
-  // Only the SK Admin account edits an official.
+  // Only the SK Admin account adds or edits an official.
   const canEdit = user?.role === 'ADMIN';
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -100,12 +100,14 @@ export default function AdminOfficials() {
     <div>
       <PageHeader
         title="Officials Directory"
-        description="Manage the SK and barangay officials shown on the public site."
+        description={canEdit ? 'Manage the SK and barangay officials shown on the public site.' : 'The SK and barangay officials shown on the public site.'}
         actions={
-          <Button variant="accent" onClick={openCreate}>
-            <Plus size={18} strokeWidth={2} aria-hidden="true" />
-            Add Official
-          </Button>
+          canEdit && (
+            <Button variant="accent" onClick={openCreate}>
+              <Plus size={18} strokeWidth={2} aria-hidden="true" />
+              Add Official
+            </Button>
+          )
         }
       />
 
@@ -115,12 +117,14 @@ export default function AdminOfficials() {
         ) : officials.length === 0 ? (
           <EmptyState
             title="No officials yet"
-            description="Add your first official to populate the public directory."
+            description={canEdit ? 'Add your first official to populate the public directory.' : 'The SK Admin adds the officials.'}
             action={
-              <Button variant="accent" onClick={openCreate}>
-                <Plus size={18} strokeWidth={2} aria-hidden="true" />
-                Add Official
-              </Button>
+              canEdit && (
+                <Button variant="accent" onClick={openCreate}>
+                  <Plus size={18} strokeWidth={2} aria-hidden="true" />
+                  Add Official
+                </Button>
+              )
             }
           />
         ) : (
