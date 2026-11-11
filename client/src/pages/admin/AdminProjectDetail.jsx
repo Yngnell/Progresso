@@ -10,7 +10,8 @@ import { Button, Card } from '../../components/ui';
 import PhotoGallery from '../../components/PhotoGallery';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
 import ProjectReviewPanel from '../../components/ProjectReviewPanel';
-import { formatPeso, formatDate, formatDateTime } from '../../utils/format';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import { formatPeso, formatDate, formatDateTime, toDateTimeLocal } from '../../utils/format';
 import { isAdmin, isManager, isWorker } from '../../utils/roles';
 
 const cardTitle = 'font-display text-2xl font-bold uppercase tracking-wide text-slate-900';
@@ -408,6 +409,8 @@ function ScheduleForm({ project, onDone, onFail }) {
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [problem, setProblem] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const nowLocal = toDateTimeLocal(new Date());
   const save = useMutation({
     mutationFn: () =>
       projectsApi.setSchedule(project.id, {
@@ -415,14 +418,19 @@ function ScheduleForm({ project, onDone, onFail }) {
         endDate: new Date(end).toISOString(),
       }),
     onSuccess: onDone,
-    onError: onFail('Could not save the schedule'),
+    onError: (err) => {
+      setConfirming(false);
+      onFail('Could not save the schedule')(err);
+    },
   });
+  // Checks the dates, then asks for confirmation before saving.
   function submit(e) {
     e.preventDefault();
     if (!start || !end) return setProblem('Enter the start and the end date and time.');
+    if (new Date(start) < new Date(Date.now() - 60 * 1000)) return setProblem('The start date and time cannot be in the past.');
     if (new Date(end) <= new Date(start)) return setProblem('The end date and time must be later than the start.');
     setProblem('');
-    save.mutate();
+    setConfirming(true);
   }
   return (
     <Card className="mt-4 p-5">
@@ -431,7 +439,14 @@ function ScheduleForm({ project, onDone, onFail }) {
       <form className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" onSubmit={submit}>
         <label>
           <span className="label">Start date and time *</span>
-          <input type="datetime-local" className="input" value={start} onChange={(e) => setStart(e.target.value)} required />
+          <input
+            type="datetime-local"
+            className="input"
+            value={start}
+            min={nowLocal}
+            onChange={(e) => setStart(e.target.value)}
+            required
+          />
         </label>
         <label>
           <span className="label">End date and time *</span>
@@ -439,7 +454,7 @@ function ScheduleForm({ project, onDone, onFail }) {
             type="datetime-local"
             className="input"
             value={end}
-            min={start || undefined}
+            min={start || nowLocal}
             onChange={(e) => setEnd(e.target.value)}
             required
           />
@@ -449,12 +464,21 @@ function ScheduleForm({ project, onDone, onFail }) {
         </Button>
       </form>
       {problem && <p className="mt-2 text-sm font-medium text-red-600" role="alert">{problem}</p>}
+      <ConfirmDialog
+        open={confirming}
+        message="Save this schedule and move the project to Ongoing?"
+        confirmLabel="Save"
+        busy={save.isPending}
+        onConfirm={() => save.mutate()}
+        onCancel={() => setConfirming(false)}
+      />
     </Card>
   );
 }
 
 // Ongoing: "Project Completed" once the liquidation is uploaded and the checklist is done.
 function CompletePanel({ project, isSkAdmin, onDone, onFail }) {
+  const [confirm, setConfirm] = useState(null); // 'complete' | 'hold'
   const complete = useMutation({
     mutationFn: () => projectsApi.complete(project.id),
     onSuccess: onDone,
@@ -479,11 +503,7 @@ function CompletePanel({ project, isSkAdmin, onDone, onFail }) {
           <Button
             variant="secondary"
             disabled={hold.isPending}
-            onClick={() => {
-              if (window.confirm(`Put "${project.title}" on hold? Liquidation uploads, the checklist and Project Completed are paused until you resume it.`)) {
-                hold.mutate();
-              }
-            }}
+            onClick={() => setConfirm('hold')}
           >
             <Pause size={18} strokeWidth={1.75} aria-hidden="true" />
             Hold
@@ -491,11 +511,7 @@ function CompletePanel({ project, isSkAdmin, onDone, onFail }) {
           <Button
             variant="primary"
             disabled={!project.canComplete || complete.isPending}
-            onClick={() => {
-              if (window.confirm(`Mark "${project.title}" as completed? It moves to Archives under Completed.`)) {
-                complete.mutate();
-              }
-            }}
+            onClick={() => setConfirm('complete')}
           >
             <CircleCheck size={18} strokeWidth={1.75} aria-hidden="true" />
             Project Completed
@@ -513,6 +529,21 @@ function CompletePanel({ project, isSkAdmin, onDone, onFail }) {
           </ul>
         </div>
       )}
+      <ConfirmDialog
+        open={confirm !== null}
+        message={
+          confirm === 'complete'
+            ? 'Mark this project as completed? It will move to Archives.'
+            : 'Put this project on hold?'
+        }
+        busy={complete.isPending || hold.isPending}
+        onConfirm={() => {
+          const action = confirm === 'complete' ? complete : hold;
+          setConfirm(null);
+          action.mutate();
+        }}
+        onCancel={() => setConfirm(null)}
+      />
     </Card>
   );
 }

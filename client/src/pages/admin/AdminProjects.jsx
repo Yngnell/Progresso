@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '../../api/projects';
 import { officialsApi } from '../../api/officials';
 import { useAuth } from '../../context/AuthContext';
-import { isAdmin } from '../../utils/roles';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import OverflowMenu from '../../components/OverflowMenu';
 import { Button, Modal, EmptyState } from '../../components/ui';
@@ -13,13 +12,14 @@ import { ProjectCard } from '../../components/ProjectCard';
 
 import PageHeader from '../../components/PageHeader';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
-import ProjectProposalForm, { emptyItem } from '../../components/ProjectProposalForm';
+import ProjectProposalForm, { emptyItem, prDateOk } from '../../components/ProjectProposalForm';
+import ChairmanProjects from './ChairmanProjects';
 
-// Active stages only: Completed and Cancelled projects are in Archives. The Barangay
-// Chairman's Projects module is view only and leaves out Proposed (that is Approvals).
-const stageOptions = (stages) => stages.map((value) => ({ value, label: PROJECT_STATUS[value].label }));
-const ADMIN_STAGES = stageOptions(['PROPOSED', 'PLANNING', 'ONGOING', 'ON_HOLD']);
-const CHAIRMAN_STAGES = stageOptions(['PLANNING', 'ONGOING', 'ON_HOLD']);
+// Active stages only: Completed and Cancelled projects are in Archives.
+const statusOptions = ['PROPOSED', 'PLANNING', 'ONGOING', 'ON_HOLD'].map((value) => ({
+  value,
+  label: PROJECT_STATUS[value].label,
+}));
 
 // A fresh form: one empty purchase request row, to which the + button adds more.
 const blankForm = () => ({
@@ -27,12 +27,14 @@ const blankForm = () => ({
   items: [{ ...emptyItem }],
 });
 
+// Projects: the Barangay Chairman gets the simple view-only list; the SK Admin manages them.
 export default function AdminProjects() {
   const { user } = useAuth();
-  // Only the SK Admin creates and edits projects; the chairman and the officials view them.
-  const readOnly = !isAdmin(user);
-  const isChairman = user?.role === 'CHAIRMAN';
-  const statusOptions = isChairman ? CHAIRMAN_STAGES : ADMIN_STAGES;
+  return user?.role === 'CHAIRMAN' ? <ChairmanProjects /> : <ProjectManagement />;
+}
+
+// The SK Admin's Project Management (Project Request, edit, deletion requests).
+function ProjectManagement() {
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -54,7 +56,7 @@ export default function AdminProjects() {
     queryFn: () => officialsApi.list({ active: 'true' }),
   });
   const officials = officialsData?.officials || [];
-  const allProjects = (data?.projects || []).filter((p) => statusOptions.some((o) => o.value === p.status));
+  const allProjects = data?.projects || [];
   const projects = filter
     ? allProjects.filter((p) => p.status === filter)
     : allProjects;
@@ -87,6 +89,8 @@ export default function AdminProjects() {
     const rows = (project.requestItems || []).map((r) => ({
       prNo: r.prNo || '',
       prDate: r.prDate ? toDateTimeLocal(r.prDate).slice(0, 10) : '',
+      // The saved date stays allowed even if it is now in the past.
+      savedDate: r.prDate ? toDateTimeLocal(r.prDate).slice(0, 10) : '',
       requestedBy: r.requestedBy || '',
       amount: r.amount != null ? String(r.amount) : '',
     }));
@@ -142,6 +146,10 @@ export default function AdminProjects() {
       setError('Please write the purpose of the request.');
       return;
     }
+    if (!form.items.every((item) => prDateOk(item))) {
+      setError('The date of PR cannot be in the past.');
+      return;
+    }
 
     // "Prepared by" is the SK Treasurer printed on the sheet.
     const treasurer = officials.find((o) => /treasurer/i.test(o.position || ''));
@@ -160,19 +168,13 @@ export default function AdminProjects() {
   return (
     <div>
       <PageHeader
-        title={isChairman ? 'Projects' : 'Project Management'}
-        description={
-          isChairman
-            ? 'View the approved SK projects: their stage, schedule, liquidation files and checklist progress.'
-            : 'Track SK projects, progress, and expenses through liquidation reports.'
-        }
+        title="Project Management"
+        description="Track SK projects, progress, and expenses through liquidation reports."
         actions={
-          !readOnly && (
-            <Button variant="accent" onClick={openCreate}>
-              <Plus size={18} strokeWidth={2} aria-hidden="true" />
-              Project Request
-            </Button>
-          )
+          <Button variant="accent" onClick={openCreate}>
+            <Plus size={18} strokeWidth={2} aria-hidden="true" />
+            Project Request
+          </Button>
         }
       />
 
@@ -208,18 +210,12 @@ export default function AdminProjects() {
         ) : projects.length === 0 ? (
           <EmptyState
             title="No projects yet"
-            description={
-              readOnly
-                ? 'Projects appear here once a Project Request is approved.'
-                : 'Send a Project Request to start a project.'
-            }
+            description="Send a Project Request to start a project."
             action={
-              readOnly ? undefined : (
-                <Button variant="accent" onClick={openCreate}>
-                  <Plus size={18} strokeWidth={2} aria-hidden="true" />
-                  Project Request
-                </Button>
-              )
+              <Button variant="accent" onClick={openCreate}>
+                <Plus size={18} strokeWidth={2} aria-hidden="true" />
+                Project Request
+              </Button>
             }
           />
         ) : (
@@ -246,27 +242,23 @@ export default function AdminProjects() {
                   notice={waiting}
                   footer={
                     <div className="flex flex-wrap items-center gap-2">
-                      {!readOnly && (
-                        <Button size="sm" variant="secondary" onClick={() => openEdit(p)}>
-                          <Pencil size={16} strokeWidth={1.75} aria-hidden="true" />
-                          Edit
-                        </Button>
-                      )}
+                      <Button size="sm" variant="secondary" onClick={() => openEdit(p)}>
+                        <Pencil size={16} strokeWidth={1.75} aria-hidden="true" />
+                        Edit
+                      </Button>
                       {/* Delete is a quiet menu item, not a red button on every card */}
-                      {!readOnly && (
-                        <OverflowMenu
-                          className="ml-auto"
-                          items={[
-                            {
-                              label: deletionPending ? 'Deletion pending' : 'Request deletion',
-                              Icon: Trash2,
-                              danger: true,
-                              disabled: deletionPending,
-                              onClick: () => setDeleteTarget(p),
-                            },
-                          ]}
-                        />
-                      )}
+                      <OverflowMenu
+                        className="ml-auto"
+                        items={[
+                          {
+                            label: deletionPending ? 'Deletion pending' : 'Request deletion',
+                            Icon: Trash2,
+                            danger: true,
+                            disabled: deletionPending,
+                            onClick: () => setDeleteTarget(p),
+                          },
+                        ]}
+                      />
                     </div>
                   }
                 />

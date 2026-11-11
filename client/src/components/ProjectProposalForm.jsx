@@ -32,6 +32,16 @@ function prNumber(item, index) {
 
 export const emptyItem = { prNo: '', prDate: '', requestedBy: '', amount: '' };
 
+// Today as YYYY-MM-DD (local time): the earliest date of PR that can be picked.
+export function todayLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// A row's date is fine when it is today or later, or it is the date already saved on it.
+export const prDateOk = (item, today = todayLocal()) =>
+  !item.prDate || item.prDate >= today || item.prDate === item.savedDate;
+
 function peso(n) {
   return Number(n || 0).toLocaleString('en-PH', {
     minimumFractionDigits: 2,
@@ -91,6 +101,7 @@ export default function ProjectProposalForm({
   }, [form.items]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const total = form.items.reduce((sum, i) => sum + Number(i.amount || 0), 0);
+  const today = todayLocal();
 
   return (
     <div className="pb-6">
@@ -142,6 +153,9 @@ export default function ProjectProposalForm({
                     className={cellInput}
                     type="date"
                     value={item.prDate}
+                    // Past dates are disabled (a date already saved on the row is kept).
+                    min={item.prDate && item.prDate === item.savedDate && item.prDate < today ? undefined : today}
+                    aria-label={`Date of PR, row ${i + 1}`}
                     onChange={(e) => updateItem(i, 'prDate', e.target.value)}
                   />
                 </td>

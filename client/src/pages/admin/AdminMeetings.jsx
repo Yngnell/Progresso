@@ -12,6 +12,7 @@ import { AttendanceQrButton } from '../../components/AttendanceQr';
 import AttendanceSettings from '../../components/AttendanceSettings';
 import MonthCalendar, { MONTHS } from '../../components/MonthCalendar';
 import { Button, Card, Modal, Input } from '../../components/ui';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { formatDateTime, toDateTimeLocal } from '../../utils/format';
 
 // Every event is a Meeting (the server names it "Meeting").
@@ -38,6 +39,7 @@ export default function AdminMeetings() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
+  const [confirmSave, setConfirmSave] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['events', 'admin'],
@@ -56,10 +58,13 @@ export default function AdminMeetings() {
       editing ? eventsApi.update(editing.id, payload) : eventsApi.create(payload),
     onSuccess: () => {
       invalidate();
+      setConfirmSave(false);
       closeModal();
     },
-    onError: (err) =>
-      setError(err.response?.data?.message || 'Failed to save event'),
+    onError: (err) => {
+      setConfirmSave(false);
+      setError(err.response?.data?.message || 'Failed to save event');
+    },
   });
 
   const deleteMutation = useMutation({
@@ -116,6 +121,12 @@ export default function AdminMeetings() {
     if (form.endAt && new Date(form.endAt) <= new Date(form.startAt)) {
       return setError('The end date and time must be after the start.');
     }
+    // A new meeting is confirmed first ("Save this meeting?"); an edit saves at once.
+    if (editing) save();
+    else setConfirmSave(true);
+  }
+
+  function save() {
     // datetime-local has no time zone; convert it here so the server stores the
     // exact moment picked (in the browser's Philippine time), not the same clock time in UTC.
     const toIso = (v) => (v ? new Date(v).toISOString() : '');
@@ -302,6 +313,14 @@ export default function AdminMeetings() {
           />
         </form>
       </Modal>
+      <ConfirmDialog
+        open={confirmSave}
+        message="Save this meeting?"
+        confirmLabel="Save"
+        busy={saveMutation.isPending}
+        onConfirm={save}
+        onCancel={() => setConfirmSave(false)}
+      />
     </div>
   );
 }

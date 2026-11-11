@@ -16,7 +16,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { projectsApi } from '../api/projects';
 import NotificationBell from './NotificationBell';
-import { accessRole, roleLabel } from '../utils/roles';
+import ConfirmDialog from './ConfirmDialog';
+import { accessRole, isAdmin, roleLabel } from '../utils/roles';
 
 // `roles` limits a link to those roles; omit it to show the link to everyone
 // who can open the admin panel.
@@ -108,6 +109,7 @@ function Menu_({ links, counts, onNavigate }) {
 export default function AdminLayout() {
   const { user, logout } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const location = useLocation();
 
   // A new page closes the phone menu.
@@ -210,7 +212,8 @@ export default function AdminLayout() {
             </Link>
             <button
               type="button"
-              onClick={logout}
+              // The admin confirms first; the other accounts log out at once.
+              onClick={() => (isAdmin(user) ? setConfirmLogout(true) : logout())}
               className="inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
               aria-label="Log out"
             >
@@ -223,6 +226,17 @@ export default function AdminLayout() {
         <main id="main" className="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6 lg:p-8">
           <Outlet />
         </main>
+        <ConfirmDialog
+          open={confirmLogout}
+          title="Log out"
+          message="Are you sure you want to log out?"
+          confirmLabel="Log Out"
+          onConfirm={() => {
+            setConfirmLogout(false);
+            logout();
+          }}
+          onCancel={() => setConfirmLogout(false)}
+        />
       </div>
     </div>
   );

@@ -135,9 +135,14 @@ async function getProject(req, res, next) {
 // Turns the form's purchase request rows into rows ready to save. Blank rows are
 // dropped; amounts must be numbers that are not negative. Returns null when the
 // body sent no rows at all (so an update leaves the saved rows alone).
-function cleanRequestItems(raw) {
+// Today's date in the Philippines, as YYYY-MM-DD.
+const phToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+
+// keepDates: the PR dates the project already has (editing keeps them even if past).
+function cleanRequestItems(raw, keepDates = new Set()) {
   if (!Array.isArray(raw)) return null;
   const items = [];
+  const today = phToday();
   for (const row of raw) {
     const prNo = String(row?.prNo ?? '').trim();
     const requestedBy = String(row?.requestedBy ?? '').trim();
@@ -146,6 +151,13 @@ function cleanRequestItems(raw) {
     if (!prNo && !requestedBy && !amount && !prDate) continue;
     if (!Number.isFinite(amount) || amount < 0) {
       const err = new Error('Each amount must be a number that is not negative');
+      err.status = 400;
+      throw err;
+    }
+    // The date of a PR can be today or later, not in the past.
+    const day = row?.prDate ? String(row.prDate).slice(0, 10) : '';
+    if (day && day < today && !keepDates.has(day)) {
+      const err = new Error('The date of PR cannot be in the past');
       err.status = 400;
       throw err;
     }
@@ -162,7 +174,7 @@ function cleanRequestItems(raw) {
 
 // Normalize the Project Request form into Prisma-ready data + team ids. The status and
 // the schedule are not accepted here: they only change through the flow's own steps.
-function parseProjectBody(body) {
+function parseProjectBody(body, keepDates) {
   const { title, description, category, budget, location, coverImageUrl, officialIds, proposedByName, proposedByPosition } = body;
 
   const data = {};
@@ -177,7 +189,7 @@ function parseProjectBody(body) {
   if (proposedByPosition !== undefined) data.proposedByPosition = proposedByPosition || null;
 
   // The budget is the total of the purchase request amounts, when any are given.
-  const requestItems = cleanRequestItems(body.requestItems);
+  const requestItems = cleanRequestItems(body.requestItems, keepDates);
   if (requestItems) {
     const total = requestItems.reduce((sum, i) => sum + i.amount, 0);
     if (total > 0) data.budget = total;
@@ -242,7 +254,13 @@ async function updateProject(req, res, next) {
     const r = await loadOpen(req.params.id);
     if (r.error) return fail(res, r.error);
 
-    const { data, officialIds, requestItems } = parseProjectBody(req.body);
+    // PR dates already saved on the project stay valid when it is edited.
+    const saved = await prisma.projectRequestItem.findMany({
+      where: { projectId: req.params.id, prDate: { not: null } },
+      select: { prDate: true },
+    });
+    const keepDates = new Set(saved.map((i) => i.prDate.toISOString().slice(0, 10)));
+    const { data, officialIds, requestItems } = parseProjectBody(req.body, keepDates);
     if (requestItems) {
       // The sheet is saved as a whole: replace all rows with the ones sent.
       data.requestItems = { deleteMany: {}, create: requestItems };
@@ -301,6 +319,10 @@ async function setSchedule(req, res, next) {
     const end = req.body.endDate ? parsePhDate(req.body.endDate) : null;
     if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
       return res.status(400).json({ message: 'Enter the start and the end date and time' });
+    }
+    // The start can be now or later (a minute of leeway for the time it takes to send).
+    if (start.getTime() < Date.now() - 60 * 1000) {
+      return res.status(400).json({ message: 'The start date and time cannot be in the past' });
     }
     if (end <= start) {
       return res.status(400).json({ message: 'The end date and time must be later than the start' });
