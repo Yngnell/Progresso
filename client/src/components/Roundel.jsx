@@ -4,7 +4,7 @@ import { PROJECT_STATUS } from '../utils/format';
 // Project marks taken from the SK Salinas 1 seal:
 //   StatusRibbon: a project's status drawn as the seal's swallowtail banner.
 //   StageSteps:   where a project is in the flow
-//                 Proposed -> Planning -> Ongoing -> Completed.
+//                 Proposed -> Planning -> Ongoing -> Completed (On Hold pauses at Ongoing).
 // ---------------------------------------------------------------------------
 
 export const STAGES = ['PROPOSED', 'PLANNING', 'ONGOING', 'COMPLETED'];
@@ -15,6 +15,7 @@ const RIBBON_TONE = {
   ONGOING: 'bg-accent-500 text-ink',
   COMPLETED: 'bg-green-600 text-white',
   CANCELLED: 'bg-red-600 text-white',
+  ON_HOLD: 'bg-slate-400 text-ink',
 };
 
 // Swallowtail banner for a project's status, like the red ribbon on the seal.
@@ -33,13 +34,17 @@ export function StatusRibbon({ status, label, className = '' }) {
 }
 
 // The four stages as a row of steps: done (green), current (gold) and still to come.
-// A cancelled project stopped at Proposed. showLabels={false} gives the compact bar.
+// A cancelled project stopped at Proposed; an On Hold one is paused at Ongoing.
+// showLabels={false} gives the compact bar.
 export function StageSteps({ status, showLabels = true, className = '' }) {
   const cancelled = status === 'CANCELLED';
-  const current = cancelled ? 0 : Math.max(0, STAGES.indexOf(status));
+  const onHold = status === 'ON_HOLD';
+  const current = cancelled ? 0 : onHold ? STAGES.indexOf('ONGOING') : Math.max(0, STAGES.indexOf(status));
   const label = cancelled
     ? 'Cancelled at the Proposed stage'
-    : `Stage ${current + 1} of ${STAGES.length}: ${PROJECT_STATUS[status]?.label || status}`;
+    : onHold
+      ? 'On hold at the Ongoing stage'
+      : `Stage ${current + 1} of ${STAGES.length}: ${PROJECT_STATUS[status]?.label || status}`;
   return (
     <ol className={`flex w-full items-start ${className}`} aria-label={label}>
       {STAGES.map((s, i) => {
@@ -50,7 +55,9 @@ export function StageSteps({ status, showLabels = true, className = '' }) {
           : done
             ? 'bg-green-600 ring-green-600'
             : here
-              ? 'bg-accent-500 ring-ink'
+              ? onHold
+                ? 'bg-slate-400 ring-ink'
+                : 'bg-accent-500 ring-ink'
               : 'bg-white ring-slate-300';
         const line = !cancelled && i < current ? 'bg-green-600' : 'bg-slate-200';
         return (
@@ -65,7 +72,7 @@ export function StageSteps({ status, showLabels = true, className = '' }) {
                   here || (cancelled && i === 0) ? 'font-bold text-slate-900' : 'text-slate-500'
                 }`}
               >
-                {PROJECT_STATUS[s].label}
+                {onHold && here ? PROJECT_STATUS.ON_HOLD.label : PROJECT_STATUS[s].label}
               </span>
             )}
           </li>

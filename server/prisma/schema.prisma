@@ -25,6 +25,7 @@ enum ProjectStatus {
   ONGOING
   COMPLETED
   CANCELLED
+  ON_HOLD
 }
 
 enum EventType {
@@ -85,7 +86,6 @@ model User {
   previousLoginAt       DateTime?
   // The SK Admin account can act as an official (e.g. the SK Secretary): the header then
   // shows that official's name and position. Not a link: the official keeps their own account.
-  actsAsOfficialId      String?
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -151,6 +151,8 @@ model Project {
   cancelReason        String?
   // Archive: an approved deletion request moves the project here instead of erasing it.
   archivedAt          DateTime?
+  // An On Hold project moved to Archives (On Hold tab): view only.
+  holdArchivedAt      DateTime?
   archivedReason      String?
   archivedByName      String?
   // "Prepared by" on the project proposal form (snapshots of the official's name/position)

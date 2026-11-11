@@ -15,6 +15,9 @@ const {
   updateChecklistItem,
   deleteChecklistItem,
   completeProject,
+  holdProject,
+  resumeProject,
+  archiveHeldProject,
   requestDeletion,
   withdrawDeletion,
   listDeletionRequests,
@@ -51,6 +54,10 @@ router.post('/:id/checklist', protect, requireSkAdmin, addChecklistItem);
 router.put('/:id/checklist/:itemId', protect, requireSkAdmin, updateChecklistItem);
 router.delete('/:id/checklist/:itemId', protect, requireSkAdmin, deleteChecklistItem);
 router.post('/:id/complete', protect, requireSkAdmin, completeProject);
+// Ongoing -> On Hold -> Ongoing (Resume) or Archives: the SK Admin account only.
+router.post('/:id/hold', protect, requireSkAdmin, holdProject);
+router.post('/:id/resume', protect, requireSkAdmin, resumeProject);
+router.post('/:id/archive-hold', protect, requireSkAdmin, archiveHeldProject);
 
 // Viewing a liquidation file: the SK side (also from Archives, view only).
 router.get('/:id/liquidation/:fileId', protect, requireStaff, getLiquidationFile);

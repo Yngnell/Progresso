@@ -16,7 +16,7 @@ import DeletionRequestModal from '../../components/DeletionRequestModal';
 import ProjectProposalForm, { emptyItem } from '../../components/ProjectProposalForm';
 
 // Active stages only: Completed and Cancelled projects are in Archives.
-const statusOptions = ['PROPOSED', 'PLANNING', 'ONGOING'].map((value) => ({
+const statusOptions = ['PROPOSED', 'PLANNING', 'ONGOING', 'ON_HOLD'].map((value) => ({
   value,
   label: PROJECT_STATUS[value].label,
 }));
@@ -229,7 +229,9 @@ export default function AdminProjects() {
                     ? 'Waiting for the schedule'
                     : p.status === 'ONGOING' && !p.canComplete
                       ? 'Liquidation or checklist pending'
-                      : null;
+                      : p.status === 'ON_HOLD'
+                        ? 'On hold'
+                        : null;
               return (
                 <ProjectCard
                   key={p.id}

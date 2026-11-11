@@ -9,6 +9,7 @@ import PageHeader from '../../components/PageHeader';
 import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
 import { AttendanceQrButton } from '../../components/AttendanceQr';
+import AttendanceSettings from '../../components/AttendanceSettings';
 import MonthCalendar, { MONTHS } from '../../components/MonthCalendar';
 import { Button, Card, Modal, Input } from '../../components/ui';
 import { formatDateTime, toDateTimeLocal } from '../../utils/format';
@@ -251,6 +252,13 @@ export default function AdminMeetings() {
           </div>
         </Card>
       </div>
+
+      {/* Attendance settings: the defaults for new attendance QR codes (SK Admin) */}
+      {user?.role === 'ADMIN' && (
+        <div className="mt-6">
+          <AttendanceSettings />
+        </div>
+      )}
 
       <Modal
         open={modalOpen}

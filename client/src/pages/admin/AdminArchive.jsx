@@ -10,16 +10,18 @@ import { PROJECT_STATUS, formatPeso, formatDate } from '../../utils/format';
 const TABS = [
   { id: 'completed', label: 'Completed' },
   { id: 'cancelled', label: 'Cancelled' },
+  { id: 'onhold', label: 'On Hold' },
   { id: 'deleted', label: 'Deleted' },
 ];
 
 const EMPTY = {
   completed: ['No completed projects yet', 'A project appears here after the SK Admin marks it as completed.'],
   cancelled: ['No cancelled projects', 'A Project Request appears here when the Barangay Chairman rejects it.'],
+  onhold: ['No on hold projects', 'An On Hold project appears here after the SK Admin moves it to Archives.'],
   deleted: ['No deleted projects', 'A project appears here after the Barangay Chairman approves its deletion request.'],
 };
 
-// Archives: completed, cancelled and deleted projects. They are view only; nothing is
+// Archives: completed, cancelled, on hold and deleted projects. They are view only; nothing is
 // erased, and the Barangay Chairman can restore a deleted project.
 export default function AdminArchive() {
   const [params, setParams] = useSearchParams();
@@ -29,7 +31,7 @@ export default function AdminArchive() {
     <div>
       <PageHeader
         title="Archives"
-        description="Completed, cancelled and deleted projects. They are view only and their records are kept."
+        description="Completed, cancelled, on hold and deleted projects. They are view only and their records are kept."
       />
 
       <div className="mt-6 flex flex-wrap gap-2" role="tablist" aria-label="Archives">
@@ -59,7 +61,7 @@ export default function AdminArchive() {
   );
 }
 
-// Completed or Cancelled projects, opened read only.
+// Completed, Cancelled or archived On Hold projects, opened read only.
 function ClosedList({ tab }) {
   const { data, isLoading } = useQuery({
     queryKey: ['projects', 'archive', tab],

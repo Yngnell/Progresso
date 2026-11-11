@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '../../api/projects';
-import { ArrowLeft, CircleCheck, FileText, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
+import { Archive, ArrowLeft, CircleCheck, FileText, Pause, Pencil, Play, Plus, Trash2, Upload, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import OverflowMenu from '../../components/OverflowMenu';
 import { StageSteps, StatusRibbon } from '../../components/Roundel';
@@ -19,8 +19,9 @@ const errorText = (err, fallback) => err?.response?.data?.message || fallback;
 //   Proposed  -> the Barangay Chairman approves (Planning) or rejects (Cancelled)
 //   Planning  -> the SK Admin saves the schedule (Ongoing)
 //   Ongoing   -> the SK Admin uploads the receipt liquidation and keeps the optional
-//                checklist, then clicks "Project Completed" (Completed)
-// Completed and Cancelled projects live in Archives and are view only.
+//                checklist, then clicks "Project Completed" (Completed); or puts it on Hold
+//   On Hold   -> Resume (Ongoing) or Move to Archives (On Hold tab)
+// Completed, Cancelled and archived On Hold projects live in Archives and are view only.
 export default function AdminProjectDetail() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -69,9 +70,10 @@ export default function AdminProjectDetail() {
     );
 
   const deleted = Boolean(project.archivedAt);
-  const closed = project.status === 'COMPLETED' || project.status === 'CANCELLED';
-  // Completed, cancelled and deleted projects are view only.
+  const closed = project.status === 'COMPLETED' || project.status === 'CANCELLED' || Boolean(project.holdArchivedAt);
+  // Completed, cancelled, archived On Hold and deleted projects are view only.
   const viewOnly = deleted || closed;
+  const archiveTab = project.holdArchivedAt ? 'onhold' : project.status === 'COMPLETED' ? 'completed' : 'cancelled';
   const canUploadPictures = isWorker(user) && !viewOnly;
   const canDeletePicture = (p) => !viewOnly && (isManager(user) || (p.uploadedById && p.uploadedById === user?.id));
   // Most recent deletion request (server returns only the latest one).
@@ -79,7 +81,7 @@ export default function AdminProjectDetail() {
   const back = deleted
     ? { to: '/admin/archive?tab=deleted', label: 'Archives' }
     : closed
-      ? { to: `/admin/archive?tab=${project.status === 'COMPLETED' ? 'completed' : 'cancelled'}`, label: 'Archives' }
+      ? { to: `/admin/archive?tab=${archiveTab}`, label: 'Archives' }
       : { to: '/admin/projects', label: 'Projects' };
 
   return (
@@ -118,7 +120,7 @@ export default function AdminProjectDetail() {
       )}
       {!deleted && closed && (
         <p className="mt-3 rounded-lg bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
-          This project is in Archives under {project.status === 'COMPLETED' ? 'Completed' : 'Cancelled'}. It is view only.
+          This project is in Archives under {{ completed: 'Completed', cancelled: 'Cancelled', onhold: 'On Hold' }[archiveTab]}. It is view only.
         </p>
       )}
 
@@ -261,7 +263,7 @@ export default function AdminProjectDetail() {
           )}
 
           {/* Liquidation and checklist: from Ongoing on (view only once closed) */}
-          {(project.status === 'ONGOING' || project.status === 'COMPLETED' || (project.liquidationFiles || []).length > 0) && (
+          {(['ONGOING', 'ON_HOLD', 'COMPLETED'].includes(project.status) || (project.liquidationFiles || []).length > 0) && (
             <Liquidation
               project={project}
               canEdit={isSkAdmin && !viewOnly && project.status === 'ONGOING'}
@@ -269,7 +271,7 @@ export default function AdminProjectDetail() {
               onFail={onFail}
             />
           )}
-          {(project.status === 'ONGOING' || (project.checklistItems || []).length > 0) && (
+          {(project.status === 'ONGOING' || project.status === 'ON_HOLD' || (project.checklistItems || []).length > 0) && (
             <Checklist
               project={project}
               canEdit={isSkAdmin && !viewOnly && project.status === 'ONGOING'}
@@ -370,6 +372,15 @@ function StagePanel({ project, isChairman, isSkAdmin, onDone, onFail }) {
   }
   if (project.status === 'ONGOING') {
     return <CompletePanel project={project} isSkAdmin={isSkAdmin} onDone={onDone} onFail={onFail} />;
+  }
+  if (project.status === 'ON_HOLD') {
+    return project.holdArchivedAt ? (
+      <Notice tone="slate">
+        <span className="font-semibold">On Hold.</span> Moved to Archives on {formatDate(project.holdArchivedAt)}.
+      </Notice>
+    ) : (
+      <HoldPanel project={project} isSkAdmin={isSkAdmin} onDone={onDone} onFail={onFail} />
+    );
   }
   return (
     <Notice tone="green">
@@ -488,6 +499,11 @@ function CompletePanel({ project, isSkAdmin, onDone, onFail }) {
     onSuccess: onDone,
     onError: onFail('Could not mark the project as completed'),
   });
+  const hold = useMutation({
+    mutationFn: () => projectsApi.hold(project.id),
+    onSuccess: onDone,
+    onError: onFail('Could not put the project on hold'),
+  });
   return (
     <Card className="mt-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -498,6 +514,19 @@ function CompletePanel({ project, isSkAdmin, onDone, onFail }) {
           </p>
         </div>
         {isSkAdmin && (
+          <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            disabled={hold.isPending}
+            onClick={() => {
+              if (window.confirm(`Put "${project.title}" on hold? Liquidation uploads, the checklist and Project Completed are paused until you resume it.`)) {
+                hold.mutate();
+              }
+            }}
+          >
+            <Pause size={18} strokeWidth={1.75} aria-hidden="true" />
+            Hold
+          </Button>
           <Button
             variant="primary"
             disabled={!project.canComplete || complete.isPending}
@@ -510,6 +539,7 @@ function CompletePanel({ project, isSkAdmin, onDone, onFail }) {
             <CircleCheck size={18} strokeWidth={1.75} aria-hidden="true" />
             Project Completed
           </Button>
+          </div>
         )}
       </div>
       {!project.canComplete && (
@@ -522,6 +552,54 @@ function CompletePanel({ project, isSkAdmin, onDone, onFail }) {
           </ul>
         </div>
       )}
+    </Card>
+  );
+}
+
+// On Hold: paused. The SK Admin resumes it (Ongoing) or moves it to Archives (On Hold tab).
+function HoldPanel({ project, isSkAdmin, onDone, onFail }) {
+  const resume = useMutation({
+    mutationFn: () => projectsApi.resume(project.id),
+    onSuccess: onDone,
+    onError: onFail('Could not resume the project'),
+  });
+  const archive = useMutation({
+    mutationFn: () => projectsApi.archiveHold(project.id),
+    onSuccess: onDone,
+    onError: onFail('Could not move the project to Archives'),
+  });
+  const busy = resume.isPending || archive.isPending;
+  return (
+    <Card className="mt-4 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">On Hold</h2>
+          <p className="text-sm text-slate-600">
+            The project is paused. Liquidation uploads, the checklist and Project Completed are disabled until it is
+            resumed.
+          </p>
+        </div>
+        {isSkAdmin && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() => {
+                if (window.confirm(`Move "${project.title}" to Archives? It is listed under On Hold and becomes view only.`)) {
+                  archive.mutate();
+                }
+              }}
+            >
+              <Archive size={18} strokeWidth={1.75} aria-hidden="true" />
+              Move to Archives
+            </Button>
+            <Button variant="primary" disabled={busy} onClick={() => resume.mutate()}>
+              <Play size={18} strokeWidth={1.75} aria-hidden="true" />
+              Resume
+            </Button>
+          </div>
+        )}
+      </div>
     </Card>
   );
 }

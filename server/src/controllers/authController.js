@@ -25,15 +25,9 @@ function publicUser(user) {
     phone: user.phone,
     // Set for SK officials: their position from the officials directory
     official: user.official ? { id: user.official.id, position: user.official.position } : null,
-    // Shown in the header: the official's name and position. The SK Admin account can act as
-    // an official (actsAsOfficial); otherwise the role name is the position.
-    displayName: (!user.official && user.actingOfficial && user.actingOfficial.name) || user.name,
-    position:
-      (user.official && user.official.position) ||
-      (user.actingOfficial && user.actingOfficial.position) ||
-      ROLE_POSITION[user.role] ||
-      '',
-    actsAsOfficial: user.actingOfficial ? { id: user.actingOfficial.id, name: user.actingOfficial.name, position: user.actingOfficial.position } : null,
+    // Shown in the header: the account's name and its position (or role name).
+    displayName: user.name,
+    position: (user.official && user.official.position) || ROLE_POSITION[user.role] || '',
     // Only the SK Admin account shows and manages the attendance QR code
     canShowQr: user.role === 'ADMIN',
     pendingEmail: user.pendingEmail || null,
@@ -45,18 +39,6 @@ function publicUser(user) {
 const withOfficial = { official: { select: { id: true, position: true } } };
 
 const ROLE_POSITION = { ADMIN: 'SK Admin', CHAIRMAN: 'Barangay Chairman', OFFICIAL: 'SK Official', VIEWER: 'Resident' };
-
-// publicUser plus the official an SK Admin account acts as (for the header).
-async function presentUser(user) {
-  let actingOfficial = null;
-  if (!user.official && user.actsAsOfficialId) {
-    actingOfficial = await prisma.official.findUnique({
-      where: { id: user.actsAsOfficialId },
-      select: { id: true, name: true, position: true },
-    });
-  }
-  return publicUser({ ...user, actingOfficial });
-}
 
 function signToken(user) {
   return jwt.sign(
@@ -195,7 +177,7 @@ async function login(req, res, next) {
       data: { previousLoginAt: user.lastLoginAt, lastLoginAt: new Date() },
       include: withOfficial,
     });
-    res.json({ token: signToken(signedIn), user: await presentUser(signedIn) });
+    res.json({ token: signToken(signedIn), user: publicUser(signedIn) });
   } catch (err) {
     next(err);
   }
@@ -208,7 +190,7 @@ async function getMe(req, res, next) {
       where: { id: req.user.id },
       include: { official: { select: { id: true, position: true } } },
     });
-    res.json({ user: await presentUser(user) });
+    res.json({ user: publicUser(user) });
   } catch (err) {
     next(err);
   }

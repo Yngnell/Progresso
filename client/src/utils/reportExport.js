@@ -156,7 +156,7 @@ const generatedBy = (user) => `${user?.name || ''} (${roleLabel(user)})`;
 
 // ---------------- Dashboard ----------------
 
-const PROJECT_ROWS = ['Planned', 'Ongoing', 'Completed', 'Cancelled'];
+const PROJECT_ROWS = ['Planned', 'Ongoing', 'On Hold', 'Completed', 'Cancelled'];
 
 const peso = (n) =>
   `PHP ${Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

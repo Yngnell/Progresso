@@ -7,11 +7,13 @@ const { isStaff } = require('../utils/roles');
 // Project flow (each step only to the next one; skipped stages are refused):
 //   Project Request -> PROPOSED -> PLANNING -> ONGOING -> COMPLETED
 //   PROPOSED -> CANCELLED when the Barangay Chairman rejects it
+//   ONGOING -> ON_HOLD (paused) -> ONGOING again (Resume), or -> Archives (On Hold tab)
 // - PROPOSED: the Barangay Chairman approves (-> PLANNING) or rejects (-> CANCELLED).
 // - PLANNING: the SK Admin saves the schedule (start and end) -> ONGOING.
 // - ONGOING: the SK Admin uploads the receipt liquidation (required) and keeps an optional
 //   checklist; "Project Completed" -> COMPLETED once both are done.
-// Completed and cancelled projects are shown in Archives and are view only.
+// - ON_HOLD: paused; no liquidation, checklist or completion until it is resumed.
+// Completed, cancelled and archived On Hold projects are shown in Archives and are view only.
 
 // Archived (deleted) projects are kept for the record but cannot be changed.
 const ARCHIVED_MESSAGE = 'This project is archived and can no longer be changed';
@@ -66,9 +68,9 @@ function stripInternal(project) {
 }
 
 // GET /api/projects — public.
-//   ?archive=completed|cancelled|deleted (SK side) lists one tab of Archives;
+//   ?archive=completed|cancelled|onhold|deleted (SK side) lists one tab of Archives;
 //   ?archive=all (SK side) lists every project that is not deleted (the Dashboard);
-//   otherwise the active projects (Proposed, Planning, Ongoing). The public list also
+//   otherwise the active projects (Proposed, Planning, Ongoing, On Hold). The public list also
 //   shows completed projects, as before.
 async function getProjects(req, res, next) {
   try {
@@ -79,9 +81,16 @@ async function getProjects(req, res, next) {
     if (staff && archive === 'deleted') where.archivedAt = { not: null };
     else if (staff && archive === 'completed') where.status = 'COMPLETED';
     else if (staff && archive === 'cancelled') where.status = 'CANCELLED';
+    else if (staff && archive === 'onhold') {
+      where.status = 'ON_HOLD';
+      where.holdArchivedAt = { not: null };
+    }
     else if (staff && archive === 'all') {
       // every stage
-    } else if (staff) where.status = { in: ['PROPOSED', 'PLANNING', 'ONGOING'] };
+    } else if (staff) {
+      where.status = { in: ['PROPOSED', 'PLANNING', 'ONGOING', 'ON_HOLD'] };
+      where.holdArchivedAt = null;
+    }
     else {
       where.status = { in: ['PLANNING', 'ONGOING', 'COMPLETED'] };
       where.approvalState = 'APPROVED';
@@ -110,7 +119,7 @@ async function getProject(req, res, next) {
     });
     const hiddenFromPublic =
       project &&
-      (project.status === 'PROPOSED' || project.status === 'CANCELLED' || project.archivedAt);
+      (project.status === 'PROPOSED' || project.status === 'CANCELLED' || project.archivedAt || project.holdArchivedAt);
     if (!project || (hiddenFromPublic && !canSeeProposed(req.user))) {
       return res.status(404).json({ message: 'Project not found' });
     }
@@ -183,7 +192,9 @@ async function loadOpen(id) {
   const project = await prisma.project.findUnique({ where: { id } });
   if (!project) return { error: [404, 'Project not found'] };
   if (project.archivedAt) return { error: [400, ARCHIVED_MESSAGE] };
-  if (project.status === 'COMPLETED' || project.status === 'CANCELLED') return { error: [400, CLOSED_MESSAGE] };
+  if (project.status === 'COMPLETED' || project.status === 'CANCELLED' || project.holdArchivedAt) {
+    return { error: [400, CLOSED_MESSAGE] };
+  }
   return { project };
 }
 
@@ -192,12 +203,13 @@ async function loadAtStage(id, stage, action) {
   const r = await loadOpen(id);
   if (r.error) return r;
   if (r.project.status !== stage) {
-    return { error: [400, `${action} is only possible while the project is ${stage.charAt(0)}${stage.slice(1).toLowerCase()}`] };
+    return { error: [400, `${action} is only possible while the project is ${STAGE_NAME[stage]}`] };
   }
   return r;
 }
 
 const fail = (res, [code, message]) => res.status(code).json({ message });
+const STAGE_NAME = { PROPOSED: 'Proposed', PLANNING: 'Planning', ONGOING: 'Ongoing', ON_HOLD: 'On Hold' };
 
 // POST /api/projects — admin. The Project Request: saved as Proposed, waiting for the
 // Barangay Chairman.
@@ -456,6 +468,47 @@ async function completeProject(req, res, next) {
   }
 }
 
+// ---------- On Hold ----------
+
+// Moves the project from one stage to another (the given checks already passed).
+async function setStage(id, data) {
+  const project = await prisma.project.update({ where: { id }, data, include: includeOpts });
+  return withInfo(project);
+}
+
+// POST /api/projects/:id/hold — SK Admin. Ongoing -> On Hold (paused).
+async function holdProject(req, res, next) {
+  try {
+    const r = await loadAtStage(req.params.id, 'ONGOING', 'Putting the project on hold');
+    if (r.error) return fail(res, r.error);
+    res.json({ project: await setStage(req.params.id, { status: 'ON_HOLD' }) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/projects/:id/resume — SK Admin. On Hold -> Ongoing.
+async function resumeProject(req, res, next) {
+  try {
+    const r = await loadAtStage(req.params.id, 'ON_HOLD', 'Resuming the project');
+    if (r.error) return fail(res, r.error);
+    res.json({ project: await setStage(req.params.id, { status: 'ONGOING' }) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/projects/:id/archive-hold — SK Admin. On Hold -> Archives (On Hold tab), view only.
+async function archiveHeldProject(req, res, next) {
+  try {
+    const r = await loadAtStage(req.params.id, 'ON_HOLD', 'Moving the project to Archives');
+    if (r.error) return fail(res, r.error);
+    res.json({ project: await setStage(req.params.id, { holdArchivedAt: new Date() }) });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ---------- Deletion requests (the Deleted tab of Archives) ----------
 
 // POST /api/projects/:id/deletion-request — admin.
@@ -619,6 +672,9 @@ module.exports = {
   updateChecklistItem,
   deleteChecklistItem,
   completeProject,
+  holdProject,
+  resumeProject,
+  archiveHeldProject,
   requestDeletion,
   withdrawDeletion,
   listDeletionRequests,

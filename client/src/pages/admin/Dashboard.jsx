@@ -30,8 +30,9 @@ const STATUS_COLOR = {
   ONGOING: CHART.gold,
   COMPLETED: CHART.green,
   CANCELLED: CHART.red,
+  ON_HOLD: CHART.navy,
 };
-const STATUS_ORDER = ['PROPOSED', 'PLANNING', 'ONGOING', 'COMPLETED', 'CANCELLED'];
+const STATUS_ORDER = ['PROPOSED', 'PLANNING', 'ONGOING', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
 const STATUS_LABEL = Object.fromEntries(STATUS_ORDER.map((k) => [k, PROJECT_STATUS[k].label]));
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -218,7 +219,9 @@ export default function Dashboard() {
             note={
               selected.status === 'CANCELLED'
                 ? 'Rejected at the Proposed stage'
-                : `Stage ${STAGES.indexOf(selected.status) + 1} of ${STAGES.length}`
+                : selected.status === 'ON_HOLD'
+                  ? 'Paused at the Ongoing stage'
+                  : `Stage ${STAGES.indexOf(selected.status) + 1} of ${STAGES.length}`
             }
             tone="azure"
           />

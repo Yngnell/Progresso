@@ -3,8 +3,8 @@
 import api from './axios';
 
 export const projectsApi = {
-  // Active projects (Proposed, Planning, Ongoing); { archive: 'completed' | 'cancelled' |
-  // 'deleted' } lists one tab of Archives.
+  // Active projects (Proposed, Planning, Ongoing, On Hold); { archive: 'completed' |
+  // 'cancelled' | 'onhold' | 'deleted' } lists one tab of Archives.
   list: (params) => api.get('/projects', { params }).then((r) => r.data),
   get: (id) => api.get(`/projects/${id}`).then((r) => r.data),
   // The Project Request: saved as Proposed.
@@ -43,6 +43,10 @@ export const projectsApi = {
     api.delete(`/projects/${id}/checklist/${itemId}`).then((r) => r.data),
   // SK Admin, Ongoing -> Completed
   complete: (id) => api.post(`/projects/${id}/complete`).then((r) => r.data),
+  // SK Admin: Ongoing -> On Hold, On Hold -> Ongoing, On Hold -> Archives (On Hold tab)
+  hold: (id) => api.post(`/projects/${id}/hold`).then((r) => r.data),
+  resume: (id) => api.post(`/projects/${id}/resume`).then((r) => r.data),
+  archiveHold: (id) => api.post(`/projects/${id}/archive-hold`).then((r) => r.data),
   // Projects are never deleted directly: file a request with a reason, then the
   // chairman approves ({ decision: 'APPROVE' | 'REJECT', remarks }) or rejects it.
   requestDeletion: (id, reason) =>

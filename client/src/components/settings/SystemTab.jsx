@@ -3,11 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ImageUp, Plus, RotateCcw, UserX, UserCheck } from 'lucide-react';
 import { settingsApi } from '../../api/settings';
 import { Badge, Button, Input, Modal } from '../ui';
-import { useAuth } from '../../context/AuthContext';
 import { Notice, Section, checkImage, errorText } from './shared';
 
-// Settings → System (SK Admin only): SK information and logo (printed on the PDF exports),
-// the SK officials list, and the attendance QR defaults.
+// Settings → System (SK Admin only): SK information and logo (printed on the PDF exports)
+// and the SK officials list. The attendance QR defaults are in Meetings.
 export default function SystemTab() {
   const { data } = useQuery({ queryKey: ['settings'], queryFn: settingsApi.get });
   const settings = data?.settings;
@@ -16,8 +15,6 @@ export default function SystemTab() {
     <div className="space-y-6">
       <SkInfoSection settings={settings} />
       <OfficialsSection />
-      <AdminOfficialSection />
-      <AttendanceSection settings={settings} />
     </div>
   );
 }
@@ -263,55 +260,6 @@ function OfficialModal({ official, busy, onClose, onSave }) {
   );
 }
 
-function AdminOfficialSection() {
-  const qc = useQueryClient();
-  const { refreshUser, user } = useAuth();
-  const { data } = useQuery({ queryKey: ['settings', 'officials'], queryFn: settingsApi.officials });
-  const officials = data?.officials || [];
-  const admins = data?.admins || [];
-  const [msg, setMsg] = useState(null);
-
-  const save = useMutation({
-    mutationFn: ({ id, officialId }) => settingsApi.setAdminOfficial(id, officialId),
-    onSuccess: async (_res, vars) => {
-      qc.invalidateQueries({ queryKey: ['settings', 'officials'] });
-      if (vars.id === user?.id) await refreshUser();
-      setMsg({ ok: true, text: 'Saved. The header shows the new name and position when the SK Admin logs in.' });
-    },
-    onError: (err) => setMsg({ ok: false, text: errorText(err, 'The change could not be saved.') }),
-  });
-
-  if (!admins.length) return null;
-  return (
-    <Section
-      title="SK Admin account"
-      description="Choose the official who uses the SK Admin account. Their name and position are shown in the header instead of “SK Admin”."
-    >
-      {msg && <div className="mb-4"><Notice ok={msg.ok}>{msg.text}</Notice></div>}
-      <div className="space-y-4">
-        {admins.map((a) => (
-          <label key={a.id} className="block max-w-md">
-            <span className="mb-1 block text-sm font-semibold text-slate-700">{a.email}</span>
-            <select
-              className="input"
-              value={a.actsAsOfficialId || ''}
-              disabled={save.isPending}
-              onChange={(e) => save.mutate({ id: a.id, officialId: e.target.value || null })}
-            >
-              <option value="">No official (show “SK Admin”)</option>
-              {officials.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name} — {o.position}
-                </option>
-              ))}
-            </select>
-          </label>
-        ))}
-      </div>
-    </Section>
-  );
-}
-
 function PositionField({ value, onChange }) {
   return (
     <div>
@@ -331,65 +279,5 @@ function PositionField({ value, onChange }) {
         ))}
       </datalist>
     </div>
-  );
-}
-
-function AttendanceSection({ settings }) {
-  const [before, setBefore] = useState(String(settings.qrDefaultBeforeMin));
-  const [length, setLength] = useState(settings.qrDefaultLengthMin ? String(settings.qrDefaultLengthMin) : '');
-  const [msg, setMsg] = useState(null);
-  const save = useSaveSettings(setMsg, 'Attendance settings saved. New QR codes use them.');
-  const lengthTooShort = length !== '' && Number(length) < 10;
-
-  return (
-    <Section
-      title="Attendance settings"
-      description="Defaults for new attendance QR codes. You can still change the time for each event when you generate its QR."
-    >
-      {msg && <div className="mb-4"><Notice ok={msg.ok}>{msg.text}</Notice></div>}
-      <form
-        className="grid gap-4 sm:grid-cols-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setMsg(null);
-          save.mutate({
-            qrDefaultBeforeMin: Number(before),
-            qrDefaultLengthMin: length === '' ? null : Number(length),
-          });
-        }}
-      >
-        <div>
-          <Input
-            label="QR opens before the start"
-            type="number"
-            min={0}
-            max={240}
-            value={before}
-            onChange={(e) => setBefore(e.target.value)}
-            required
-          />
-          <p className="mt-1 text-xs text-slate-600">Minutes. Default: 30.</p>
-        </div>
-        <div>
-          <Input
-            label="QR stays valid for"
-            type="number"
-            min={10}
-            max={1440}
-            placeholder="Until the event ends"
-            value={length}
-            onChange={(e) => setLength(e.target.value)}
-          />
-          <p className={`mt-1 text-xs ${lengthTooShort ? 'font-semibold text-red-700' : 'text-slate-600'}`}>
-            Minutes, at least 10. Leave empty to keep it valid until the event ends.
-          </p>
-        </div>
-        <div className="sm:col-span-2">
-          <Button type="submit" variant="primary" disabled={save.isPending || lengthTooShort}>
-            {save.isPending ? 'Saving…' : 'Save attendance settings'}
-          </Button>
-        </div>
-      </form>
-    </Section>
   );
 }

@@ -5,6 +5,7 @@ export const PROJECT_STATUS = {
   ONGOING: { label: 'Ongoing', tone: 'amber' },
   COMPLETED: { label: 'Completed', tone: 'green' },
   CANCELLED: { label: 'Cancelled', tone: 'red' },
+  ON_HOLD: { label: 'On Hold', tone: 'slate' },
 };
 
 export const EVENT_TYPE = {

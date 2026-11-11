@@ -151,11 +151,12 @@ async function dashboardReport(req, res, next) {
       const end = p.endDate ? new Date(p.endDate) : start;
       return (!range.to || start <= range.to) && (!range.from || end >= range.from);
     });
-    const byStatus = { Planned: 0, Ongoing: 0, Completed: 0, Cancelled: 0 };
+    const byStatus = { Planned: 0, Ongoing: 0, 'On Hold': 0, Completed: 0, Cancelled: 0 };
     inRange.forEach((p) => {
       const s = p.status;
       if (s === 'PROPOSED' || s === 'PLANNING') byStatus.Planned += 1;
       else if (s === 'ONGOING') byStatus.Ongoing += 1;
+      else if (s === 'ON_HOLD') byStatus['On Hold'] += 1;
       else if (s === 'COMPLETED') byStatus.Completed += 1;
       else if (s === 'CANCELLED') byStatus.Cancelled += 1;
     });

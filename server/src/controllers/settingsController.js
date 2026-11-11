@@ -117,19 +117,14 @@ async function getLogo(req, res, next) {
 
 const OFFICIAL_FIELDS = { id: true, name: true, position: true, isActive: true, displayOrder: true };
 
-// GET /api/settings/officials — the SK officials, plus the SK Admin account(s) and the
-// official each one acts as (shown in the header).
+// GET /api/settings/officials — the SK officials.
 async function listOfficials(req, res, next) {
   try {
-    const [officials, admins] = await Promise.all([
-      prisma.official.findMany({ select: OFFICIAL_FIELDS, orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }] }),
-      prisma.user.findMany({
-        where: { role: 'ADMIN' },
-        select: { id: true, name: true, email: true, isActive: true, actsAsOfficialId: true },
-        orderBy: { name: 'asc' },
-      }),
-    ]);
-    res.json({ officials, admins });
+    const officials = await prisma.official.findMany({
+      select: OFFICIAL_FIELDS,
+      orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
+    });
+    res.json({ officials });
   } catch (err) {
     next(err);
   }
@@ -179,28 +174,6 @@ async function updateOfficial(req, res, next) {
   }
 }
 
-// PUT /api/settings/admins/:id — { officialId } (or null). The SK Admin account acts as
-// that official: the header shows the official's name and position.
-async function setAdminOfficial(req, res, next) {
-  try {
-    const admin = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true, role: true } });
-    if (!admin || admin.role !== 'ADMIN') return res.status(404).json({ message: 'Admin account not found' });
-    let officialId = req.body.officialId ? String(req.body.officialId) : null;
-    if (officialId) {
-      const official = await prisma.official.findUnique({ where: { id: officialId }, select: { id: true } });
-      if (!official) return res.status(404).json({ message: 'Official not found' });
-    }
-    const updated = await prisma.user.update({
-      where: { id: admin.id },
-      data: { actsAsOfficialId: officialId },
-      select: { id: true, name: true, email: true, isActive: true, actsAsOfficialId: true },
-    });
-    res.json({ admin: updated });
-  } catch (err) {
-    next(err);
-  }
-}
-
 module.exports = {
   readSettings,
   saveSettings,
@@ -210,5 +183,4 @@ module.exports = {
   listOfficials,
   createOfficial,
   updateOfficial,
-  setAdminOfficial,
 };

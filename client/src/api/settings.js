@@ -15,12 +15,10 @@ export const settingsApi = {
   logoUrl: (settings) =>
     settings?.hasLogo ? `${api.defaults.baseURL}/settings/logo?v=${settings.logoVersion}` : '/logo.jpg',
 
-  // { officials, admins }
+  // { officials }
   officials: () => api.get('/settings/officials').then((r) => r.data),
   // { name, position }
   createOfficial: (data) => api.post('/settings/officials', data).then((r) => r.data),
   // { name?, position?, isActive? }
   updateOfficial: (id, data) => api.put(`/settings/officials/${id}`, data).then((r) => r.data),
-  // The official the SK Admin account acts as (shown in the header); null to clear.
-  setAdminOfficial: (id, officialId) => api.put(`/settings/admins/${id}`, { officialId }).then((r) => r.data),
 };
