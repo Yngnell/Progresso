@@ -1,10 +1,6 @@
-const bcrypt = require('bcryptjs');
 const prisma = require('../prisma');
 const { getSettings } = require('../utils/settings');
 const { photoPath, removePhotoFile } = require('../middleware/upload');
-const { passwordError } = require('../utils/password');
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // What the browser gets (the stored file name stays on the server).
 function publicSettings(s) {
@@ -36,7 +32,7 @@ function wholeMinutes(value, { min, max, label, allowEmpty = false }) {
   return { value: n };
 }
 
-// PUT /api/settings — SK Chairperson. SK information and attendance defaults.
+// PUT /api/settings — SK Admin. SK information and attendance defaults.
 async function saveSettings(req, res, next) {
   try {
     const b = req.body;
@@ -71,7 +67,7 @@ async function saveSettings(req, res, next) {
   }
 }
 
-// POST /api/settings/logo — SK Chairperson. multipart "logo". Printed on the PDF exports.
+// POST /api/settings/logo — SK Admin. multipart "logo". Printed on the PDF exports.
 async function uploadLogo(req, res, next) {
   try {
     if (!req.file) return res.status(400).json({ message: 'Choose a logo to upload' });
@@ -115,37 +111,69 @@ async function getLogo(req, res, next) {
   }
 }
 
-// ---------- User management (SK Chairperson) ----------
+// ---------- SK officials list (SK Admin) ----------
+// The names in the attendance dropdown and on the public Officials page. The SK officials
+// have no login accounts; the SK Admin adds, renames and sets them inactive here.
 
-const ACCOUNT_FIELDS = {
-  id: true,
-  name: true,
-  email: true,
-  phone: true,
-  role: true,
-  isActive: true,
-  lastLoginAt: true,
-  createdAt: true,
-  official: { select: { id: true, position: true } },
-};
+const OFFICIAL_FIELDS = { id: true, name: true, position: true, isActive: true, displayOrder: true };
 
-// GET /api/settings/accounts — the SK officials' accounts, plus the SK Admin account(s)
-// and the official each one acts as.
-async function listAccounts(req, res, next) {
+// GET /api/settings/officials — the SK officials, plus the SK Admin account(s) and the
+// official each one acts as (shown in the header).
+async function listOfficials(req, res, next) {
   try {
-    const [accounts, admins] = await Promise.all([
-      prisma.user.findMany({
-        where: { role: 'OFFICIAL' },
-        select: ACCOUNT_FIELDS,
-        orderBy: [{ official: { displayOrder: 'asc' } }, { name: 'asc' }],
-      }),
+    const [officials, admins] = await Promise.all([
+      prisma.official.findMany({ select: OFFICIAL_FIELDS, orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }] }),
       prisma.user.findMany({
         where: { role: 'ADMIN' },
         select: { id: true, name: true, email: true, isActive: true, actsAsOfficialId: true },
         orderBy: { name: 'asc' },
       }),
     ]);
-    res.json({ accounts, admins });
+    res.json({ officials, admins });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Reads { name, position } from the body; both are required when `required` is set.
+function officialData(body, required) {
+  const data = {};
+  for (const key of ['name', 'position']) {
+    if (body[key] === undefined) {
+      if (required) return { error: 'Name and position are required' };
+      continue;
+    }
+    const v = String(body[key]).trim();
+    if (!v) return { error: `The ${key} is required` };
+    data[key] = v.slice(0, 80);
+  }
+  if (body.isActive !== undefined) data.isActive = Boolean(body.isActive);
+  return { data };
+}
+
+// POST /api/settings/officials — { name, position }
+async function createOfficial(req, res, next) {
+  try {
+    const { data, error } = officialData(req.body, true);
+    if (error) return res.status(400).json({ message: error });
+    data.displayOrder = await prisma.official.count();
+    const official = await prisma.official.create({ data, select: OFFICIAL_FIELDS });
+    res.status(201).json({ official });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PUT /api/settings/officials/:id — { name?, position?, isActive? }. Officials are never
+// deleted (their attendance stays); one who left is set inactive.
+async function updateOfficial(req, res, next) {
+  try {
+    const existing = await prisma.official.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!existing) return res.status(404).json({ message: 'Official not found' });
+    const { data, error } = officialData(req.body, false);
+    if (error) return res.status(400).json({ message: error });
+    const official = await prisma.official.update({ where: { id: existing.id }, data, select: OFFICIAL_FIELDS });
+    res.json({ official });
   } catch (err) {
     next(err);
   }
@@ -173,86 +201,14 @@ async function setAdminOfficial(req, res, next) {
   }
 }
 
-// POST /api/settings/accounts — { name, email, position, password }. Creates the official
-// in the directory and their own login.
-async function createAccount(req, res, next) {
-  try {
-    const name = String(req.body.name || '').trim();
-    const email = String(req.body.email || '').trim().toLowerCase();
-    const position = String(req.body.position || '').trim();
-    const { password } = req.body;
-    if (!name || !position) return res.status(400).json({ message: 'Name and position are required' });
-    if (!EMAIL_PATTERN.test(email)) return res.status(400).json({ message: 'Please enter a valid email address' });
-    const weak = passwordError(password);
-    if (weak) return res.status(400).json({ message: weak });
-    if (await prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } } })) {
-      return res.status(400).json({ message: 'That email is already used by another account' });
-    }
-    const count = await prisma.official.count();
-    const account = await prisma.user.create({
-      data: {
-        name,
-        email,
-        passwordHash: await bcrypt.hash(password, 12),
-        role: 'OFFICIAL',
-        emailVerifiedAt: new Date(),
-        official: { create: { name, position: position.slice(0, 80), displayOrder: count } },
-      },
-      select: ACCOUNT_FIELDS,
-    });
-    res.status(201).json({ account });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// PUT /api/settings/accounts/:id — { position } and/or { isActive }.
-async function updateAccount(req, res, next) {
-  try {
-    const account = await prisma.user.findUnique({ where: { id: req.params.id }, select: ACCOUNT_FIELDS });
-    if (!account || account.role !== 'OFFICIAL') return res.status(404).json({ message: 'Account not found' });
-
-    const { position, isActive } = req.body;
-    if (isActive !== undefined) {
-      if (account.id === req.user.id && !isActive) {
-        return res.status(400).json({ message: 'You cannot deactivate your own account' });
-      }
-      await prisma.user.update({ where: { id: account.id }, data: { isActive: Boolean(isActive) } });
-      if (account.official) {
-        await prisma.official.update({ where: { id: account.official.id }, data: { isActive: Boolean(isActive) } });
-      }
-    }
-    if (position !== undefined) {
-      const p = String(position).trim();
-      if (!p) return res.status(400).json({ message: 'The position is required' });
-      // Someone must keep the SK Chairperson's rights: you cannot change your own position.
-      if (account.id === req.user.id) {
-        return res.status(400).json({ message: 'You cannot change your own position' });
-      }
-      if (account.official) {
-        await prisma.official.update({ where: { id: account.official.id }, data: { position: p.slice(0, 80) } });
-      } else {
-        await prisma.user.update({
-          where: { id: account.id },
-          data: { official: { create: { name: account.name, position: p.slice(0, 80) } } },
-        });
-      }
-    }
-    const updated = await prisma.user.findUnique({ where: { id: account.id }, select: ACCOUNT_FIELDS });
-    res.json({ account: updated });
-  } catch (err) {
-    next(err);
-  }
-}
-
 module.exports = {
   readSettings,
   saveSettings,
   uploadLogo,
   removeLogo,
   getLogo,
-  listAccounts,
-  createAccount,
-  updateAccount,
+  listOfficials,
+  createOfficial,
+  updateOfficial,
   setAdminOfficial,
 };

@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
 
 const {
@@ -7,21 +7,26 @@ const {
   getQrCode,
   generateQr,
   updateQr,
-  checkIn,
+  getAttendancePage,
+  markPresent,
 } = require('../controllers/attendanceController');
-const { protect, restrictTo } = require('../middleware/auth');
-const { requireQrHolder, staffOrQrHolder } = require('../utils/qrHolder');
+const { protect } = require('../middleware/auth');
+const { requireSkAdmin, requireStaff } = require('../utils/roles');
 
-// Reading attendance: the SK side (admin, chairman, officials). Nobody records it by hand:
-// scanning the QR records Present, and Absent is recorded automatically once the event is over.
-router.get('/event/:eventId', protect, staffOrQrHolder, getEventAttendance);
-router.get('/summary/:eventId', protect, restrictTo('ADMIN', 'CHAIRMAN', 'OFFICIAL'), getEventSummary);
+// Reading attendance: the SK side (SK Admin and Barangay Chairman). Nobody records it by
+// hand: officials pick their name on the QR page (Present), and Absent is recorded
+// automatically once the meeting is over.
+router.get('/event/:eventId', protect, requireStaff, getEventAttendance);
+router.get('/summary/:eventId', protect, requireStaff, getEventSummary);
 
-// Attendance QR: only the SK Chairperson (Sehj Miranda) generates, shows, deactivates or
-// regenerates an event's code; anyone signed in scans it.
-router.get('/qr/:eventId', protect, requireQrHolder, getQrCode);
-router.post('/qr/:eventId', protect, requireQrHolder, generateQr);
-router.put('/qr/:eventId', protect, requireQrHolder, updateQr);
-router.post('/checkin', protect, checkIn);
+// Attendance QR: only the SK Admin generates, shows, deactivates, regenerates it and sets
+// when it is available.
+router.get('/qr/:eventId', protect, requireSkAdmin, getQrCode);
+router.post('/qr/:eventId', protect, requireSkAdmin, generateQr);
+router.put('/qr/:eventId', protect, requireSkAdmin, updateQr);
+
+// The page the QR code opens (no login): the list of names, and marking one present.
+router.get('/public/:eventId', getAttendancePage);
+router.post('/public/:eventId', markPresent);
 
 module.exports = router;

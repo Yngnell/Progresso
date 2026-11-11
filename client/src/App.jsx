@@ -19,11 +19,10 @@ import OfficialsPublic from './pages/OfficialsPublic';
 import EventsPublic from './pages/EventsPublic';
 
 import Dashboard from './pages/admin/Dashboard';
-import AdminOfficials from './pages/admin/AdminOfficials';
 import AdminProjects from './pages/admin/AdminProjects';
 import AdminArchive from './pages/admin/AdminArchive';
 import AdminProjectDetail from './pages/admin/AdminProjectDetail';
-import AdminCalendar from './pages/admin/AdminCalendar';
+import AdminMeetings from './pages/admin/AdminMeetings';
 import AdminEventDetail from './pages/admin/AdminEventDetail';
 import AdminAttendance from './pages/admin/AdminAttendance';
 import Settings from './pages/admin/Settings';
@@ -84,19 +83,11 @@ export default function App() {
         }
       >
         <Route index element={<Dashboard />} />
-        <Route
-          path="officials"
-          element={
-            <ProtectedRoute roles={['ADMIN']}>
-              <AdminOfficials />
-            </ProtectedRoute>
-          }
-        />
         <Route path="projects" element={<AdminProjects />} />
         <Route path="archive" element={<AdminArchive />} />
         <Route path="projects/:id" element={<AdminProjectDetail />} />
-        <Route path="calendar" element={<AdminCalendar />} />
-        <Route path="calendar/:id" element={<AdminEventDetail />} />
+        <Route path="meetings" element={<AdminMeetings />} />
+        <Route path="meetings/:id" element={<AdminEventDetail />} />
         <Route path="attendance" element={<AdminAttendance />} />
         <Route path="settings" element={<Settings />} />
       </Route>

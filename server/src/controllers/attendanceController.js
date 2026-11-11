@@ -3,8 +3,8 @@ const prisma = require('../prisma');
 const { getSettings } = require('../utils/settings');
 const { markAbsentees } = require('../utils/absentees');
 
-// Attendance is recorded only by scanning the event's QR code (Present). Once the event is
-// over, the officials who did not scan are recorded as Absent automatically.
+// Attendance: the meeting's QR code opens a page where an SK official picks their name
+// (Present). Once the meeting is over, the officials not marked present are recorded as Absent.
 
 // GET /api/attendance/event/:eventId - list attendance for an event (SK side):
 // Present first in the order they checked in, then Absent by name.
@@ -14,7 +14,7 @@ async function getEventAttendance(req, res, next) {
     const records = await prisma.attendanceRecord.findMany({
       where: { eventId: req.params.eventId },
       orderBy: [{ status: 'asc' }, { timeIn: 'asc' }, { participant: 'asc' }],
-      select: { id: true, eventId: true, userId: true, participant: true, status: true, timeIn: true },
+      select: { id: true, eventId: true, officialId: true, participant: true, status: true, timeIn: true },
     });
     res.json({ records });
   } catch (err) {
@@ -42,9 +42,9 @@ async function getEventSummary(req, res, next) {
   }
 }
 
-// ---------- Attendance QR (SK Chairperson) ----------
+// ---------- Attendance QR (SK Admin) ----------
 // Each event has its own QR code: a random token that only works inside the window the
-// SK Chairperson sets (at least 10 minutes). Deactivating stops it; regenerating gives a
+// SK Admin sets (at least 10 minutes). Deactivating stops it; regenerating gives a
 // new token, so a downloaded or printed copy of the old one stops working.
 
 const MIN = 60 * 1000;
@@ -174,68 +174,83 @@ function sameToken(a, b) {
 
 const publicEvent = (e) => ({ id: e.id, title: e.title, startAt: e.startAt, endAt: e.endAt, location: e.location });
 
-// POST /api/attendance/checkin - anyone signed in. { eventId, token } from the scanned QR.
-// The first scan records Present with the time; later scans change nothing. If the official
-// was already marked Absent (the event ended while the QR code was still valid), the
-// scan turns that into Present.
-async function checkIn(req, res, next) {
+// Whether the QR attendance page accepts names right now. Returns null when it is open,
+// otherwise { code, message } (the page then shows "Attendance is closed.").
+function closedReason(event, token) {
+  if (!event.qrToken || !sameToken(token, event.qrToken)) {
+    return { code: 'INVALID', message: 'This QR code is no longer valid. Scan the QR code shown at the meeting.' };
+  }
+  const now = Date.now();
+  if (
+    !event.qrActive ||
+    (event.qrValidFrom && now < new Date(event.qrValidFrom).getTime()) ||
+    (event.qrValidUntil && now > new Date(event.qrValidUntil).getTime())
+  ) {
+    return { code: 'CLOSED', message: 'Attendance is closed.' };
+  }
+  return null;
+}
+
+// Active SK officials not yet marked Present for the meeting (the dropdown).
+async function namesLeft(eventId) {
+  const [officials, present] = await Promise.all([
+    prisma.official.findMany({
+      where: { isActive: true },
+      orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, position: true },
+    }),
+    prisma.attendanceRecord.findMany({
+      where: { eventId, status: 'PRESENT', officialId: { not: null } },
+      select: { officialId: true },
+    }),
+  ]);
+  const done = new Set(present.map((p) => p.officialId));
+  return officials.filter((o) => !done.has(o.id));
+}
+
+// GET /api/attendance/public/:eventId?t=TOKEN - public: the QR attendance page.
+// { event, open, message?, officials } where officials are the names still to mark.
+async function getAttendancePage(req, res, next) {
   try {
-    const { eventId } = req.body;
-    const token = req.body.token ?? req.body.code;
-    const event = eventId ? await loadEvent(String(eventId)) : null;
-    if (!event) return res.status(404).json({ code: 'NOT_FOUND', message: 'This event was not found.' });
-    const info = publicEvent(event);
+    const event = await loadEvent(req.params.eventId);
+    if (!event) return res.status(404).json({ code: 'NOT_FOUND', message: 'This meeting was not found.' });
+    const closed = closedReason(event, req.query.t);
+    if (closed) return res.json({ event: publicEvent(event), open: false, ...closed, officials: [] });
+    res.json({ event: publicEvent(event), open: true, officials: await namesLeft(event.id) });
+  } catch (err) {
+    next(err);
+  }
+}
 
-    if (!event.qrToken || !sameToken(token, event.qrToken)) {
-      return res.status(400).json({
-        code: 'INVALID',
-        event: info,
-        message: 'This QR code is no longer valid. A new code was made for this event; scan the one on the screen.',
-      });
-    }
-    if (!event.qrActive) {
-      return res.status(400).json({ code: 'DEACTIVATED', event: info, message: 'This QR code was deactivated by the SK Chairperson.' });
-    }
-    const now = Date.now();
-    if (event.qrValidFrom && now < new Date(event.qrValidFrom).getTime()) {
-      return res.status(400).json({ code: 'NOT_OPEN', event: info, opensAt: event.qrValidFrom, message: 'This QR code is not open yet.' });
-    }
-    if (event.qrValidUntil && now > new Date(event.qrValidUntil).getTime()) {
-      return res.status(400).json({ code: 'EXPIRED', event: info, message: 'This QR code has expired.' });
-    }
+// POST /api/attendance/public/:eventId - public: { token, officialId } from the QR page.
+// Marks the chosen SK official Present with the time. Each name only once per meeting.
+async function markPresent(req, res, next) {
+  try {
+    const event = await loadEvent(req.params.eventId);
+    if (!event) return res.status(404).json({ code: 'NOT_FOUND', message: 'This meeting was not found.' });
+    const closed = closedReason(event, req.body.token);
+    if (closed) return res.status(400).json(closed);
+    const official = req.body.officialId
+      ? await prisma.official.findFirst({ where: { id: String(req.body.officialId), isActive: true }, select: { id: true, name: true } })
+      : null;
+    if (!official) return res.status(400).json({ code: 'NO_NAME', message: 'Choose your name from the list.' });
 
-    const already = await prisma.attendanceRecord.findFirst({ where: { eventId: event.id, userId: req.user.id } });
-    if (already && already.status === 'ABSENT') {
-      const record = await prisma.attendanceRecord.update({
-        where: { id: already.id },
-        data: { status: 'PRESENT', timeIn: new Date(now) },
-      });
-      return res.status(201).json({ record, event: info });
+    const now = new Date();
+    const existing = await prisma.attendanceRecord.findFirst({ where: { eventId: event.id, officialId: official.id } });
+    if (existing && existing.status === 'PRESENT') {
+      return res.status(409).json({ code: 'ALREADY', message: `${official.name} is already marked present.` });
     }
-    if (already) {
-      return res.status(409).json({
-        code: 'ALREADY',
-        event: info,
-        record: already,
-        message: 'Your attendance for this event was already recorded.',
-      });
-    }
-
     try {
-      const record = await prisma.attendanceRecord.create({
-        data: {
-          eventId: event.id,
-          userId: req.user.id,
-          participant: req.user.name,
-          status: 'PRESENT',
-          timeIn: new Date(now),
-        },
-      });
-      res.status(201).json({ record, event: info });
+      const record = existing
+        ? await prisma.attendanceRecord.update({ where: { id: existing.id }, data: { status: 'PRESENT', timeIn: now } })
+        : await prisma.attendanceRecord.create({
+            data: { eventId: event.id, officialId: official.id, participant: official.name, status: 'PRESENT', timeIn: now },
+          });
+      res.status(201).json({ record, officials: await namesLeft(event.id) });
     } catch (err) {
-      // Two scans at the same moment: the second one hits the one-per-event rule.
+      // Two submissions of the same name at the same moment: the second hits the unique rule.
       if (err.code === 'P2002') {
-        return res.status(409).json({ code: 'ALREADY', event: info, message: 'Your attendance for this event was already recorded.' });
+        return res.status(409).json({ code: 'ALREADY', message: `${official.name} is already marked present.` });
       }
       throw err;
     }
@@ -248,7 +263,8 @@ module.exports = {
   getQrCode,
   generateQr,
   updateQr,
-  checkIn,
+  getAttendancePage,
+  markPresent,
   getEventAttendance,
   getEventSummary,
 };

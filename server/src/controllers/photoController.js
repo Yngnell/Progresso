@@ -76,14 +76,14 @@ async function addProjectPhotos(req, res, next) {
   }
 }
 
-// DELETE /api/photos/:id — the uploader, the SK Chairperson or the admin.
+// DELETE /api/photos/:id — the uploader or the SK Admin.
 async function deletePhoto(req, res, next) {
   try {
     const photo = await prisma.photo.findUnique({ where: { id: req.params.id } });
     if (!photo) return res.status(404).json({ message: 'Photo not found' });
     const isUploader = photo.uploadedById && photo.uploadedById === req.user.id;
     if (!isUploader && !isManager(req.user)) {
-      return res.status(403).json({ message: 'Only the uploader or the SK Chairperson can delete this picture.' });
+      return res.status(403).json({ message: 'Only the uploader or the SK Admin can delete this picture.' });
     }
     await prisma.photo.delete({ where: { id: photo.id } });
     removePhotoFile(photo.fileName);

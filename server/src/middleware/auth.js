@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const prisma = require('../prisma');
 
-// The linked official's position tells who the SK Chairperson is (see utils/roles.js).
+// Loads the signed-in user (with their linked official, if any).
 const WITH_OFFICIAL = { official: { select: { id: true, name: true, position: true } } };
 
 // Verifies the Bearer token and attaches the user to req.user.
@@ -64,8 +64,8 @@ async function optionalAuth(req, res, next) {
 // Restricts a route to specific roles, e.g. restrictTo('ADMIN').
 // Must be used AFTER protect.
 // SK officials have the same access as the SK Admin, so an OFFICIAL passes wherever
-// 'ADMIN' is allowed. The SK Chairperson-only actions (attendance QR, settings) and the
-// SK Admin-only project steps use requireSkChair and requireSkAdmin instead.
+// 'ADMIN' is allowed.
+// SK Admin-only steps (attendance QR, settings, project stages) use requireSkAdmin instead.
 function restrictTo(...roles) {
   return (req, res, next) => {
     const role = req.user && req.user.role;

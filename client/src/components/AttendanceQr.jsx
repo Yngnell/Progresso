@@ -18,8 +18,8 @@ export function qrStatus(qr, now = Date.now()) {
   return { key: 'open', label: 'Open for scanning', tone: 'green' };
 }
 
-// "Generate Attendance QR" button for one calendar event. Only render it for the SK
-// Chairperson (user.isSkChair); the server refuses everyone else too.
+// "Generate Attendance QR" button for one meeting. Only render it for the SK Admin
+// account (role ADMIN); the server refuses everyone else too.
 export function AttendanceQrButton({ event, size = 'sm', className = '' }) {
   const [open, setOpen] = useState(false);
   return (
@@ -44,7 +44,7 @@ function windowError(from, until) {
   return '';
 }
 
-// Everything the SK Chairperson does with one event's QR code.
+// Everything the SK Admin does with one meeting's QR code.
 export function AttendanceQrPanel({ eventId }) {
   const qc = useQueryClient();
   const key = ['attendance-qr', eventId];
@@ -162,7 +162,7 @@ h1{font-size:28px;margin:0 0 6px}p{margin:4px 0;font-size:16px}img{width:420px;h
       {!qr ? (
         <div className="mt-4 space-y-4">
           <p className="text-slate-700">
-            This event gets its own QR code. Officials scan it with their phone camera to record their attendance.
+            This meeting gets its own QR code. Officials scan it with their phone camera and choose their name to record their attendance. Outside the time below, the page shows "Attendance is closed."
           </p>
           {timeFields}
           <Button
@@ -198,7 +198,7 @@ h1{font-size:28px;margin:0 0 6px}p{margin:4px 0;font-size:16px}img{width:420px;h
               </div>
             ) : (
               <div>
-                <p className="text-sm font-semibold text-slate-600">Valid</p>
+                <p className="text-sm font-semibold text-slate-600">Attendance open</p>
                 <p className="text-slate-900">
                   {formatDateTime(qr.validFrom)} to {formatDateTime(qr.validUntil)}
                 </p>
@@ -207,7 +207,7 @@ h1{font-size:28px;margin:0 0 6px}p{margin:4px 0;font-size:16px}img{width:420px;h
                   className="mt-1 text-sm font-semibold text-brand-700 hover:text-brand-800"
                   onClick={() => setEditing(true)}
                 >
-                  Change how long it is valid
+                  Change when attendance is open
                 </button>
               </div>
             )}

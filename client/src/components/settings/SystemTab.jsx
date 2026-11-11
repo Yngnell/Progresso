@@ -2,24 +2,20 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ImageUp, Plus, RotateCcw, UserX, UserCheck } from 'lucide-react';
 import { settingsApi } from '../../api/settings';
-import { officialsApi } from '../../api/officials';
 import { Badge, Button, Input, Modal } from '../ui';
-import PasswordInput from '../PasswordInput';
-import PasswordChecklist, { passwordOk } from '../PasswordChecklist';
-import { formatDateTime } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
 import { Notice, Section, checkImage, errorText } from './shared';
 
-// Settings → System (SK Chairperson only): SK information and logo (printed on the PDF
-// exports), the officials' accounts, and the attendance QR defaults.
-export default function SystemTab({ user }) {
+// Settings → System (SK Admin only): SK information and logo (printed on the PDF exports),
+// the SK officials list, and the attendance QR defaults.
+export default function SystemTab() {
   const { data } = useQuery({ queryKey: ['settings'], queryFn: settingsApi.get });
   const settings = data?.settings;
   if (!settings) return <p className="text-sm text-slate-600">Loading…</p>;
   return (
     <div className="space-y-6">
       <SkInfoSection settings={settings} />
-      <UsersSection me={user} />
+      <OfficialsSection />
       <AdminOfficialSection />
       <AttendanceSection settings={settings} />
     </div>
@@ -127,33 +123,38 @@ function SkInfoSection({ settings }) {
 
 const POSITIONS = ['SK Chairperson', 'SK Secretary', 'SK Treasurer', 'SK Kagawad'];
 
-function UsersSection({ me }) {
+// The SK officials: the names in the meeting attendance dropdown and on the public
+// Officials page. They have no login accounts. Officials are never deleted (their
+// attendance stays); one who left is set inactive and leaves the dropdown.
+function OfficialsSection() {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({ queryKey: ['settings', 'accounts'], queryFn: settingsApi.accounts });
-  const accounts = data?.accounts || [];
-  const [adding, setAdding] = useState(false);
-  const [editing, setEditing] = useState(null); // account whose position is being changed
+  const { data, isLoading } = useQuery({ queryKey: ['settings', 'officials'], queryFn: settingsApi.officials });
+  const officials = data?.officials || [];
+  const [editing, setEditing] = useState(null); // {} to add, or the official to change
   const [msg, setMsg] = useState(null);
 
-  const update = useMutation({
-    mutationFn: ({ id, data: body }) => settingsApi.updateAccount(id, body),
+  const refresh = (text) => {
+    qc.invalidateQueries({ queryKey: ['settings', 'officials'] });
+    qc.invalidateQueries({ queryKey: ['officials'] });
+    setMsg({ ok: true, text });
+  };
+  const save = useMutation({
+    mutationFn: ({ id, body }) => (id ? settingsApi.updateOfficial(id, body) : settingsApi.createOfficial(body)),
     onSuccess: (_res, vars) => {
-      qc.invalidateQueries({ queryKey: ['settings', 'accounts'] });
-      qc.invalidateQueries({ queryKey: ['officials'] });
-      setMsg({ ok: true, text: vars.okText });
+      refresh(vars.okText);
       setEditing(null);
     },
-    onError: (err) => setMsg({ ok: false, text: errorText(err, 'The account could not be changed.') }),
+    onError: (err) => setMsg({ ok: false, text: errorText(err, 'The change could not be saved.') }),
   });
 
   return (
     <Section
-      title="User management"
-      description="Accounts of the SK officials. Deactivated accounts cannot log in; their records stay."
+      title="SK officials"
+      description="The names shown in the meeting attendance dropdown and on the public Officials page. Inactive officials are left out of the dropdown; their attendance records stay."
       actions={
-        <Button variant="accent" onClick={() => setAdding(true)}>
+        <Button variant="accent" onClick={() => setEditing({})}>
           <Plus size={18} strokeWidth={2} aria-hidden="true" />
-          Add official account
+          Add official
         </Button>
       }
     >
@@ -162,109 +163,118 @@ function UsersSection({ me }) {
         <p className="text-sm text-slate-600">Loading…</p>
       ) : (
         <div className="-mx-5 overflow-x-auto sm:mx-0">
-          <table className="w-full min-w-[640px] text-left text-sm">
+          <table className="w-full min-w-[520px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
                 <th className="px-5 py-2 font-semibold sm:px-3">Name</th>
                 <th className="px-3 py-2 font-semibold">Position</th>
-                <th className="px-3 py-2 font-semibold">Last login</th>
                 <th className="px-3 py-2 font-semibold">Status</th>
                 <th className="px-3 py-2 text-right font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {accounts.map((a) => {
-                const self = a.id === me?.id;
-                return (
-                  <tr key={a.id} className={a.isActive ? '' : 'bg-slate-50 text-slate-500'}>
-                    <td className="px-5 py-3 sm:px-3">
-                      <p className="font-semibold text-slate-900">{a.name}{self ? ' (you)' : ''}</p>
-                      <p className="text-slate-600">{a.email}</p>
-                    </td>
-                    <td className="px-3 py-3">{a.official?.position || '—'}</td>
-                    <td className="px-3 py-3 tabular">{a.lastLoginAt ? formatDateTime(a.lastLoginAt) : 'Never'}</td>
-                    <td className="px-3 py-3">
-                      <Badge tone={a.isActive ? 'green' : 'slate'}>{a.isActive ? 'Active' : 'Deactivated'}</Badge>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex justify-end gap-1.5">
-                        <Button size="sm" variant="secondary" disabled={self} onClick={() => setEditing(a)}>
-                          Edit position
-                        </Button>
-                        {a.isActive ? (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={self || update.isPending}
-                            onClick={() => {
-                              if (window.confirm(`Deactivate ${a.name}'s account? They will not be able to log in.`)) {
-                                update.mutate({ id: a.id, data: { isActive: false }, okText: `${a.name}'s account was deactivated.` });
-                              }
-                            }}
-                          >
-                            <UserX size={16} strokeWidth={1.75} aria-hidden="true" />
-                            Deactivate
-                          </Button>
+              {officials.map((o) => (
+                <tr key={o.id} className={o.isActive ? '' : 'bg-slate-50 text-slate-500'}>
+                  <td className="px-5 py-3 font-semibold text-slate-900 sm:px-3">{o.name}</td>
+                  <td className="px-3 py-3">{o.position}</td>
+                  <td className="px-3 py-3">
+                    <Badge tone={o.isActive ? 'green' : 'slate'}>{o.isActive ? 'Active' : 'Inactive'}</Badge>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="secondary" onClick={() => setEditing(o)}>
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={save.isPending}
+                        onClick={() =>
+                          save.mutate({
+                            id: o.id,
+                            body: { isActive: !o.isActive },
+                            okText: o.isActive ? `${o.name} is now inactive.` : `${o.name} is active again.`,
+                          })
+                        }
+                      >
+                        {o.isActive ? (
+                          <UserX size={16} strokeWidth={1.75} aria-hidden="true" />
                         ) : (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={update.isPending}
-                            onClick={() =>
-                              update.mutate({ id: a.id, data: { isActive: true }, okText: `${a.name}'s account is active again.` })
-                            }
-                          >
-                            <UserCheck size={16} strokeWidth={1.75} aria-hidden="true" />
-                            Reactivate
-                          </Button>
+                          <UserCheck size={16} strokeWidth={1.75} aria-hidden="true" />
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                        {o.isActive ? 'Set inactive' : 'Set active'}
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       )}
-
-      <AddAccountModal
-        open={adding}
-        onClose={() => setAdding(false)}
-        onDone={(account) => {
-          setAdding(false);
-          setMsg({ ok: true, text: `${account.name}'s account was created. Give them their email and starting password.` });
-          qc.invalidateQueries({ queryKey: ['settings', 'accounts'] });
-          qc.invalidateQueries({ queryKey: ['officials'] });
-        }}
-      />
-      <PositionModal
-        account={editing}
-        busy={update.isPending}
+      <OfficialModal
+        official={editing}
+        busy={save.isPending}
         onClose={() => setEditing(null)}
-        onSave={(position) =>
-          update.mutate({ id: editing.id, data: { position }, okText: `${editing.name} is now ${position}.` })
+        onSave={(body) =>
+          save.mutate({
+            id: editing?.id,
+            body,
+            okText: editing?.id ? 'The official was updated.' : `${body.name} was added.`,
+          })
         }
       />
     </Section>
   );
 }
 
-// The SK Admin account is shared, so it has no official of its own. Choosing an official
-// here makes the header show that official's name and position when the admin is logged in.
+// Add an official, or change one's name and position.
+function OfficialModal({ official, busy, onClose, onSave }) {
+  const [name, setName] = useState('');
+  const [position, setPosition] = useState('');
+  useEffect(() => {
+    setName(official?.name || '');
+    setPosition(official?.position || (official ? 'SK Kagawad' : ''));
+  }, [official]);
+  const adding = official && !official.id;
+  return (
+    <Modal
+      open={Boolean(official)}
+      onClose={onClose}
+      title={adding ? 'Add official' : 'Edit official'}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            disabled={busy || !name.trim() || !position.trim()}
+            onClick={() => onSave({ name: name.trim(), position: position.trim() })}
+          >
+            {busy ? 'Saving…' : 'Save'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Input label="Full name" value={name} onChange={(e) => setName(e.target.value)} required />
+        <PositionField value={position} onChange={setPosition} />
+      </div>
+    </Modal>
+  );
+}
+
 function AdminOfficialSection() {
   const qc = useQueryClient();
   const { refreshUser, user } = useAuth();
-  const { data } = useQuery({ queryKey: ['settings', 'accounts'], queryFn: settingsApi.accounts });
-  const { data: officialsData } = useQuery({ queryKey: ['officials', 'all'], queryFn: () => officialsApi.list() });
-  const officials = officialsData?.officials || [];
+  const { data } = useQuery({ queryKey: ['settings', 'officials'], queryFn: settingsApi.officials });
+  const officials = data?.officials || [];
   const admins = data?.admins || [];
   const [msg, setMsg] = useState(null);
 
   const save = useMutation({
     mutationFn: ({ id, officialId }) => settingsApi.setAdminOfficial(id, officialId),
     onSuccess: async (_res, vars) => {
-      qc.invalidateQueries({ queryKey: ['settings', 'accounts'] });
+      qc.invalidateQueries({ queryKey: ['settings', 'officials'] });
       if (vars.id === user?.id) await refreshUser();
       setMsg({ ok: true, text: 'Saved. The header shows the new name and position when the SK Admin logs in.' });
     },
@@ -321,93 +331,6 @@ function PositionField({ value, onChange }) {
         ))}
       </datalist>
     </div>
-  );
-}
-
-function PositionModal({ account, busy, onClose, onSave }) {
-  const [position, setPosition] = useState('');
-  useEffect(() => setPosition(account?.official?.position || ''), [account]);
-  return (
-    <Modal
-      open={Boolean(account)}
-      onClose={onClose}
-      title="Edit position"
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={busy || !position.trim()} onClick={() => onSave(position.trim())}>
-            {busy ? 'Saving…' : 'Save position'}
-          </Button>
-        </>
-      }
-    >
-      <p className="mb-4 text-slate-700">{account?.name}</p>
-      <PositionField value={position} onChange={setPosition} />
-      <p className="mt-2 text-sm text-slate-600">
-        The account with the position "SK Chairperson" is the only one who shows the attendance QR; it also manages these settings. Every other official account has the same access as the SK Admin.
-      </p>
-    </Modal>
-  );
-}
-
-const EMPTY = { name: '', email: '', position: 'SK Kagawad', password: '' };
-
-function AddAccountModal({ open, onClose, onDone }) {
-  const [form, setForm] = useState(EMPTY);
-  const [confirm, setConfirm] = useState('');
-  const [error, setError] = useState('');
-  const create = useMutation({
-    mutationFn: settingsApi.createAccount,
-    onSuccess: (res) => {
-      setForm(EMPTY);
-      setConfirm('');
-      onDone(res.account);
-    },
-    onError: (err) => setError(errorText(err, 'The account could not be created.')),
-  });
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const ready = form.name.trim() && form.email.trim() && form.position.trim() && passwordOk(form.password, confirm);
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Add official account"
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button
-            variant="accent"
-            disabled={!ready || create.isPending}
-            onClick={() => {
-              setError('');
-              create.mutate({ ...form, name: form.name.trim(), email: form.email.trim(), position: form.position.trim() });
-            }}
-          >
-            {create.isPending ? 'Creating…' : 'Create account'}
-          </Button>
-        </>
-      }
-    >
-      {error && <div className="mb-4"><Notice ok={false}>{error}</Notice></div>}
-      <div className="space-y-4">
-        <Input label="Full name" value={form.name} onChange={set('name')} required />
-        <Input label="Email" type="email" value={form.email} onChange={set('email')} required />
-        <PositionField value={form.position} onChange={(v) => setForm({ ...form, position: v })} />
-        <div>
-          <PasswordInput label="Starting password" autoComplete="new-password" value={form.password} onChange={set('password')} required />
-          <PasswordChecklist password={form.password} confirm={confirm} />
-        </div>
-        <PasswordInput
-          label="Confirm password"
-          autoComplete="new-password"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          required
-        />
-        <p className="text-sm text-slate-600">The official can change this password in Settings → Security after logging in.</p>
-      </div>
-    </Modal>
   );
 }
 

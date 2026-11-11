@@ -7,26 +7,26 @@ const {
   uploadLogo,
   removeLogo,
   getLogo,
-  listAccounts,
-  createAccount,
-  updateAccount,
+  listOfficials,
+  createOfficial,
+  updateOfficial,
   setAdminOfficial,
 } = require('../controllers/settingsController');
 const { protect } = require('../middleware/auth');
-const { requireSkChair } = require('../utils/roles');
+const { requireSkAdmin } = require('../utils/roles');
 const { logoUpload } = require('../middleware/upload');
 
 // Public: the SK name, term and logo (printed on reports)
 router.get('/', readSettings);
 router.get('/logo', getLogo);
 
-// Settings → System: the SK Chairperson only
-router.put('/', protect, requireSkChair, saveSettings);
-router.post('/logo', protect, requireSkChair, logoUpload, uploadLogo);
-router.delete('/logo', protect, requireSkChair, removeLogo);
-router.get('/accounts', protect, requireSkChair, listAccounts);
-router.post('/accounts', protect, requireSkChair, createAccount);
-router.put('/accounts/:id', protect, requireSkChair, updateAccount);
-router.put('/admins/:id', protect, requireSkChair, setAdminOfficial);
+// Settings → System (including the SK officials list): the SK Admin only
+router.put('/', protect, requireSkAdmin, saveSettings);
+router.post('/logo', protect, requireSkAdmin, logoUpload, uploadLogo);
+router.delete('/logo', protect, requireSkAdmin, removeLogo);
+router.get('/officials', protect, requireSkAdmin, listOfficials);
+router.post('/officials', protect, requireSkAdmin, createOfficial);
+router.put('/officials/:id', protect, requireSkAdmin, updateOfficial);
+router.put('/admins/:id', protect, requireSkAdmin, setAdminOfficial);
 
 module.exports = router;

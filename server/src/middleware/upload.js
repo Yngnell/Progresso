@@ -96,7 +96,7 @@ function photoUpload(req, res, next) {
   });
 }
 
-// One image from the given form field: a profile picture ("photo") or the SK logo ("logo").
+// One image from the given form field (the SK logo, "logo").
 function singleImage(field) {
   return (req, res, next) => {
     photoUploader.single(field)(req, res, (err) => {
@@ -123,7 +123,6 @@ module.exports = {
   receiptPath,
   removeReceiptFile,
   photoUpload,
-  avatarUpload: singleImage('photo'),
   logoUpload: singleImage('logo'),
   photoPath,
   removePhotoFile,

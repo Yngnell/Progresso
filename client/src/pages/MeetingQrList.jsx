@@ -8,7 +8,7 @@ import { EVENT_TYPE, formatDateTime } from '../utils/format';
 
 const THREE_HOURS = 3 * 60 * 60 * 1000;
 
-// The SK Chairperson's list of events that have not ended yet, each with its QR code.
+// The SK Admin's list of meetings that have not ended yet, each with its QR code.
 export default function MeetingQrList() {
   const { data, isLoading } = useQuery({
     queryKey: ['events', 'qr-list'],
@@ -27,15 +27,15 @@ export default function MeetingQrList() {
     <div className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="font-display text-4xl font-bold uppercase tracking-wide text-slate-900">Attendance QR</h1>
       <p className="mt-1 text-slate-600">
-        Each event has its own QR code. Show it on a laptop or projector, or print it; officials scan it with their phone
-        to record their attendance.
+        Each meeting has its own QR code. Show it on a laptop or projector, or print it; officials scan it with their phone
+        and choose their name to record their attendance.
       </p>
 
       <div className="mt-6 space-y-3">
         {isLoading ? (
           <p className="text-sm text-slate-500">Loading…</p>
         ) : events.length === 0 ? (
-          <Card className="p-6 text-slate-600">No upcoming events on the calendar.</Card>
+          <Card className="p-6 text-slate-600">No upcoming meetings.</Card>
         ) : (
           events.map((e) => (
             <Card key={e.id} className="flex flex-wrap items-center gap-4 p-4">

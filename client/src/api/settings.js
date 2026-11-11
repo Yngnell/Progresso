@@ -1,7 +1,7 @@
 import api from './axios';
 
-// SK information, the logo printed on reports, attendance defaults, and (SK Chairperson)
-// the officials' accounts.
+// SK information, the logo printed on reports, attendance defaults, and (SK Admin) the
+// list of SK officials (the names in the attendance dropdown).
 export const settingsApi = {
   get: () => api.get('/settings').then((r) => r.data),
   save: (data) => api.put('/settings', data).then((r) => r.data),
@@ -15,9 +15,12 @@ export const settingsApi = {
   logoUrl: (settings) =>
     settings?.hasLogo ? `${api.defaults.baseURL}/settings/logo?v=${settings.logoVersion}` : '/logo.jpg',
 
-  accounts: () => api.get('/settings/accounts').then((r) => r.data),
-  createAccount: (data) => api.post('/settings/accounts', data).then((r) => r.data),
-  updateAccount: (id, data) => api.put(`/settings/accounts/${id}`, data).then((r) => r.data),
+  // { officials, admins }
+  officials: () => api.get('/settings/officials').then((r) => r.data),
+  // { name, position }
+  createOfficial: (data) => api.post('/settings/officials', data).then((r) => r.data),
+  // { name?, position?, isActive? }
+  updateOfficial: (id, data) => api.put(`/settings/officials/${id}`, data).then((r) => r.data),
   // The official the SK Admin account acts as (shown in the header); null to clear.
   setAdminOfficial: (id, officialId) => api.put(`/settings/admins/${id}`, { officialId }).then((r) => r.data),
 };

@@ -1,117 +1,132 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { CircleCheck, CircleAlert } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CircleAlert, CircleCheck } from 'lucide-react';
 import { attendanceApi } from '../api/attendance';
 import { Button } from '../components/ui';
 import AuthShell from '../components/AuthShell';
-import { ATTENDANCE_STATUS, formatDateTime, formatTime } from '../utils/format';
-import { isStaff } from '../utils/roles';
+import { formatDateTime, formatTime } from '../utils/format';
 
-// Why a scan did not record attendance, in plain words.
-function failureText(result) {
-  switch (result.code) {
-    case 'ALREADY':
-      return result.record?.timeIn
-        ? `Already recorded: your attendance for this event was recorded at ${formatTime(result.record.timeIn)}.`
-        : 'Already recorded: your attendance for this event is already on file.';
-    case 'EXPIRED':
-      return 'Expired: this QR code is no longer valid. Ask the SK Chairperson for the current one.';
-    case 'DEACTIVATED':
-      return 'Deactivated: the SK Chairperson turned this QR code off.';
-    case 'INVALID':
-      return 'Not valid: this QR code was replaced with a new one. Scan the code shown at the event.';
-    case 'NOT_OPEN':
-      return result.opensAt
-        ? `Not open yet: scanning opens at ${formatTime(result.opensAt)}.`
-        : 'Not open yet: try again closer to the start of the event.';
-    case 'NOT_FOUND':
-      return 'This event was not found. Scan the QR code again.';
-    default:
-      return result.message || 'Your attendance was not recorded. Scan the QR code again.';
-  }
-}
-
-// Opened by scanning an event's attendance QR code with the phone camera. Someone signed
-// in is recorded straight away; anyone else logs in first and comes back here.
+// Opened by scanning a meeting's attendance QR code (no login). The SK official picks their
+// name and submits; they are marked Present. Names already marked present leave the list,
+// and outside the time the SK Admin set the page says "Attendance is closed."
 export default function CheckIn() {
   const [params] = useSearchParams();
-  const location = useLocation();
-  const { user, loading } = useAuth();
   const eventId = params.get('e');
   const token = params.get('t');
-  const [result, setResult] = useState(null); // { ok, record, event } or { ok: false, code, ... }
-  const sent = useRef(false);
+  const qc = useQueryClient();
+  const [officialId, setOfficialId] = useState('');
+  const [done, setDone] = useState(null); // { name, timeIn }
+  const [problem, setProblem] = useState('');
 
-  useEffect(() => {
-    if (loading || !user || !eventId || sent.current) return;
-    sent.current = true;
-    attendanceApi
-      .checkIn(eventId, token)
-      .then((res) => setResult({ ok: true, ...res }))
-      .catch((err) => setResult({ ok: false, ...(err.response?.data || {}) }));
-  }, [loading, user, eventId, token]);
+  const key = ['attendance-page', eventId, token];
+  const { data, isLoading, error } = useQuery({
+    queryKey: key,
+    queryFn: () => attendanceApi.page(eventId, token),
+    enabled: Boolean(eventId && token),
+  });
 
-  const back = { from: { pathname: location.pathname, search: location.search } };
+  const submit = useMutation({
+    mutationFn: () => attendanceApi.markPresent(eventId, token, officialId),
+    onSuccess: (res) => {
+      setDone({ name: res.record.participant, timeIn: res.record.timeIn });
+      setOfficialId('');
+      setProblem('');
+      qc.setQueryData(key, (old) => (old ? { ...old, officials: res.officials } : old));
+    },
+    onError: (err) => {
+      const body = err.response?.data || {};
+      setProblem(body.message || 'Your attendance was not recorded. Try again.');
+      if (body.code === 'CLOSED' || body.code === 'ALREADY') qc.invalidateQueries({ queryKey: key });
+    },
+  });
 
+  const event = data?.event;
   let body;
   if (!eventId || !token) {
     body = <p className="text-slate-700">This attendance link is not complete. Scan the QR code again.</p>;
-  } else if (loading || (user && !result)) {
-    body = <p className="text-slate-700">Recording your attendance…</p>;
-  } else if (!user) {
+  } else if (isLoading) {
+    body = <p className="text-slate-700">Loading…</p>;
+  } else if (error || !data) {
     body = (
-      <div className="space-y-4">
-        <p className="text-slate-700">Log in first to record your attendance. You will come back here right after.</p>
-        <Link to="/login" state={back}>
-          <Button variant="primary" size="lg">Log in</Button>
-        </Link>
-      </div>
+      <p className="text-slate-700">{error?.response?.data?.message || 'This meeting was not found. Scan the QR code again.'}</p>
     );
-  } else if (result.ok) {
-    const r = result.record;
-    const label = ATTENDANCE_STATUS[r.status]?.label || r.status;
+  } else if (!data.open) {
     body = (
-      <div className="flex items-start gap-3 rounded-lg bg-green-50 px-4 py-4 text-green-900" role="status">
-        <CircleCheck size={28} strokeWidth={1.75} className="mt-0.5 shrink-0 text-green-700" aria-hidden="true" />
-        <div>
-          <p className="text-lg font-bold">
-            Attendance recorded for {result.event.title} at {formatTime(r.timeIn)}
-          </p>
-          <p className="mt-1">
-            Status: <strong>{label}</strong> · {r.participant}
-          </p>
-          <p className="mt-1 text-sm">
-            {formatDateTime(result.event.startAt)}
-            {result.event.location ? ` · ${result.event.location}` : ''}
-          </p>
-        </div>
+      <div className="flex items-start gap-3 rounded-lg bg-slate-100 px-4 py-4 text-slate-800" role="status">
+        <CircleAlert size={22} strokeWidth={1.75} className="mt-0.5 shrink-0" aria-hidden="true" />
+        <p className="font-semibold">{data.code === 'INVALID' ? data.message : 'Attendance is closed.'}</p>
       </div>
     );
   } else {
+    const officials = data.officials || [];
     body = (
-      <div className="flex items-start gap-3 rounded-lg bg-red-50 px-4 py-4 text-red-800" role="alert">
-        <CircleAlert size={28} strokeWidth={1.75} className="mt-0.5 shrink-0" aria-hidden="true" />
-        <div>
-          <p className="text-lg font-bold">{failureText(result)}</p>
-          {result.event && (
-            <p className="mt-1">
-              {result.event.title} · {formatDateTime(result.event.startAt)}
+      <div className="space-y-4">
+        {done && (
+          <div className="flex items-start gap-3 rounded-lg bg-green-50 px-4 py-4 text-green-900" role="status">
+            <CircleCheck size={22} strokeWidth={1.75} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <p>
+              <span className="font-semibold">{done.name}</span> is marked Present at {formatTime(done.timeIn)}.
             </p>
-          )}
-        </div>
+          </div>
+        )}
+        {officials.length === 0 ? (
+          <p className="text-slate-700">Every SK official is already marked present for this meeting.</p>
+        ) : (
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!officialId) return setProblem('Choose your name from the list.');
+              submit.mutate();
+            }}
+          >
+            <label className="block">
+              <span className="label">Your name</span>
+              <select
+                className="input"
+                value={officialId}
+                onChange={(e) => {
+                  setOfficialId(e.target.value);
+                  setProblem('');
+                }}
+                required
+              >
+                <option value="">Choose your name…</option>
+                {officials.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                    {o.position ? ` (${o.position})` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {problem && (
+              <p className="text-sm font-medium text-red-700" role="alert">
+                {problem}
+              </p>
+            )}
+            <Button type="submit" variant="primary" className="w-full" disabled={submit.isPending}>
+              {submit.isPending ? 'Submitting…' : 'Submit'}
+            </Button>
+          </form>
+        )}
       </div>
     );
   }
 
   return (
-    <AuthShell title="Attendance" description="Sangguniang Kabataan, Barangay Salinas 1">
+    <AuthShell title="Meeting attendance" description="Sangguniang Kabataan, Barangay Salinas 1">
+      {event && (
+        <div className="mb-5">
+          <p className="text-lg font-bold text-slate-900">{event.title}</p>
+          <p className="text-sm text-slate-600">
+            {formatDateTime(event.startAt)}
+            {event.location ? ` · ${event.location}` : ''}
+          </p>
+        </div>
+      )}
       {body}
-      <p className="mt-6 text-slate-600">
-        <Link className="font-semibold text-brand-700 hover:text-brand-800" to={isStaff(user) ? '/admin' : '/'}>
-          {isStaff(user) ? 'Go to the dashboard' : 'Go to the website'}
-        </Link>
-      </p>
     </AuthShell>
   );
 }

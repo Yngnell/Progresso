@@ -8,7 +8,7 @@ const includeOpts = {
   attendance: { orderBy: { createdAt: 'asc' } },
 };
 
-// The attendance QR token is a secret: only the SK Chairperson gets it (attendance/qr).
+// The attendance QR token is a secret: only the SK Admin gets it (attendance/qr).
 function hideQr(event) {
   if (!event) return event;
   const { qrToken, ...rest } = event;
@@ -48,14 +48,20 @@ async function getEvent(req, res, next) {
   }
 }
 
-// The add-event form has no title field: an event is named after its type.
-const TYPE_LABEL = { MEETING: 'Meeting', SESSION: 'Session', ACTIVITY: 'Activity', APPOINTMENT: 'Appointment' };
+// Meetings only: every new or edited event is a Meeting, named "Meeting" unless a title is given.
+const MEETING = 'MEETING';
+const MEETING_TITLE = 'Meeting';
 
-// Normalize event body into Prisma-ready data.
-function parseEventBody(body) {
+// A meeting is finished once its end (or, without an end, its start) has passed. Finished
+// meetings can no longer be edited or deleted.
+const finished = (event, now = new Date()) => new Date(event.endAt || event.startAt) <= now;
+const FINISHED_MESSAGE = 'This meeting has already ended and can no longer be changed';
+
+// Normalize event body into Prisma-ready data. Start and end must not be in the past,
+// and the end must be after the start.
+function parseEventBody(body, existing = {}) {
   const {
     title,
-    type,
     description,
     startAt,
     endAt,
@@ -65,15 +71,24 @@ function parseEventBody(body) {
     relatedProjectId,
   } = body;
 
-  const data = {};
+  const data = { type: MEETING };
   if (title !== undefined) data.title = title;
-  if (type !== undefined) data.type = type;
   if (description !== undefined) data.description = description;
   if (startAt !== undefined) {
     if (!startAt) return { error: 'Start date/time is required' };
     data.startAt = parsePhDate(startAt);
   }
   if (endAt !== undefined) data.endAt = endAt ? parsePhDate(endAt) : null;
+  const now = new Date();
+  for (const key of ['startAt', 'endAt']) {
+    if (data[key] && Number.isNaN(data[key].getTime())) return { error: 'Enter a valid date and time' };
+    if (data[key] && data[key] < now) return { error: 'The date and time cannot be in the past' };
+  }
+  const start = data.startAt || existing.startAt;
+  const end = data.endAt !== undefined ? data.endAt : existing.endAt;
+  if (start && end && new Date(end) <= new Date(start)) {
+    return { error: 'The end date and time must be after the start' };
+  }
   if (location !== undefined) data.location = location;
   if (meetingLink !== undefined) data.meetingLink = meetingLink;
   if (organizerId !== undefined) data.organizerId = organizerId || null;
@@ -87,7 +102,7 @@ async function createEvent(req, res, next) {
     const { data, error } = parseEventBody(req.body);
     if (error) return res.status(400).json({ message: error });
     if (!data.startAt) return res.status(400).json({ message: 'Start date/time is required' });
-    if (!data.title) data.title = TYPE_LABEL[data.type] || TYPE_LABEL.MEETING;
+    if (!data.title) data.title = MEETING_TITLE;
 
     const event = await prisma.event.create({ data, include: includeOpts });
     res.status(201).json({ event: hideQr(event) });
@@ -102,12 +117,10 @@ async function updateEvent(req, res, next) {
     const existing = await prisma.event.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ message: 'Event not found' });
 
-    const { data, error } = parseEventBody(req.body);
+    if (finished(existing)) return res.status(400).json({ message: FINISHED_MESSAGE });
+
+    const { data, error } = parseEventBody(req.body, existing);
     if (error) return res.status(400).json({ message: error });
-    // A type change renames an event that still carries its old type's name.
-    if (data.type && data.title === undefined && existing.title === TYPE_LABEL[existing.type]) {
-      data.title = TYPE_LABEL[data.type] || existing.title;
-    }
 
     const event = await prisma.event.update({
       where: { id: req.params.id },
@@ -125,6 +138,7 @@ async function deleteEvent(req, res, next) {
   try {
     const existing = await prisma.event.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ message: 'Event not found' });
+    if (finished(existing)) return res.status(400).json({ message: FINISHED_MESSAGE });
     await prisma.event.delete({ where: { id: req.params.id } });
     res.json({ message: 'Event deleted' });
   } catch (err) {

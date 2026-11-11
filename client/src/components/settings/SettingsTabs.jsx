@@ -20,7 +20,7 @@ export default function SettingsTabs() {
   const tabs = [
     { id: 'profile', label: 'Profile', Icon: UserRound },
     { id: 'security', label: 'Security', Icon: ShieldCheck },
-    ...(user?.isSkChair ? [{ id: 'system', label: 'System', Icon: Settings2 }] : []),
+    ...(user?.role === 'ADMIN' ? [{ id: 'system', label: 'System', Icon: Settings2 }] : []),
   ];
   const wanted = params.get('tab');
   const [active, setActive] = useState(tabs.some((t) => t.id === wanted) ? wanted : 'profile');
@@ -67,7 +67,7 @@ export default function SettingsTabs() {
       <div id={`panel-${current}`} role="tabpanel" aria-labelledby={`tab-${current}`} className="mt-6">
         {current === 'profile' && <ProfileTab user={user} refreshUser={refreshUser} />}
         {current === 'security' && <SecurityTab user={user} />}
-        {current === 'system' && user?.isSkChair && <SystemTab user={user} />}
+        {current === 'system' && user?.role === 'ADMIN' && <SystemTab />}
       </div>
     </div>
   );

@@ -10,31 +10,21 @@ import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
 import { AttendanceQrButton } from '../../components/AttendanceQr';
 import MonthCalendar, { MONTHS } from '../../components/MonthCalendar';
-import {
-  Button,
-  Card,
-  Badge,
-  Modal,
-  Input,
-  Select,
-  EmptyState,
-} from '../../components/ui';
-import { EVENT_TYPE, formatDateTime, toDateTimeLocal } from '../../utils/format';
+import { Button, Card, Modal, Input } from '../../components/ui';
+import { formatDateTime, toDateTimeLocal } from '../../utils/format';
 
-const typeOptions = Object.entries(EVENT_TYPE).map(([value, v]) => ({
-  value,
-  label: v.label,
-}));
-
-// The event is named after its type ("Meeting", "Session"…) by the server.
+// Every event is a Meeting (the server names it "Meeting").
 const emptyForm = {
-  type: 'MEETING',
   startAt: '',
   endAt: '',
   meetingLink: '',
 };
 
-export default function AdminCalendar() {
+// A meeting is finished once its end (or, without an end, its start) has passed:
+// it can then no longer be edited or deleted.
+const isFinished = (e) => new Date(e.endAt || e.startAt) <= new Date();
+
+export default function AdminMeetings() {
   const { user } = useAuth();
   // Only the SK Admin adds and edits events; the chairman and the officials view them.
   const readOnly = !isAdmin(user);
@@ -85,7 +75,8 @@ export default function AdminCalendar() {
 
   function openCreate(dayK) {
     setEditing(null);
-    const start = dayK ? `${dayK}T09:00` : '';
+    // A day in the past opens an empty start (past dates and times are not allowed).
+    const start = dayK && new Date(`${dayK}T09:00`) > new Date() ? `${dayK}T09:00` : '';
     setForm({ ...emptyForm, startAt: start });
     setError('');
     setModalOpen(true);
@@ -94,7 +85,6 @@ export default function AdminCalendar() {
   function openEdit(event) {
     setEditing(event);
     setForm({
-      type: event.type || 'MEETING',
       startAt: toDateTimeLocal(event.startAt),
       endAt: toDateTimeLocal(event.endAt),
       meetingLink: event.meetingLink || '',
@@ -117,6 +107,14 @@ export default function AdminCalendar() {
   function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    const now = new Date();
+    if (!form.startAt) return setError('Enter the start date and time.');
+    if (new Date(form.startAt) < now || (form.endAt && new Date(form.endAt) < now)) {
+      return setError('The date and time cannot be in the past.');
+    }
+    if (form.endAt && new Date(form.endAt) <= new Date(form.startAt)) {
+      return setError('The end date and time must be after the start.');
+    }
     // datetime-local has no time zone; convert it here so the server stores the
     // exact moment picked (in the browser's Philippine time), not the same clock time in UTC.
     const toIso = (v) => (v ? new Date(v).toISOString() : '');
@@ -128,6 +126,9 @@ export default function AdminCalendar() {
       deleteMutation.mutate(event.id);
     }
   }
+
+  // Earliest date and time the pickers allow: now (past dates and times are disabled).
+  const nowLocal = toDateTimeLocal(new Date());
 
   const selectedEvents = selectedDay
     ? events.filter((e) => {
@@ -141,8 +142,8 @@ export default function AdminCalendar() {
   return (
     <div>
       <PageHeader
-        title="Calendar"
-        description="Schedule meetings, sessions, activities, and appointments."
+        title="Meetings"
+        description="Schedule SK meetings and record their attendance."
         actions={
           !readOnly && (
             <Button variant="accent" onClick={() => openCreate(selectedDay)}>
@@ -210,9 +211,9 @@ export default function AdminCalendar() {
                         <p className="text-sm text-slate-600">{formatDateTime(e.startAt)}</p>
                       </div>
                     </div>
-                    {user?.isSkChair && <AttendanceQrButton event={e} className="mt-3 w-full" />}
+                    {user?.role === 'ADMIN' && <AttendanceQrButton event={e} className="mt-3 w-full" />}
                     <div className="mt-3 flex gap-2">
-                      <Link to={`/admin/calendar/${e.id}`} className="flex-1">
+                      <Link to={`/admin/meetings/${e.id}`} className="flex-1">
                         <Button size="sm" variant="secondary" className="w-full">
                           Attendance
                         </Button>
@@ -223,6 +224,8 @@ export default function AdminCalendar() {
                             size="sm"
                             variant="secondary"
                             onClick={() => openEdit(e)}
+                            disabled={isFinished(e)}
+                            title={isFinished(e) ? 'This meeting has ended' : undefined}
                             aria-label={`Edit ${e.title}`}
                           >
                             <Pencil size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -232,6 +235,8 @@ export default function AdminCalendar() {
                             variant="ghost"
                             className="text-red-700 hover:bg-red-50"
                             onClick={() => handleDelete(e)}
+                            disabled={isFinished(e)}
+                            title={isFinished(e) ? 'This meeting has ended' : undefined}
                             aria-label={`Delete ${e.title}`}
                           >
                             <Trash2 size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -264,17 +269,13 @@ export default function AdminCalendar() {
           {error && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
           )}
-          <Select
-            label="Type"
-            value={form.type}
-            onChange={(e) => update('type', e.target.value)}
-            options={typeOptions}
-          />
+          <Input label="Type" value="Meeting" disabled readOnly />
           <div className="grid grid-cols-2 gap-4">
             <Input
               label="Start *"
               type="datetime-local"
               value={form.startAt}
+              min={nowLocal}
               onChange={(e) => update('startAt', e.target.value)}
               required
             />
@@ -282,6 +283,7 @@ export default function AdminCalendar() {
               label="End"
               type="datetime-local"
               value={form.endAt}
+              min={form.startAt || nowLocal}
               onChange={(e) => update('endAt', e.target.value)}
             />
           </div>

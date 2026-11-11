@@ -98,7 +98,7 @@ function EmailAlerts() {
       {saved && verified && (
         <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-green-700">
           <CircleCheck size={16} strokeWidth={1.75} aria-hidden="true" />
-          Verified. Project and calendar alerts go to this address.
+          Verified. Project and meeting alerts go to this address.
         </p>
       )}
       {needsCode && (
@@ -170,7 +170,7 @@ export default function NotificationBell() {
   function openNotification(n) {
     if (!n.read) readMutation.mutate(n.id);
     setOpen(false);
-    if (n.event) navigate(`/admin/calendar/${n.event.id}`);
+    if (n.event) navigate(`/admin/meetings/${n.event.id}`);
     else if (n.project) navigate(`/admin/projects/${n.project.id}`);
   }
 

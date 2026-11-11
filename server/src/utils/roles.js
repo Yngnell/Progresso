@@ -1,20 +1,12 @@
 // Who may do what. The roles in the system:
 //   ADMIN     the SK Admin, who runs the system day to day (full access)
 //   CHAIRMAN  the Barangay Chairman: approves proposals and deletions, otherwise views
-//   OFFICIAL  an SK official's own account: the same access as the SK Admin
+//   OFFICIAL  (no accounts any more: the SK officials are a list of names, see Settings)
 //   VIEWER    a registered resident (public site only)
-// The SK Chairperson is the OFFICIAL account linked to the official whose position is
-// "SK Chairperson" (Sehj Miranda). Only they show the attendance QR; they also manage
-// the accounts and the system settings. The project schedule, liquidation, checklist
-// and completion belong to the SK Admin account (requireSkAdmin).
+// The attendance QR, the settings and the project stages belong to the SK Admin account
+// (requireSkAdmin).
 
-const SK_CHAIR_POSITION = /^sk chair(person|man)$/i;
 const STAFF_ROLES = ['ADMIN', 'CHAIRMAN', 'OFFICIAL'];
-
-// req.user carries { official: { position } } (see middleware/auth.js).
-function isSkChair(user) {
-  return Boolean(user?.official && SK_CHAIR_POSITION.test(String(user.official.position || '').trim()));
-}
 
 const isStaff = (user) => STAFF_ROLES.includes(user?.role);
 // Admin-level access: the SK Admin and every SK official.
@@ -35,15 +27,13 @@ function guard(test, message) {
 
 module.exports = {
   STAFF_ROLES,
-  isSkChair,
   isStaff,
   isAdminLevel,
   isSkAdmin,
   isManager,
   isWorker,
-  // Only the SK Admin account (e.g. editing an official in the Officials module).
+  // Only the SK Admin account
   requireSkAdmin: guard(isSkAdmin, 'Only the SK Admin can do this.'),
-  requireSkChair: guard(isSkChair, 'Only the SK Chairperson can do this.'),
   requireManager: guard(isManager, 'Only the SK Admin and the SK officials can do this.'),
   requireStaff: guard(isStaff, 'Forbidden — you do not have permission'),
   requireWorker: guard(isWorker, 'Only SK officials and the SK Admin can do this.'),

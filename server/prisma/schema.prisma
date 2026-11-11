@@ -56,7 +56,6 @@ model User {
   passwordHash String
   role         Role     @default(VIEWER)
   phone        String?
-  photoUrl     String?
   // Where project alerts are emailed (e.g. a Gmail address). Empty = in-app alerts only.
   notifyEmail  String?
   // Email verification: the login email (viewers confirm it at sign-up) and the alert
@@ -108,7 +107,6 @@ model Official {
   contact      String?
   termStart    DateTime?
   termEnd      DateTime?
-  photoUrl     String?
   bio          String?
   displayOrder Int       @default(0)
   isActive     Boolean   @default(true)
@@ -119,6 +117,7 @@ model Official {
   events       Event[]   @relation("EventOrganizer")
   projects     Project[] // many-to-many team membership
   account      User?     // the official's own login, if one was created
+  attendance   AttendanceRecord[]
 }
 
 // Core monitoring entity: an SK project / program.
@@ -284,12 +283,16 @@ model AttendanceRecord {
   eventId     String
   event       Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
   participant String           // display name of attendee
-  userId      String?          // optional link to a registered user
+  // The SK official marked Present (from the QR attendance page) or Absent.
+  officialId  String?
+  official    Official?        @relation(fields: [officialId], references: [id], onDelete: SetNull)
+  userId      String?          // older check-ins made with an account
   status      AttendanceStatus @default(PRESENT)
   timeIn      DateTime?
   createdAt   DateTime         @default(now())
 
-  // One record per account per event (older rows typed in by name have no account)
+  // One record per official (and per older account) per event
+  @@unique([eventId, officialId])
   @@unique([eventId, userId])
 }
 

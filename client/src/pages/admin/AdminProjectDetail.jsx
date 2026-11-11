@@ -283,7 +283,7 @@ export default function AdminProjectDetail() {
             <h2 className={cardTitle}>Pictures</h2>
             <p className="mt-1 mb-4 text-sm text-slate-600">
               Pictures of the work appear on the public project page so residents can see it.
-              The uploader and the SK Chairperson can delete a picture.
+              The uploader and the SK Admin can delete a picture.
             </p>
             <PhotoGallery
               photos={project.photos}

@@ -2,24 +2,20 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  UserRound,
   Archive,
   CalendarDays,
-  ExternalLink,
   FolderKanban,
   LayoutDashboard,
   ListChecks,
   LogOut,
   Menu,
   Settings as SettingsIcon,
-  Users,
   X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { projectsApi } from '../api/projects';
 import NotificationBell from './NotificationBell';
 import { accessRole, roleLabel } from '../utils/roles';
-import { accountApi } from '../api/account';
 
 // `roles` limits a link to those roles; omit it to show the link to everyone
 // who can open the admin panel.
@@ -30,16 +26,15 @@ const groups = [
       { to: '/admin', label: 'Dashboard', Icon: LayoutDashboard, end: true },
       // The badge counts what waits for the Barangay Chairman's decision.
       { to: '/admin/projects', label: 'Projects', Icon: FolderKanban, badge: true },
-      { to: '/admin/calendar', label: 'Calendar', Icon: CalendarDays },
-      { to: '/admin/attendance', label: 'Attendance', Icon: ListChecks },
+      { to: '/admin/meetings', label: 'Meetings', Icon: CalendarDays },
     ],
   },
   {
-    label: 'Records',
+    label: 'Reports',
     links: [
       // Completed, cancelled and deleted projects (view only)
       { to: '/admin/archive', label: 'Archives', Icon: Archive },
-      { to: '/admin/officials', label: 'Officials', Icon: Users, roles: ['ADMIN'] },
+      { to: '/admin/attendance', label: 'Attendance', Icon: ListChecks },
     ],
   },
   {
@@ -144,18 +139,6 @@ export default function AdminLayout() {
     day: 'numeric',
   });
 
-  const footer = (
-    <div className="border-t border-white/10 p-4">
-      <Link
-        to="/"
-        className="inline-flex items-center gap-2 text-sm font-medium text-brand-200 hover:text-white"
-      >
-        <ExternalLink size={16} strokeWidth={1.75} aria-hidden="true" />
-        View public site
-      </Link>
-    </div>
-  );
-
   return (
     <div className="flex min-h-screen bg-slate-50">
       <a
@@ -171,7 +154,6 @@ export default function AdminLayout() {
           <Nameplate />
         </div>
         <Menu_ links={links} pendingCount={pendingCount} />
-        {footer}
       </aside>
 
       {/* Phone drawer */}
@@ -196,7 +178,6 @@ export default function AdminLayout() {
               </button>
             </div>
             <Menu_ links={links} pendingCount={pendingCount} onNavigate={() => setDrawerOpen(false)} />
-            {footer}
           </aside>
         </div>
       )}
@@ -218,27 +199,11 @@ export default function AdminLayout() {
             <NotificationBell />
             <Link
               to="/admin/settings"
-              className="flex items-center gap-2.5 rounded-lg px-1.5 py-1 text-left leading-tight hover:bg-slate-100 sm:px-2"
+              className="hidden rounded-lg px-2 py-1 text-left leading-tight hover:bg-slate-100 sm:block"
               title="Settings"
             >
-              {accountApi.photoUrl(user) ? (
-                <img
-                  src={accountApi.photoUrl(user)}
-                  alt=""
-                  className="h-9 w-9 shrink-0 rounded-full border border-slate-200 object-cover"
-                />
-              ) : (
-                <span
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700"
-                  aria-hidden="true"
-                >
-                  <UserRound size={20} strokeWidth={1.75} />
-                </span>
-              )}
-              <span className="hidden sm:block">
-                <span className="block text-sm font-semibold text-slate-900">{user?.displayName || user?.name}</span>
-                <span className="block text-xs text-slate-600">{roleLabel(user)}</span>
-              </span>
+              <span className="block text-sm font-semibold text-slate-900">{user?.displayName || user?.name}</span>
+              <span className="block text-xs text-slate-600">{roleLabel(user)}</span>
             </Link>
             <button
               type="button"

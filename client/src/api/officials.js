@@ -1,9 +1,7 @@
-// API helpers for Officials.
+// The SK officials' names and positions (public, read only). They are managed in
+// Settings → System by the SK Admin.
 import api from './axios';
 
 export const officialsApi = {
   list: (params) => api.get('/officials', { params }).then((r) => r.data),
-  get: (id) => api.get(`/officials/${id}`).then((r) => r.data),
-  create: (data) => api.post('/officials', data).then((r) => r.data),
-  update: (id, data) => api.put(`/officials/${id}`, data).then((r) => r.data),
 };

@@ -5,7 +5,7 @@ import SettingsTabs from '../../components/settings/SettingsTabs';
 export default function Settings() {
   return (
     <div>
-      <PageHeader title="Settings" description="Your profile, your password and, for the SK Chairperson, the system." />
+      <PageHeader title="Settings" description="Your profile, your password and, for the SK Admin, the system." />
       <div className="mt-6">
         <SettingsTabs />
       </div>

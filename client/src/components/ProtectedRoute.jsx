@@ -4,7 +4,7 @@ import { accessRole } from '../utils/roles';
 
 // Guards a route. Redirects to /login if not authenticated,
 // and redirects users whose role is not allowed here.
-// `allow` is an extra check on the user (e.g. only the SK Chairperson for the QR code).
+// `allow` is an extra check on the user (e.g. only the SK Admin for the QR code).
 export default function ProtectedRoute({ children, roles, allow }) {
   const { user, loading } = useAuth();
   const location = useLocation();

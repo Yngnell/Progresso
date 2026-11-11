@@ -1,12 +1,9 @@
 const crypto = require('crypto');
-const { canShowQr } = require('../utils/qrHolder');
-const { isSkChair } = require('../utils/roles');
 const { passwordError } = require('../utils/password');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../prisma');
 const { isMailConfigured, sendMail } = require('../utils/mailer');
-const { photoPath, removePhotoFile } = require('../middleware/upload');
 const {
   startSignup,
   resendSignupCode,
@@ -26,9 +23,6 @@ function publicUser(user) {
     email: user.email,
     role: user.role,
     phone: user.phone,
-    // Profile picture: served by GET /api/auth/avatar/:id; the version changes on upload
-    hasPhoto: Boolean(user.photoUrl),
-    photoVersion: user.photoUrl ? new Date(user.updatedAt).getTime() : null,
     // Set for SK officials: their position from the officials directory
     official: user.official ? { id: user.official.id, position: user.official.position } : null,
     // Shown in the header: the official's name and position. The SK Admin account can act as
@@ -40,10 +34,8 @@ function publicUser(user) {
       ROLE_POSITION[user.role] ||
       '',
     actsAsOfficial: user.actingOfficial ? { id: user.actingOfficial.id, name: user.actingOfficial.name, position: user.actingOfficial.position } : null,
-    // Only the SK Chairperson's account may show the attendance QR code
-    canShowQr: canShowQr(user),
-    // The SK Chairperson shows the attendance QR and manages the accounts and the system settings
-    isSkChair: isSkChair(user),
+    // Only the SK Admin account shows and manages the attendance QR code
+    canShowQr: user.role === 'ADMIN',
     pendingEmail: user.pendingEmail || null,
     // "Last login" in Settings → Security is the login before this session
     lastLoginAt: user.previousLoginAt || null,
@@ -217,57 +209,6 @@ async function getMe(req, res, next) {
       include: { official: { select: { id: true, position: true } } },
     });
     res.json({ user: await presentUser(user) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// POST /api/auth/photo — multipart "photo": the signed-in user's profile picture.
-async function uploadAvatar(req, res, next) {
-  try {
-    if (!req.file) return res.status(400).json({ message: 'Choose a picture to upload' });
-    const old = req.user.photoUrl;
-    const user = await prisma.user.update({
-      where: { id: req.user.id },
-      data: { photoUrl: req.file.filename },
-      include: withOfficial,
-    });
-    if (old) removePhotoFile(old);
-    res.json({ user: publicUser(user) });
-  } catch (err) {
-    if (req.file) removePhotoFile(req.file.filename);
-    next(err);
-  }
-}
-
-// DELETE /api/auth/photo — remove the profile picture.
-async function removeAvatar(req, res, next) {
-  try {
-    const old = req.user.photoUrl;
-    const user = await prisma.user.update({
-      where: { id: req.user.id },
-      data: { photoUrl: null },
-      include: withOfficial,
-    });
-    if (old) removePhotoFile(old);
-    res.json({ user: publicUser(user) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// GET /api/auth/avatar/:id — the picture itself (an <img> cannot send the login token).
-async function getAvatar(req, res, next) {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.params.id },
-      select: { photoUrl: true },
-    });
-    if (!user?.photoUrl) return res.status(404).json({ message: 'No picture' });
-    res.set('Cache-Control', 'public, max-age=86400');
-    res.sendFile(photoPath(user.photoUrl), (err) => {
-      if (err && !res.headersSent) res.status(404).json({ message: 'Picture file is missing' });
-    });
   } catch (err) {
     next(err);
   }
@@ -501,9 +442,6 @@ module.exports = {
   resendCode,
   unsubscribe,
   getMe,
-  uploadAvatar,
-  removeAvatar,
-  getAvatar,
   forgotPassword,
   checkResetToken,
   resetPassword,

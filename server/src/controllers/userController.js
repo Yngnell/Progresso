@@ -24,7 +24,6 @@ async function getViewers(req, res, next) {
           name: true,
           email: true,
           phone: true,
-          photoUrl: true,
           isActive: true,
           createdAt: true,
         },

@@ -306,7 +306,7 @@ export default function Dashboard() {
           )}
         </Panel>
 
-        <Panel title="Upcoming sessions" action={<PanelLink to="/admin/calendar">Calendar</PanelLink>}>
+        <Panel title="Upcoming sessions" action={<PanelLink to="/admin/meetings">Meetings</PanelLink>}>
           {upcoming.length === 0 ? (
             <p className="py-4 text-slate-600">No sessions are scheduled.</p>
           ) : (
@@ -314,7 +314,7 @@ export default function Dashboard() {
               {upcoming.map((e) => (
                 <li key={e.id}>
                   <Link
-                    to={`/admin/calendar/${e.id}`}
+                    to={`/admin/meetings/${e.id}`}
                     className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-50"
                   >
                     <DateTile date={e.startAt} />

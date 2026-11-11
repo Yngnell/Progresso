@@ -28,29 +28,28 @@ function rangeWhere(field, { from, to }) {
   return { [field]: cond };
 }
 
-// The SK officials whose attendance is expected: active official accounts.
+// The SK officials (the names in Settings), with their positions for the rows.
 async function expectedOfficials() {
-  return prisma.user.findMany({
-    where: { role: 'OFFICIAL', isActive: true },
-    select: { id: true, name: true, official: { select: { position: true, displayOrder: true } } },
-    orderBy: [{ official: { displayOrder: 'asc' } }, { name: 'asc' }],
+  return prisma.official.findMany({
+    select: { id: true, name: true, position: true, isActive: true },
+    orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
   });
 }
 
 const ended = (e, now) => new Date(e.endAt || e.startAt) <= now;
 
-// Every attendance row for the events: Present (scanned the QR) and Absent (recorded
-// automatically for the officials who had not scanned once the event was over).
+// Every attendance row for the events: Present (picked their name on the QR page) and
+// Absent (recorded automatically for the officials not marked present once it was over).
 function attendanceRows(events, officials) {
   const byId = new Map(officials.map((o) => [o.id, o]));
   const rows = [];
   events.forEach((e) => {
     e.attendance.forEach((r) => {
-      const o = r.userId ? byId.get(r.userId) : null;
+      const o = r.officialId ? byId.get(r.officialId) : null;
       rows.push({
-        userId: r.userId,
+        officialId: r.officialId,
         officialName: r.participant,
-        position: o?.official?.position || r.user?.official?.position || '',
+        position: o?.position || '',
         eventId: e.id,
         eventName: e.title,
         eventDate: e.startAt,
@@ -66,7 +65,7 @@ function attendanceRows(events, officials) {
 function perOfficial(rows) {
   const map = new Map();
   rows.forEach((r) => {
-    const key = r.userId || `name:${r.officialName}`;
+    const key = r.officialId || `name:${r.officialName}`;
     if (!map.has(key)) map.set(key, { name: r.officialName, position: r.position, present: 0, absent: 0 });
     const m = map.get(key);
     if (r.status === 'PRESENT') m.present += 1;
@@ -98,7 +97,7 @@ const EVENT_SELECT = {
   attendance: {
     orderBy: { createdAt: 'asc' },
     select: {
-      userId: true,
+      officialId: true,
       participant: true,
       status: true,
       timeIn: true,
@@ -189,7 +188,7 @@ async function dashboardReport(req, res, next) {
   }
 }
 
-// GET /api/reports/attendance?eventId&from&to&userId&status
+// GET /api/reports/attendance?eventId&from&to&officialId&status
 async function attendanceReport(req, res, next) {
   try {
     const range = readRange(req.query);
@@ -201,14 +200,14 @@ async function attendanceReport(req, res, next) {
       expectedOfficials(),
     ]);
     let rows = attendanceRows(events, officials);
-    if (req.query.userId) rows = rows.filter((r) => r.userId === String(req.query.userId));
+    if (req.query.officialId) rows = rows.filter((r) => r.officialId === String(req.query.officialId));
     if (req.query.status) rows = rows.filter((r) => r.status === String(req.query.status));
     rows.sort((a, b) => new Date(a.eventDate) - new Date(b.eventDate) || a.officialName.localeCompare(b.officialName));
     res.json({
       rows,
       summary: { totals: totals(rows), perOfficial: perOfficial(rows) },
       events: events.map((e) => ({ id: e.id, title: e.title, startAt: e.startAt })),
-      officials: officials.map((o) => ({ id: o.id, name: o.name, position: o.official?.position || '' })),
+      officials: officials.map((o) => ({ id: o.id, name: o.name, position: o.position || '' })),
     });
   } catch (err) {
     next(err);

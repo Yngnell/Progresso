@@ -7,8 +7,8 @@ import { attendanceApi, checkInLink } from '../../api/attendance';
 import { qrStatus } from '../../components/AttendanceQr';
 import { ATTENDANCE_STATUS, formatDateTime, formatTime } from '../../utils/format';
 
-// Full-screen attendance QR for one event, shown on a laptop or projector by the SK
-// Chairperson. The list of who checked in updates live.
+// Full-screen attendance QR for one meeting, shown on a laptop or projector by the SK
+// Admin. The list of who is marked present updates live.
 export default function EventQrCheckin() {
   const { id } = useParams();
   const [now, setNow] = useState(Date.now());
@@ -42,7 +42,7 @@ export default function EventQrCheckin() {
     <div className="min-h-screen bg-brand-900 px-4 py-6 text-white sm:px-8">
       <div className="flex items-center justify-between gap-3">
         <Link
-          to={`/admin/calendar/${id}`}
+          to={`/admin/meetings/${id}`}
           className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-200 hover:text-white"
         >
           <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" /> Back to the event
@@ -102,7 +102,7 @@ export default function EventQrCheckin() {
               Recorded: {records.length}
             </h2>
             {records.length === 0 ? (
-              <p className="mt-3 text-brand-100">Nobody yet. Names appear here as officials scan.</p>
+              <p className="mt-3 text-brand-100">Nobody yet. Names appear here as officials mark themselves present.</p>
             ) : (
               <ul className="mt-3 grid gap-2 sm:grid-cols-2">
                 {[...records].reverse().map((r) => (

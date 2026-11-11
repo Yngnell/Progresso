@@ -10,7 +10,7 @@ import { AttendanceQrButton } from '../../components/AttendanceQr';
 import { Card, Badge } from '../../components/ui';
 import { EVENT_TYPE, ATTENDANCE_STATUS, formatDateTime, formatTime } from '../../utils/format';
 
-// An event and its attendance. Attendance is recorded only by scanning the SK Chairperson's
+// A meeting and its attendance. Attendance is recorded only through the SK Admin's QR code
 // QR code (Present, with the time). Once the event is over, every official who did not
 // scan is recorded as Absent automatically. Nobody records or changes it by hand.
 export default function AdminEventDetail() {
@@ -35,8 +35,8 @@ export default function AdminEventDetail() {
     return (
       <div className="text-center">
         <p className="text-slate-600">Event not found.</p>
-        <Link to="/admin/calendar" className="mt-2 inline-block text-brand-600">
-          ← Back to Calendar
+        <Link to="/admin/meetings" className="mt-2 inline-block text-brand-600">
+          ← Back to Meetings
         </Link>
       </div>
     );
@@ -50,10 +50,10 @@ export default function AdminEventDetail() {
   return (
     <div>
       <Link
-        to="/admin/calendar"
+        to="/admin/meetings"
         className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-800"
       >
-        <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" /> Back to Calendar
+        <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" /> Back to Meetings
       </Link>
 
       <div className="mt-4 flex flex-wrap items-start gap-4">
@@ -67,7 +67,7 @@ export default function AdminEventDetail() {
             {t.label} · {formatDateTime(event.startAt)}
           </p>
         </div>
-        {user?.isSkChair && <AttendanceQrButton event={event} size="md" />}
+        {user?.role === 'ADMIN' && <AttendanceQrButton event={event} size="md" />}
       </div>
 
       {/* Summary: Present and Absent */}
@@ -86,14 +86,14 @@ export default function AdminEventDetail() {
             Attendance ({records.length})
           </h2>
           <p className="mt-1 text-sm text-slate-600">
-            Officials record their attendance by scanning the SK Chairperson&apos;s QR code. When the event
-            ends, every official who did not scan is marked Absent.
+            Officials scan the SK Admin&apos;s QR code and choose their name to record their attendance. When the
+            meeting ends, every official not marked present is marked Absent.
           </p>
           <div className="mt-4">
             {records.length === 0 ? (
               <p className="text-slate-600">
-                No attendance yet. The SK Chairperson shows the attendance QR code at the event, and
-                officials scan it to record their attendance.
+                No attendance yet. The SK Admin shows the attendance QR code at the meeting, and
+                officials scan it and choose their name.
               </p>
             ) : (
               <div className="overflow-x-auto">

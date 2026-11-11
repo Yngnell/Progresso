@@ -10,7 +10,7 @@ import { Badge, Button, Card, EmptyState } from '../../components/ui';
 import { ATTENDANCE_STATUS, formatDate, formatTime } from '../../utils/format';
 import { exportAttendanceExcel, exportAttendancePdf, rangeText } from '../../utils/reportExport';
 
-const EMPTY = { eventId: '', from: '', to: '', userId: '', status: '' };
+const EMPTY = { eventId: '', from: '', to: '', officialId: '', status: '' };
 const STATUS_FILTERS = ['PRESENT', 'ABSENT'];
 
 // Attendance records with filters. The table on screen is exactly what the export contains.
@@ -46,7 +46,7 @@ export default function AdminAttendance() {
     const parts = [];
     if (filters.eventId) parts.push(`Event: ${events.find((e) => e.id === filters.eventId)?.title || 'one event'}`);
     parts.push(`Dates: ${rangeText(filters.from, filters.to)}`);
-    if (filters.userId) parts.push(`Official: ${officials.find((o) => o.id === filters.userId)?.name || 'one official'}`);
+    if (filters.officialId) parts.push(`Official: ${officials.find((o) => o.id === filters.officialId)?.name || 'one official'}`);
     parts.push(`Status: ${filters.status ? ATTENDANCE_STATUS[filters.status].label : 'All'}`);
     return parts.join('  |  ');
   }
@@ -64,7 +64,7 @@ export default function AdminAttendance() {
     <div>
       <PageHeader
         title="Attendance Records"
-        description="Choose filters, then export exactly what the table shows. Present: the official scanned the event's QR code. Absent: the official had not scanned when the event ended."
+        description="Choose filters, then export exactly what the table shows. Present: the official chose their name on the meeting's QR attendance page. Absent: the official was not marked present when the meeting ended."
         actions={<ExportMenu onExport={onExport} disabled={!data || isLoading || Boolean(badRange)} />}
       />
 
@@ -103,7 +103,7 @@ export default function AdminAttendance() {
           </label>
           <label className="lg:col-span-2">
             <span className="label">Official</span>
-            <select className="input" value={filters.userId} onChange={set('userId')}>
+            <select className="input" value={filters.officialId} onChange={set('officialId')}>
               <option value="">All officials</option>
               {officials.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -153,7 +153,7 @@ export default function AdminAttendance() {
               description={
                 filtered
                   ? 'Try another event, date range, official or status.'
-                  : 'Attendance appears here once officials scan an event’s QR code.'
+                  : 'Attendance appears here once officials scan a meeting’s QR code and choose their name.'
               }
             />
           </div>
@@ -171,11 +171,11 @@ export default function AdminAttendance() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {rows.map((r, i) => (
-                  <tr key={`${r.eventId}-${r.userId || r.officialName}-${i}`}>
+                  <tr key={`${r.eventId}-${r.officialId || r.officialName}-${i}`}>
                     <td className="px-4 py-2.5 font-medium text-slate-900">{r.officialName}</td>
                     <td className="px-4 py-2.5 text-slate-700">{r.position || '—'}</td>
                     <td className="px-4 py-2.5">
-                      <Link to={`/admin/calendar/${r.eventId}`} className="font-medium text-brand-700 hover:text-brand-800">
+                      <Link to={`/admin/meetings/${r.eventId}`} className="font-medium text-brand-700 hover:text-brand-800">
                         {r.eventName}
                       </Link>
                     </td>

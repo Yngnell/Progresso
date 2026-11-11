@@ -1,18 +1,8 @@
 import api from './axios';
 
-// Settings: the signed-in person's own account. The picture saves straight away; a new
-// contact number or password waits for the 6-digit code emailed to the account.
+// Settings: the signed-in person's own account. A new contact number or password waits for
+// the 6-digit code emailed to the account.
 export const accountApi = {
-  uploadPhoto: (file) => {
-    const form = new FormData();
-    form.append('photo', file);
-    return api.post('/auth/photo', form).then((r) => r.data);
-  },
-  removePhoto: () => api.delete('/auth/photo').then((r) => r.data),
-  // Address of a user's profile picture (version busts the browser cache after a change).
-  photoUrl: (user) =>
-    user?.hasPhoto ? `${api.defaults.baseURL}/auth/avatar/${user.id}?v=${user.photoVersion}` : null,
-
   requestPhoneChange: (phone) => api.post('/auth/phone/request', { phone }).then((r) => r.data),
   requestPasswordChange: (currentPassword, newPassword, confirmPassword) =>
     api.post('/auth/password/request', { currentPassword, newPassword, confirmPassword }).then((r) => r.data),

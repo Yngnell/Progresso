@@ -2,13 +2,13 @@ const prisma = require('../prisma');
 const { syncNotifications, sendPendingEmails } = require('../utils/notifications');
 const { isMailConfigured, sendMail } = require('../utils/mailer');
 const { issueCode, checkCode } = require('../utils/verification');
-const { isSkChair } = require('../utils/roles');
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Alerts with an audience are only for that person: "SK_CHAIR" = the SK Chairperson.
-function visibleTo(user) {
-  return isSkChair(user) ? {} : { audience: null };
+// Alerts with an audience were only for the SK Chairperson's account, which no longer
+// exists; everyone sees the alerts without an audience.
+function visibleTo() {
+  return { audience: null };
 }
 
 // GET /api/notifications — the SK side. Newest first, with a per-user read flag.
