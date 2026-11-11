@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '../../api/projects';
-import { Archive, ArrowLeft, CircleCheck, FileText, Pause, Pencil, Play, Plus, Trash2, Upload, X } from 'lucide-react';
+import { Archive, ArrowLeft, CircleCheck, FileText, Pause, Pencil, Play, Plus, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import OverflowMenu from '../../components/OverflowMenu';
 import { StageSteps, StatusRibbon } from '../../components/Roundel';
 import { Button, Card } from '../../components/ui';
 import PhotoGallery from '../../components/PhotoGallery';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
+import ProjectReviewPanel from '../../components/ProjectReviewPanel';
 import { formatPeso, formatDate, formatDateTime } from '../../utils/format';
 import { isAdmin, isManager, isWorker } from '../../utils/roles';
 
@@ -82,7 +83,9 @@ export default function AdminProjectDetail() {
     ? { to: '/admin/archive?tab=deleted', label: 'Archives' }
     : closed
       ? { to: `/admin/archive?tab=${archiveTab}`, label: 'Archives' }
-      : { to: '/admin/projects', label: 'Projects' };
+      : isChairman && project.status === 'PROPOSED'
+        ? { to: '/admin/approvals', label: 'Approvals' }
+        : { to: '/admin/projects', label: 'Projects' };
 
   return (
     <div>
@@ -338,7 +341,7 @@ export default function AdminProjectDetail() {
 function StagePanel({ project, isChairman, isSkAdmin, onDone, onFail }) {
   if (project.status === 'PROPOSED') {
     return isChairman ? (
-      <ReviewPanel project={project} onDone={onDone} onFail={onFail} />
+      <ProjectReviewPanel project={project} onDone={onDone} onFail={onFail} />
     ) : (
       <Notice tone="slate">
         <span className="font-semibold">Proposed.</span> Waiting for the Barangay Chairman to approve or
@@ -398,48 +401,6 @@ function Notice({ tone, children }) {
     amber: 'bg-amber-50 text-amber-900',
   };
   return <div className={`mt-4 rounded-lg px-4 py-3 text-sm ${tones[tone]}`}>{children}</div>;
-}
-
-// Proposed: the Barangay Chairman approves (-> Planning) or rejects (-> Cancelled).
-function ReviewPanel({ project, onDone, onFail }) {
-  const [remarks, setRemarks] = useState('');
-  const review = useMutation({
-    mutationFn: (decision) => projectsApi.review(project.id, { decision, remarks: remarks.trim() }),
-    onSuccess: onDone,
-    onError: onFail('Could not save your decision'),
-  });
-  function decide(decision) {
-    const question =
-      decision === 'APPROVE'
-        ? `Approve "${project.title}"? It moves to Planning.`
-        : `Reject "${project.title}"? It is cancelled and moves to Archives under Cancelled.`;
-    if (window.confirm(question)) review.mutate(decision);
-  }
-  return (
-    <Card className="mt-4 p-5">
-      <h2 className="text-lg font-bold text-slate-900">Approve or reject this Project Request</h2>
-      <label className="label mt-3" htmlFor="review-remarks">
-        Remarks (optional)
-      </label>
-      <textarea
-        id="review-remarks"
-        className="input"
-        rows={2}
-        value={remarks}
-        onChange={(e) => setRemarks(e.target.value)}
-      />
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Button variant="primary" disabled={review.isPending} onClick={() => decide('APPROVE')}>
-          <CircleCheck size={18} strokeWidth={1.75} aria-hidden="true" />
-          Approve
-        </Button>
-        <Button variant="danger" disabled={review.isPending} onClick={() => decide('REJECT')}>
-          <X size={18} strokeWidth={1.75} aria-hidden="true" />
-          Reject
-        </Button>
-      </div>
-    </Card>
-  );
 }
 
 // Planning: the SK Admin saves the schedule; the project becomes Ongoing.

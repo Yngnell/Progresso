@@ -1,6 +1,7 @@
 // Who may do what. The roles in the system:
 //   ADMIN     the SK Admin, who runs the system day to day (full access)
 //   CHAIRMAN  the Barangay Chairman: approves proposals and deletions, otherwise views
+//             (no Meetings or Attendance)
 //   OFFICIAL  (no accounts any more: the SK officials are a list of names, see Settings)
 //   VIEWER    a registered resident (public site only)
 // The attendance QR, the settings and the project stages belong to the SK Admin account
@@ -36,5 +37,7 @@ module.exports = {
   requireSkAdmin: guard(isSkAdmin, 'Only the SK Admin can do this.'),
   requireManager: guard(isManager, 'Only the SK Admin and the SK officials can do this.'),
   requireStaff: guard(isStaff, 'Forbidden — you do not have permission'),
+  // Meetings and Attendance: the SK side without the Barangay Chairman
+  requireSkSide: guard(isAdminLevel, 'The Barangay Chairman has no access to Meetings or Attendance.'),
   requireWorker: guard(isWorker, 'Only SK officials and the SK Admin can do this.'),
 };

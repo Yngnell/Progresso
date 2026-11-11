@@ -20,6 +20,7 @@ import EventsPublic from './pages/EventsPublic';
 
 import Dashboard from './pages/admin/Dashboard';
 import AdminProjects from './pages/admin/AdminProjects';
+import AdminApprovals from './pages/admin/AdminApprovals';
 import AdminArchive from './pages/admin/AdminArchive';
 import AdminProjectDetail from './pages/admin/AdminProjectDetail';
 import AdminMeetings from './pages/admin/AdminMeetings';
@@ -86,9 +87,40 @@ export default function App() {
         <Route path="projects" element={<AdminProjects />} />
         <Route path="archive" element={<AdminArchive />} />
         <Route path="projects/:id" element={<AdminProjectDetail />} />
-        <Route path="meetings" element={<AdminMeetings />} />
-        <Route path="meetings/:id" element={<AdminEventDetail />} />
-        <Route path="attendance" element={<AdminAttendance />} />
+        {/* Approvals: the Barangay Chairman only */}
+        <Route
+          path="approvals"
+          element={
+            <ProtectedRoute roles={['CHAIRMAN']}>
+              <AdminApprovals />
+            </ProtectedRoute>
+          }
+        />
+        {/* Meetings and Attendance: not for the Barangay Chairman */}
+        <Route
+          path="meetings"
+          element={
+            <ProtectedRoute roles={['ADMIN']}>
+              <AdminMeetings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="meetings/:id"
+          element={
+            <ProtectedRoute roles={['ADMIN']}>
+              <AdminEventDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="attendance"
+          element={
+            <ProtectedRoute roles={['ADMIN']}>
+              <AdminAttendance />
+            </ProtectedRoute>
+          }
+        />
         <Route path="settings" element={<Settings />} />
       </Route>
 

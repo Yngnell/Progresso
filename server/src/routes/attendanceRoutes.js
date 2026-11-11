@@ -11,13 +11,13 @@ const {
   markPresent,
 } = require('../controllers/attendanceController');
 const { protect } = require('../middleware/auth');
-const { requireSkAdmin, requireStaff } = require('../utils/roles');
+const { requireSkAdmin, requireSkSide } = require('../utils/roles');
 
-// Reading attendance: the SK side (SK Admin and Barangay Chairman). Nobody records it by
+// Reading attendance: the SK Admin (not the Barangay Chairman). Nobody records it by
 // hand: officials pick their name on the QR page (Present), and Absent is recorded
 // automatically once the meeting is over.
-router.get('/event/:eventId', protect, requireStaff, getEventAttendance);
-router.get('/summary/:eventId', protect, requireStaff, getEventSummary);
+router.get('/event/:eventId', protect, requireSkSide, getEventAttendance);
+router.get('/summary/:eventId', protect, requireSkSide, getEventSummary);
 
 // Attendance QR: only the SK Admin generates, shows, deactivates, regenerates it and sets
 // when it is available.

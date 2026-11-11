@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Archive,
   CalendarDays,
+  ClipboardCheck,
   FolderKanban,
   LayoutDashboard,
   ListChecks,
@@ -24,9 +25,11 @@ const groups = [
     label: 'Work',
     links: [
       { to: '/admin', label: 'Dashboard', Icon: LayoutDashboard, end: true },
-      // The badge counts what waits for the Barangay Chairman's decision.
-      { to: '/admin/projects', label: 'Projects', Icon: FolderKanban, badge: true },
-      { to: '/admin/meetings', label: 'Meetings', Icon: CalendarDays },
+      // For the Barangay Chairman: view only; the badge counts deletion requests to decide.
+      { to: '/admin/projects', label: 'Projects', Icon: FolderKanban, badge: 'deletions' },
+      // The Barangay Chairman's Project Requests to approve or reject (badge: how many).
+      { to: '/admin/approvals', label: 'Approvals', Icon: ClipboardCheck, badge: 'proposals', roles: ['CHAIRMAN'] },
+      { to: '/admin/meetings', label: 'Meetings', Icon: CalendarDays, roles: ['ADMIN'] },
     ],
   },
   {
@@ -34,7 +37,7 @@ const groups = [
     links: [
       // Completed, cancelled and deleted projects (view only)
       { to: '/admin/archive', label: 'Archives', Icon: Archive },
-      { to: '/admin/attendance', label: 'Attendance', Icon: ListChecks },
+      { to: '/admin/attendance', label: 'Attendance', Icon: ListChecks, roles: ['ADMIN'] },
     ],
   },
   {
@@ -62,7 +65,7 @@ function Nameplate() {
 }
 
 // The menu itself, shared by the desktop rail and the phone drawer.
-function Menu_({ links, pendingCount, onNavigate }) {
+function Menu_({ links, counts, onNavigate }) {
   return (
     <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5" aria-label="Admin">
       {links.map((group) => (
@@ -87,9 +90,9 @@ function Menu_({ links, pendingCount, onNavigate }) {
                 >
                   <l.Icon size={19} strokeWidth={1.75} aria-hidden="true" />
                   <span className="flex-1">{l.label}</span>
-                  {l.badge && pendingCount > 0 && (
+                  {l.badge && counts[l.badge] > 0 && (
                     <span className="rounded-full bg-accent-500 px-2 py-0.5 text-xs font-bold text-ink">
-                      {pendingCount}
+                      {counts[l.badge]}
                     </span>
                   )}
                 </NavLink>
@@ -116,8 +119,8 @@ export default function AdminLayout() {
     .map((g) => ({ ...g, links: g.links.filter((l) => !l.roles || l.roles.includes(role)) }))
     .filter((g) => g.links.length > 0);
 
-  // What waits for the Barangay Chairman: proposals to approve or reject, and
-  // deletion requests. Only the chairman sees the count.
+  // What waits for the Barangay Chairman: proposals to approve or reject (Approvals), and
+  // deletion requests (Projects). Only the chairman sees the counts.
   const isChairman = user?.role === 'CHAIRMAN';
   const { data: proposalData } = useQuery({
     queryKey: ['projects', 'proposals'],
@@ -129,9 +132,9 @@ export default function AdminLayout() {
     queryFn: () => projectsApi.deletionRequests({ status: 'PENDING' }),
     enabled: isChairman,
   });
-  const pendingCount = isChairman
-    ? (proposalData?.projects || []).length + (deletionData?.requests || []).length
-    : 0;
+  const counts = isChairman
+    ? { proposals: (proposalData?.projects || []).length, deletions: (deletionData?.requests || []).length }
+    : {};
 
   const today = new Date().toLocaleDateString('en-PH', {
     weekday: 'long',
@@ -153,7 +156,7 @@ export default function AdminLayout() {
         <div className="flex h-[68px] items-center px-5">
           <Nameplate />
         </div>
-        <Menu_ links={links} pendingCount={pendingCount} />
+        <Menu_ links={links} counts={counts} />
       </aside>
 
       {/* Phone drawer */}
@@ -177,7 +180,7 @@ export default function AdminLayout() {
                 <X size={22} strokeWidth={1.75} />
               </button>
             </div>
-            <Menu_ links={links} pendingCount={pendingCount} onNavigate={() => setDrawerOpen(false)} />
+            <Menu_ links={links} counts={counts} onNavigate={() => setDrawerOpen(false)} />
           </aside>
         </div>
       )}

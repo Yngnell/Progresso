@@ -15,11 +15,11 @@ import PageHeader from '../../components/PageHeader';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
 import ProjectProposalForm, { emptyItem } from '../../components/ProjectProposalForm';
 
-// Active stages only: Completed and Cancelled projects are in Archives.
-const statusOptions = ['PROPOSED', 'PLANNING', 'ONGOING', 'ON_HOLD'].map((value) => ({
-  value,
-  label: PROJECT_STATUS[value].label,
-}));
+// Active stages only: Completed and Cancelled projects are in Archives. The Barangay
+// Chairman's Projects module is view only and leaves out Proposed (that is Approvals).
+const stageOptions = (stages) => stages.map((value) => ({ value, label: PROJECT_STATUS[value].label }));
+const ADMIN_STAGES = stageOptions(['PROPOSED', 'PLANNING', 'ONGOING', 'ON_HOLD']);
+const CHAIRMAN_STAGES = stageOptions(['PLANNING', 'ONGOING', 'ON_HOLD']);
 
 // A fresh form: one empty purchase request row, to which the + button adds more.
 const blankForm = () => ({
@@ -31,6 +31,8 @@ export default function AdminProjects() {
   const { user } = useAuth();
   // Only the SK Admin creates and edits projects; the chairman and the officials view them.
   const readOnly = !isAdmin(user);
+  const isChairman = user?.role === 'CHAIRMAN';
+  const statusOptions = isChairman ? CHAIRMAN_STAGES : ADMIN_STAGES;
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -52,7 +54,7 @@ export default function AdminProjects() {
     queryFn: () => officialsApi.list({ active: 'true' }),
   });
   const officials = officialsData?.officials || [];
-  const allProjects = data?.projects || [];
+  const allProjects = (data?.projects || []).filter((p) => statusOptions.some((o) => o.value === p.status));
   const projects = filter
     ? allProjects.filter((p) => p.status === filter)
     : allProjects;
@@ -158,8 +160,12 @@ export default function AdminProjects() {
   return (
     <div>
       <PageHeader
-        title="Project Management"
-        description="Track SK projects, progress, and expenses through liquidation reports."
+        title={isChairman ? 'Projects' : 'Project Management'}
+        description={
+          isChairman
+            ? 'View the approved SK projects: their stage, schedule, liquidation files and checklist progress.'
+            : 'Track SK projects, progress, and expenses through liquidation reports.'
+        }
         actions={
           !readOnly && (
             <Button variant="accent" onClick={openCreate}>
@@ -204,7 +210,7 @@ export default function AdminProjects() {
             title="No projects yet"
             description={
               readOnly
-                ? 'Projects will appear here once the SK creates them.'
+                ? 'Projects appear here once a Project Request is approved.'
                 : 'Send a Project Request to start a project.'
             }
             action={

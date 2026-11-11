@@ -1,6 +1,7 @@
 // Who may do what (the server checks the same rules in server/src/utils/roles.js).
 //   ADMIN     SK Admin: full access
-//   CHAIRMAN  Barangay Chairman: approves, otherwise views
+//   CHAIRMAN  Barangay Chairman: Approvals (Project Requests), otherwise views; no Meetings
+//             or Attendance
 //   OFFICIAL  no accounts any more: the SK officials are a list of names (Settings)
 //   VIEWER    a registered resident (public site only)
 // The SK Admin account shows the attendance QR, manages the settings and runs the

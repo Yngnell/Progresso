@@ -11,6 +11,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { notificationsApi } from '../api/notifications';
+import { useAuth } from '../context/AuthContext';
 import VerifyCodeForm from './VerifyCodeForm';
 
 // Drawn icon and tint per alert type (replaces the old emoji).
@@ -153,6 +154,7 @@ function timeAgo(iso) {
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
   const qc = useQueryClient();
 
   const { data } = useQuery({
@@ -170,8 +172,9 @@ export default function NotificationBell() {
   function openNotification(n) {
     if (!n.read) readMutation.mutate(n.id);
     setOpen(false);
-    if (n.event) navigate(`/admin/meetings/${n.event.id}`);
-    else if (n.project) navigate(`/admin/projects/${n.project.id}`);
+    if (n.event) {
+      if (user?.role !== 'CHAIRMAN') navigate(`/admin/meetings/${n.event.id}`);
+    } else if (n.project) navigate(`/admin/projects/${n.project.id}`);
   }
 
   return (

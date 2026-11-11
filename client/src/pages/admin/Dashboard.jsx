@@ -120,6 +120,17 @@ function DashboardExport({ user, projects, projectId, onProject }) {
   );
 }
 
+// A link to the meeting, or plain text when there is nowhere to go.
+function SessionRow({ to, className, children }) {
+  return to ? (
+    <Link to={to} className={className}>
+      {children}
+    </Link>
+  ) : (
+    <div className={className.replace(' transition-colors hover:bg-slate-50', '')}>{children}</div>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const isChairman = user?.role === 'CHAIRMAN';
@@ -177,7 +188,7 @@ export default function Dashboard() {
         <div className="flex flex-wrap items-end gap-3">
           <DashboardExport user={user} projects={allProjects} projectId={projectId} onProject={setProjectId} />
           {isChairman && (
-          <Link to="/admin/projects?status=PROPOSED">
+          <Link to="/admin/approvals">
             <Button variant="primary">
               <ClipboardCheck size={18} strokeWidth={1.75} aria-hidden="true" />
               Review proposals
@@ -190,7 +201,7 @@ export default function Dashboard() {
       {/* Chairman: proposals waiting for a decision */}
       {isChairman && awaiting > 0 && (
         <Link
-          to={s.pendingApproval > 0 ? '/admin/projects?status=PROPOSED' : '/admin/projects'}
+          to={s.pendingApproval > 0 ? '/admin/approvals' : '/admin/projects'}
           className="flex items-center justify-between gap-4 rounded-xl border border-accent-300 bg-accent-100 px-5 py-4 text-accent-900 transition-colors hover:bg-accent-200"
         >
           <span className="font-semibold">
@@ -262,7 +273,7 @@ export default function Dashboard() {
         <Panel
           pdfChart
           title="Attendance by session"
-          action={<PanelLink to="/admin/attendance">Attendance</PanelLink>}
+          action={!isChairman && <PanelLink to="/admin/attendance">Attendance</PanelLink>}
         >
           <AttendanceBars data={a.sessionAttendance} />
         </Panel>
@@ -309,15 +320,16 @@ export default function Dashboard() {
           )}
         </Panel>
 
-        <Panel title="Upcoming sessions" action={<PanelLink to="/admin/meetings">Meetings</PanelLink>}>
+        <Panel title="Upcoming sessions" action={!isChairman && <PanelLink to="/admin/meetings">Meetings</PanelLink>}>
           {upcoming.length === 0 ? (
             <p className="py-4 text-slate-600">No sessions are scheduled.</p>
           ) : (
             <ul className="space-y-3">
               {upcoming.map((e) => (
                 <li key={e.id}>
-                  <Link
-                    to={`/admin/meetings/${e.id}`}
+                  {/* The Barangay Chairman has no Meetings module: the row is not a link */}
+                  <SessionRow
+                    to={isChairman ? null : `/admin/meetings/${e.id}`}
                     className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-50"
                   >
                     <DateTile date={e.startAt} />
@@ -330,7 +342,7 @@ export default function Dashboard() {
                         {formatDateTime(e.startAt)}
                       </span>
                     </span>
-                  </Link>
+                  </SessionRow>
                 </li>
               ))}
             </ul>
