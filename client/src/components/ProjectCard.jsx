@@ -87,22 +87,12 @@ export function SpendingTag({ tag, className = '' }) {
   );
 }
 
-// Sum of a project's expense amounts.
-export function totalSpent(project) {
-  return (project?.expenses || []).reduce(
-    (sum, e) => sum + Number(e.amount || 0),
-    0
-  );
-}
-
 // Card used in both admin list and public grid. The ribbon carries status, the big number
 // is the official progress, and the bar shows how it stands against its dates.
 // to:     makes the title block a link to the project.
 // notice: one line saying what the project is waiting for (e.g. the chairman's approval).
 // footer: the actions row or link.
 export function ProjectCard({ project, footer, to, notice }) {
-  const spent = totalSpent(project);
-
   const header = (
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
@@ -175,18 +165,14 @@ export function ProjectCard({ project, footer, to, notice }) {
         {project.description || 'No description provided.'}
       </p>
 
-      <dl className="mt-4 grid grid-cols-2 gap-4 border-t border-slate-100 px-5 py-4">
+      <dl className="mt-4 border-t border-slate-100 px-5 py-4">
         <div>
-          <dt className="text-sm text-slate-600">Budget</dt>
+          <dt className="flex flex-wrap items-center gap-1.5 text-sm text-slate-600">
+            Budget <SpendingTag tag={project.spendingTag} />
+          </dt>
           <dd className="font-display text-xl font-bold text-slate-900">
             {formatPeso(project.budget)}
           </dd>
-        </div>
-        <div>
-          <dt className="flex flex-wrap items-center gap-1.5 text-sm text-slate-600">
-            Spent <SpendingTag tag={project.spendingTag} />
-          </dt>
-          <dd className="font-display text-xl font-bold text-slate-900">{formatPeso(spent)}</dd>
         </div>
       </dl>
 

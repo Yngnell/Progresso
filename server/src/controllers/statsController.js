@@ -29,14 +29,11 @@ async function getStats(req, res, next) {
         where: { archivedAt: null, ...onlyProject },
         select: {
           id: true,
-          title: true,
-          budget: true,
           status: true,
           startDate: true,
           progressType: true,
           events: { select: { startAt: true } },
           approvalState: true,
-          expenses: { select: { amount: true } },
         },
       }),
       prisma.deletionRequest.count({ where: { status: 'PENDING' } }),
@@ -57,27 +54,15 @@ async function getStats(req, res, next) {
     // Count on the effective status so a started PLANNING project shows as Ongoing.
     // Rejected proposals never became projects, so they are left out of the totals.
     const counts = {};
-    let totalBudget = 0;
-    let totalSpent = 0;
     let pendingApproval = 0;
     let totalProjects = 0;
-    const spendByProject = [];
 
     projects.forEach((p) => {
       if (p.approvalState === 'REJECTED') return;
       totalProjects += 1;
       const status = effectiveStatus(p);
       counts[status] = (counts[status] || 0) + 1;
-      const budget = Number(p.budget || 0);
-      totalBudget += budget;
       if (status === 'PROPOSED' && p.approvalState === 'PENDING') pendingApproval += 1;
-
-      let spent = 0;
-      p.expenses.forEach((e) => {
-        spent += Number(e.amount || 0);
-      });
-      totalSpent += spent;
-      if (budget > 0 || spent > 0) spendByProject.push({ id: p.id, title: p.title, budget, spent });
     });
 
     // Present and Absent per session that already happened (Attendance by session chart)
@@ -104,14 +89,10 @@ async function getStats(req, res, next) {
         totalOfficials,
         totalNews,
         upcomingEvents,
-        totalBudget,
-        totalSpent,
         byStatus: Object.entries(counts).map(([status, count]) => ({ status, count })),
         analytics: {
           activeProjects: (counts.ONGOING || 0) + (counts.PLANNING || 0),
           completionRate: closed > 0 ? Math.round(((counts.COMPLETED || 0) / closed) * 100) : null,
-          budgetUsedRate: totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : null,
-          spendByProject: spendByProject.sort((a, b) => b.budget - a.budget).slice(0, 6),
           sessionAttendance: sessionAttendance.reverse(), // oldest first, so the chart reads left to right
         },
       },

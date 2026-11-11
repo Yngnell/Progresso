@@ -11,71 +11,9 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { formatPeso } from '../../utils/format';
 import { AXIS_TICK, CHART, ChartEmpty, ChartTooltip } from './palette';
 
-const peso = (n) => formatPeso(n);
-const compactPeso = (n) =>
-  n >= 1000 ? `₱${Math.round(n / 100) / 10}k` : `₱${Math.round(n)}`;
-
 const GRID = <CartesianGrid stroke={CHART.hairline} strokeDasharray="3 4" vertical={false} />;
-
-// Budget against spending for the biggest projects. Over budget turns red.
-export function BudgetBars({ data = [] }) {
-  if (data.length === 0) return <ChartEmpty>Projects with a budget will appear here.</ChartEmpty>;
-  const rows = data.map((d) => ({
-    ...d,
-    name: d.title.length > 22 ? `${d.title.slice(0, 21)}…` : d.title,
-  }));
-  return (
-    <div
-      className="h-60"
-      role="img"
-      aria-label={`Budget and spending for ${rows.length} projects`}
-    >
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={rows}
-          layout="vertical"
-          margin={{ top: 4, right: 12, left: 0, bottom: 0 }}
-          barCategoryGap="28%"
-        >
-          <CartesianGrid stroke={CHART.hairline} strokeDasharray="3 4" horizontal={false} />
-          <XAxis
-            type="number"
-            tickFormatter={compactPeso}
-            tick={AXIS_TICK}
-            tickLine={false}
-            axisLine={{ stroke: CHART.hairline }}
-          />
-          <YAxis
-            type="category"
-            dataKey="name"
-            tick={AXIS_TICK}
-            tickLine={false}
-            axisLine={false}
-            width={140}
-          />
-          <Tooltip
-            cursor={{ fill: CHART.track, opacity: 0.6 }}
-            content={<ChartTooltip format={peso} labelFormat={(l) => l} />}
-          />
-          <Legend
-            iconType="square"
-            iconSize={10}
-            wrapperStyle={{ fontSize: 13, fontFamily: 'Barlow, sans-serif', color: CHART.slate }}
-          />
-          <Bar dataKey="budget" name="Budget" fill={CHART.rule} radius={[0, 4, 4, 0]} />
-          <Bar dataKey="spent" name="Spent" fill={CHART.azure} radius={[0, 4, 4, 0]}>
-            {rows.map((r) => (
-              <Cell key={r.id} fill={r.spent > r.budget ? CHART.red : CHART.azure} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
 
 // Attendance for each recent session, stacked.
 export function AttendanceBars({ data = [] }) {

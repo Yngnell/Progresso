@@ -305,6 +305,10 @@ function parseProjectBody(body) {
 
 // Checks the fields of the chosen project type and drops the other type's fields.
 // Returns an error message, or null when the data is fine.
+// A Project Request is saved without a type: it is set later in Edit Project.
+const TYPE_FIELDS = ['progressType', 'startDate', 'endDate', 'targetAttendees'];
+const sendsTypeFields = (body) => TYPE_FIELDS.some((k) => body[k] !== undefined && body[k] !== null && body[k] !== '');
+
 function checkTypeFields(data, existing = {}) {
   const type = data.progressType || existing.progressType || 'DATETIME';
   if (type === 'ATTENDEE') {
@@ -333,7 +337,7 @@ async function createProject(req, res, next) {
       data.requestItems = { create: requestItems };
     }
     // A date and time based proposal needs its timeline; an attendee-based one its target.
-    const typeError = checkTypeFields(data);
+    const typeError = sendsTypeFields(req.body) ? checkTypeFields(data) : null;
     if (typeError) return res.status(400).json({ message: typeError });
     data.createdById = req.user.id;
     if (Array.isArray(officialIds)) {
@@ -363,7 +367,7 @@ async function updateProject(req, res, next) {
       // The sheet is saved as a whole: replace all rows with the ones sent.
       data.requestItems = { deleteMany: {}, create: requestItems };
     }
-    const typeError = checkTypeFields(data, existing);
+    const typeError = sendsTypeFields(req.body) ? checkTypeFields(data, existing) : null;
     if (typeError) return res.status(400).json({ message: typeError });
     if (Array.isArray(officialIds)) {
       // "set" replaces the whole team with the provided ids.

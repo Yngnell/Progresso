@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import OverflowMenu from '../../components/OverflowMenu';
 import { ProgressRoundel, ScheduleWords, StatusRibbon } from '../../components/Roundel';
 import { Button, Card } from '../../components/ui';
-import { SpendingTag, totalSpent } from '../../components/ProjectCard';
+import { SpendingTag } from '../../components/ProjectCard';
 import ProjectProgress from '../../components/ProjectProgress';
 import PhotoGallery from '../../components/PhotoGallery';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
@@ -128,8 +128,6 @@ export default function AdminProjectDetail() {
     Boolean(user?.isSkChair) && !archived && (project.status === 'PLANNING' || project.status === 'ONGOING');
   const canUploadPictures = isWorker(user) && !archived;
   const canDeletePicture = (p) => !archived && (isManager(user) || (p.uploadedById && p.uploadedById === user?.id));
-  const spent = totalSpent(project);
-  const remaining = Number(project.budget || 0) - spent;
   // Most recent deletion request (server returns only the latest one).
   const deletion = project.deletionRequests?.[0];
 
@@ -598,21 +596,11 @@ export default function AdminProjectDetail() {
                 <span className="text-slate-500">Total budget</span>
                 <span className="font-semibold text-slate-800">{formatPeso(project.budget)}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Spent</span>
-                <span className="font-semibold text-slate-800">{formatPeso(spent)}</span>
-              </div>
               {project.spendingTag && (
                 <div className="flex justify-end">
                   <SpendingTag tag={project.spendingTag} />
                 </div>
               )}
-              <div className="flex justify-between border-t border-slate-100 pt-2">
-                <span className="text-slate-500">Remaining</span>
-                <span className={`font-semibold ${remaining < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  {formatPeso(remaining)}
-                </span>
-              </div>
               {(project.expenses || []).length > 0 && (
                 <div className="flex justify-between">
                   <span className="text-slate-500">Receipts on file</span>

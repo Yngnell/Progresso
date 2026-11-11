@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { projectsApi } from '../api/projects';
 import { Card } from '../components/ui';
-import { totalSpent, progressSummary } from '../components/ProjectCard';
+import { progressSummary } from '../components/ProjectCard';
 import { ProgressRoundel, ScheduleWords, StatusRibbon } from '../components/Roundel';
 import ProjectProgress from '../components/ProjectProgress';
 import PhotoGallery from '../components/PhotoGallery';
@@ -37,7 +37,6 @@ export default function ProjectDetailPublic() {
       </div>
     );
 
-  const spent = totalSpent(project);
   const summary = progressSummary(project.progressBreakdown);
 
   return (
@@ -74,9 +73,8 @@ export default function ProjectDetailPublic() {
           {project.description || 'No description provided.'}
         </p>
 
-        <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-5 border-t border-slate-100 pt-5 sm:grid-cols-3">
+        <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-5 border-t border-slate-100 pt-5 sm:grid-cols-4">
           <Fact label="Budget">{formatPeso(project.budget)}</Fact>
-          <Fact label="Spent">{formatPeso(spent)}</Fact>
           <Fact label="Venue">{project.location}</Fact>
           <Fact label="Start">{formatDateTime(project.startDate)}</Fact>
           <Fact label="Target completion">{formatDateTime(project.endDate)}</Fact>
@@ -103,15 +101,9 @@ export default function ProjectDetailPublic() {
 
       {/* Expenses are public so residents can see where the budget goes. */}
       <Card className="mt-6 p-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">
-            Expenses
-          </h2>
-          <p className="text-slate-600">
-            <span className="font-semibold text-slate-900">{formatPeso(spent)}</span> of{' '}
-            {formatPeso(project.budget)} spent
-          </p>
-        </div>
+        <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">
+          Expenses
+        </h2>
         {(project.expenses || []).length === 0 ? (
           <p className="mt-4 text-slate-600">No expenses recorded yet.</p>
         ) : (
@@ -134,16 +126,6 @@ export default function ProjectDetailPublic() {
                 </tr>
               ))}
             </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-ink">
-                <td className="py-2.5 font-bold text-slate-900" colSpan={2}>
-                  Total
-                </td>
-                <td className="py-2.5 text-right font-display text-xl font-bold text-slate-900">
-                  {formatPeso(spent)}
-                </td>
-              </tr>
-            </tfoot>
           </table>
         )}
       </Card>

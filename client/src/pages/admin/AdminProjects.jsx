@@ -136,14 +136,15 @@ export default function AdminProjects() {
   function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    // The project type and its schedule or target are set later, in Edit Project.
     const attendeeBased = form.progressType === 'ATTENDEE';
-    if (attendeeBased) {
+    if (editing && attendeeBased) {
       const n = Number(form.targetAttendees);
       if (!Number.isInteger(n) || n < 1) {
         setError('Enter the target number of attendees (1 or more).');
         return;
       }
-    } else if (new Date(form.endDate) <= new Date(form.startDate)) {
+    } else if (editing && new Date(form.endDate) <= new Date(form.startDate)) {
       setError('The end date and time must be after the start.');
       return;
     }
@@ -165,11 +166,16 @@ export default function AdminProjects() {
     saveMutation.mutate({
       title,
       description: rest.join('\n').trim(),
-      progressType: form.progressType,
       // Each type sends only its own fields; the server clears the other type's fields.
-      ...(attendeeBased
-        ? { targetAttendees: Number(form.targetAttendees) }
-        : { startDate: new Date(form.startDate).toISOString(), endDate: new Date(form.endDate).toISOString() }),
+      ...(!editing
+        ? {}
+        : attendeeBased
+          ? { progressType: form.progressType, targetAttendees: Number(form.targetAttendees) }
+          : {
+              progressType: form.progressType,
+              startDate: new Date(form.startDate).toISOString(),
+              endDate: new Date(form.endDate).toISOString(),
+            }),
       requestItems: form.items,
       proposedByName: treasurer ? treasurer.name : '',
       proposedByPosition: treasurer ? treasurer.position : '',
@@ -180,12 +186,12 @@ export default function AdminProjects() {
     <div>
       <PageHeader
         title="Project Management"
-        description="Track SK projects, budgets, progress, and expenses."
+        description="Track SK projects, progress, and expenses through liquidation reports."
         actions={
           !readOnly && (
             <Button variant="accent" onClick={openCreate}>
               <Plus size={18} strokeWidth={2} aria-hidden="true" />
-              Add Project
+              Project Request
             </Button>
           )
         }
@@ -232,7 +238,7 @@ export default function AdminProjects() {
               readOnly ? undefined : (
                 <Button variant="accent" onClick={openCreate}>
                   <Plus size={18} strokeWidth={2} aria-hidden="true" />
-                  Add Project
+                  Project Request
                 </Button>
               )
             }
@@ -298,7 +304,7 @@ export default function AdminProjects() {
         open={modalOpen}
         onClose={closeModal}
         size="xl"
-        title={editing ? 'Edit Project' : 'Add Project'}
+        title={editing ? 'Edit Project' : 'Project Request'}
         footer={
           <>
             <Button variant="secondary" onClick={closeModal}>
@@ -327,6 +333,7 @@ export default function AdminProjects() {
             addItem={addItem}
             removeItem={removeItem}
             officials={officials}
+            showType={Boolean(editing)}
           />
         </form>
       </Modal>

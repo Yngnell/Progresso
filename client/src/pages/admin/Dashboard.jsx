@@ -13,14 +13,13 @@ import { useAuth } from '../../context/AuthContext';
 import { isAdmin } from '../../utils/roles';
 import { Button, Card } from '../../components/ui';
 import { PROJECT_STATUS, formatPeso, formatDateTime } from '../../utils/format';
-import { ProgressBar, totalSpent } from '../../components/ProjectCard';
+import { ProgressBar } from '../../components/ProjectCard';
 import { ProgressRoundel, ScheduleWords, StatusRibbon } from '../../components/Roundel';
 import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
 import KpiCard from '../../components/KpiCard';
 import {
   AttendanceBars,
-  BudgetBars,
   StatusDonut,
 } from '../../components/charts/DashboardCharts';
 import { CHART } from '../../components/charts/palette';
@@ -163,7 +162,6 @@ export default function Dashboard() {
     count: (s.byStatus || []).find((row) => row.status === k)?.count || 0,
   })).filter((d) => d.count > 0);
   const awaiting = (s.pendingApproval || 0) + (s.pendingDeletions || 0);
-  const spentAll = s.totalSpent ?? 0;
 
   return (
     <div className="space-y-6">
@@ -219,7 +217,7 @@ export default function Dashboard() {
       )}
 
       {/* Key numbers */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         {selected ? (
           <KpiCard
             label="Progress"
@@ -235,13 +233,6 @@ export default function Dashboard() {
             note={`of ${s.totalProjects ?? 0} in total`}
           />
         )}
-        <KpiCard
-          label="Budget used"
-          value={a.budgetUsedRate != null ? `${a.budgetUsedRate}%` : '—'}
-          note={`${formatPeso(spentAll)} of ${formatPeso(s.totalBudget || 0)}`}
-          meter={a.budgetUsedRate}
-          tone={a.budgetUsedRate > 100 ? 'red' : 'azure'}
-        />
         {selected ? (
           <KpiCard
             label="Spending"
@@ -261,12 +252,9 @@ export default function Dashboard() {
       </div>
 
       {/* Charts */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Panel title="Projects by status" pdfChart>
           <StatusDonut data={statusData} colors={STATUS_COLOR} labels={STATUS_LABEL} />
-        </Panel>
-        <Panel title="Budget vs spent" pdfChart>
-          <BudgetBars data={a.spendByProject} />
         </Panel>
         <Panel
           pdfChart
@@ -372,8 +360,7 @@ export default function Dashboard() {
                   <tr className="border-b border-slate-200 text-sm text-slate-600">
                     <th className="py-2 pr-4 font-semibold">Project</th>
                     <th className="w-56 py-2 pr-4 font-semibold">Progress</th>
-                    <th className="py-2 pr-4 text-right font-semibold">Budget</th>
-                    <th className="py-2 text-right font-semibold">Spent</th>
+                    <th className="py-2 text-right font-semibold">Budget</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -391,11 +378,8 @@ export default function Dashboard() {
                       <td className="py-3 pr-4">
                         <ProgressBar value={p.progress} breakdown={p.progressBreakdown} />
                       </td>
-                      <td className="py-3 pr-4 text-right font-semibold text-slate-900">
-                        {formatPeso(p.budget)}
-                      </td>
                       <td className="py-3 text-right font-semibold text-slate-900">
-                        {formatPeso(totalSpent(p))}
+                        {formatPeso(p.budget)}
                       </td>
                     </tr>
                   ))}
@@ -417,10 +401,7 @@ export default function Dashboard() {
                       breakdown={p.progressBreakdown}
                       className="mt-3"
                     />
-                    <span className="mt-2 flex justify-between text-sm text-slate-600">
-                      <span>Budget {formatPeso(p.budget)}</span>
-                      <span>Spent {formatPeso(totalSpent(p))}</span>
-                    </span>
+                    <span className="mt-2 block text-sm text-slate-600">Budget {formatPeso(p.budget)}</span>
                   </Link>
                 </li>
               ))}

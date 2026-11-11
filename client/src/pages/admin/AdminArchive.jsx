@@ -5,7 +5,6 @@ import { projectsApi } from '../../api/projects';
 import { useAuth } from '../../context/AuthContext';
 import { Button, Card, Badge, EmptyState } from '../../components/ui';
 import { PROJECT_STATUS, formatPeso, formatDate } from '../../utils/format';
-import { totalSpent } from '../../components/ProjectCard';
 
 // Projects whose deletion the Barangay Chairman approved. Nothing is erased: the
 // records, expenses, receipts and sessions stay here, read-only, and the chairman
@@ -78,14 +77,10 @@ export default function AdminArchive() {
                     {p.archivedByName ? ` · Approved by ${p.archivedByName}` : ''}
                   </p>
 
-                  <div className="mt-3 grid grid-cols-3 gap-4 text-sm">
+                  <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <p className="text-slate-400">Budget</p>
                       <p className="font-medium text-slate-700">{formatPeso(p.budget)}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-400">Spent</p>
-                      <p className="font-medium text-slate-700">{formatPeso(totalSpent(p))}</p>
                     </div>
                     <div>
                       <p className="text-slate-400">Progress at archive</p>

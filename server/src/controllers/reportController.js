@@ -112,13 +112,11 @@ async function projectSummary(projectId) {
     where: { id: projectId },
     include: {
       events: { select: { id: true, startAt: true, endAt: true, _count: { select: { attendance: { where: { status: 'PRESENT' } } } } } },
-      expenses: { select: { amount: true } },
     },
   });
   if (!p) return null;
   const status = effectiveStatus(p);
   const { progress, progressBreakdown } = computeProgress({ ...p, status });
-  const spent = p.expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
   return {
     id: p.id,
     title: p.title,
@@ -126,7 +124,6 @@ async function projectSummary(projectId) {
     status,
     progress,
     budget: Number(p.budget || 0),
-    spent,
     progressType: progressBreakdown.type,
     attendees: progressBreakdown.attendees,
     targetAttendees: progressBreakdown.targetAttendees,

@@ -200,8 +200,6 @@ function projectRows(p) {
     ['Timeline', timeline],
     ['Location', p.location || '-'],
     ['Budget', peso(p.budget)],
-    ['Spent', peso(p.spent)],
-    ['Remaining', peso(p.budget - p.spent)],
   ];
 }
 
