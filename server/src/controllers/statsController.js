@@ -1,8 +1,6 @@
 const prisma = require('../prisma');
 const { effectiveStatus } = require('./projectController');
 
-const MONTH_KEY = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-
 // GET /api/stats — dashboard summary numbers, status breakdown and the analytics behind
 // the dashboard charts. ?projectId= narrows everything to one project ("Sort by Project"):
 // its budget and expenses, and the events linked to it.
@@ -12,8 +10,6 @@ async function getStats(req, res, next) {
     const onlyProject = projectId ? { id: projectId } : {};
     const onlyLinked = projectId ? { relatedProjectId: projectId } : {};
     const now = new Date();
-    // First day of the month, five months back: the chart shows the last six months.
-    const monthsFrom = new Date(now.getFullYear(), now.getMonth() - 5, 1);
 
     const [
       totalViewers,
@@ -40,7 +36,7 @@ async function getStats(req, res, next) {
           progressType: true,
           events: { select: { startAt: true } },
           approvalState: true,
-          expenses: { select: { amount: true, date: true } },
+          expenses: { select: { amount: true } },
         },
       }),
       prisma.deletionRequest.count({ where: { status: 'PENDING' } }),
@@ -65,10 +61,6 @@ async function getStats(req, res, next) {
     let totalSpent = 0;
     let pendingApproval = 0;
     let totalProjects = 0;
-    const monthly = new Map();
-    for (let i = 0; i < 6; i += 1) {
-      monthly.set(MONTH_KEY(new Date(monthsFrom.getFullYear(), monthsFrom.getMonth() + i, 1)), 0);
-    }
     const spendByProject = [];
 
     projects.forEach((p) => {
@@ -82,29 +74,22 @@ async function getStats(req, res, next) {
 
       let spent = 0;
       p.expenses.forEach((e) => {
-        const amount = Number(e.amount || 0);
-        spent += amount;
-        const key = MONTH_KEY(new Date(e.date));
-        if (monthly.has(key)) monthly.set(key, monthly.get(key) + amount);
+        spent += Number(e.amount || 0);
       });
       totalSpent += spent;
       if (budget > 0 || spent > 0) spendByProject.push({ id: p.id, title: p.title, budget, spent });
     });
 
-    // Attendance across the sessions that already happened
-    const attendance = { present: 0, absent: 0 };
+    // Present and Absent per session that already happened (Attendance by session chart)
     const sessionAttendance = [];
     heldEvents.forEach((e) => {
       if (e.attendance.length === 0) return;
       const row = { id: e.id, title: e.title, startAt: e.startAt, present: 0, absent: 0 };
       e.attendance.forEach((a) => {
-        const k = a.status === 'PRESENT' ? 'present' : 'absent';
-        row[k] += 1;
-        attendance[k] += 1;
+        row[a.status === 'PRESENT' ? 'present' : 'absent'] += 1;
       });
       if (sessionAttendance.length < 8) sessionAttendance.push(row);
     });
-    const recorded = attendance.present + attendance.absent;
 
     const closed = (counts.COMPLETED || 0) + (counts.ONGOING || 0) + (counts.CANCELLED || 0);
 
@@ -126,13 +111,7 @@ async function getStats(req, res, next) {
           activeProjects: (counts.ONGOING || 0) + (counts.PLANNING || 0),
           completionRate: closed > 0 ? Math.round(((counts.COMPLETED || 0) / closed) * 100) : null,
           budgetUsedRate: totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : null,
-          monthlySpending: [...monthly].map(([month, total]) => ({ month, total })),
           spendByProject: spendByProject.sort((a, b) => b.budget - a.budget).slice(0, 6),
-          attendance: {
-            ...attendance,
-            recorded,
-            rate: recorded > 0 ? Math.round((attendance.present / recorded) * 100) : null,
-          },
           sessionAttendance: sessionAttendance.reverse(), // oldest first, so the chart reads left to right
         },
       },

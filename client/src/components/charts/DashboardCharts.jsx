@@ -1,6 +1,4 @@
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -19,66 +17,8 @@ import { AXIS_TICK, CHART, ChartEmpty, ChartTooltip } from './palette';
 const peso = (n) => formatPeso(n);
 const compactPeso = (n) =>
   n >= 1000 ? `₱${Math.round(n / 100) / 10}k` : `₱${Math.round(n)}`;
-const monthLabel = (key) =>
-  new Date(`${key}-01T00:00:00`).toLocaleDateString('en-PH', { month: 'short' });
-const monthLong = (key) =>
-  new Date(`${key}-01T00:00:00`).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
 
 const GRID = <CartesianGrid stroke={CHART.hairline} strokeDasharray="3 4" vertical={false} />;
-
-// Money spent per month, last six months.
-export function SpendingChart({ data = [] }) {
-  const hasData = data.some((d) => d.total > 0);
-  if (!hasData) return <ChartEmpty>No expenses recorded in the last six months.</ChartEmpty>;
-  const total = data.reduce((s, d) => s + d.total, 0);
-  return (
-    <div
-      className="h-60"
-      role="img"
-      aria-label={`Spending by month, ${peso(total)} in total over the last six months`}
-    >
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <defs>
-            <linearGradient id="spendFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={CHART.azure} stopOpacity={0.28} />
-              <stop offset="100%" stopColor={CHART.azure} stopOpacity={0.02} />
-            </linearGradient>
-          </defs>
-          {GRID}
-          <XAxis
-            dataKey="month"
-            tickFormatter={monthLabel}
-            tick={AXIS_TICK}
-            tickLine={false}
-            axisLine={{ stroke: CHART.hairline }}
-          />
-          <YAxis
-            tickFormatter={compactPeso}
-            tick={AXIS_TICK}
-            tickLine={false}
-            axisLine={false}
-            width={52}
-          />
-          <Tooltip
-            cursor={{ stroke: CHART.hairline }}
-            content={<ChartTooltip format={peso} labelFormat={monthLong} />}
-          />
-          <Area
-            type="monotone"
-            dataKey="total"
-            name="Spent"
-            stroke={CHART.action}
-            strokeWidth={2.5}
-            fill="url(#spendFill)"
-            dot={{ r: 3.5, strokeWidth: 2, fill: '#fff', stroke: CHART.action }}
-            activeDot={{ r: 5 }}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
 
 // Budget against spending for the biggest projects. Over budget turns red.
 export function BudgetBars({ data = [] }) {

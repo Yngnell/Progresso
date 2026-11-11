@@ -5,7 +5,7 @@ import { reportsApi } from '../../api/reports';
 import { settingsApi } from '../../api/settings';
 import ExportMenu from '../../components/ExportMenu';
 import { exportDashboardExcel, exportDashboardPdf } from '../../utils/reportExport';
-import { ArrowRight, CircleCheck, ClipboardCheck, Plus } from 'lucide-react';
+import { ArrowRight, CircleCheck, ClipboardCheck } from 'lucide-react';
 import { statsApi } from '../../api/stats';
 import { projectsApi } from '../../api/projects';
 import { eventsApi } from '../../api/events';
@@ -21,7 +21,6 @@ import KpiCard from '../../components/KpiCard';
 import {
   AttendanceBars,
   BudgetBars,
-  SpendingChart,
   StatusDonut,
 } from '../../components/charts/DashboardCharts';
 import { CHART } from '../../components/charts/palette';
@@ -185,21 +184,14 @@ export default function Dashboard() {
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <DashboardExport user={user} projects={allProjects} projectId={projectId} onProject={setProjectId} />
-          {isChairman ? (
+          {isChairman && (
           <Link to="/admin/proposals">
             <Button variant="primary">
               <ClipboardCheck size={18} strokeWidth={1.75} aria-hidden="true" />
               Review approvals
             </Button>
           </Link>
-          ) : canManage ? (
-          <Link to="/admin/projects">
-            <Button variant="accent">
-              <Plus size={18} strokeWidth={2} aria-hidden="true" />
-              Add Project
-            </Button>
-          </Link>
-          ) : null}
+          )}
         </div>
       </div>
 
@@ -227,7 +219,7 @@ export default function Dashboard() {
       )}
 
       {/* Key numbers */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         {selected ? (
           <KpiCard
             label="Progress"
@@ -266,30 +258,13 @@ export default function Dashboard() {
             tone="green"
           />
         )}
-        <KpiCard
-          label="Attendance rate"
-          value={a.attendance?.rate != null ? `${a.attendance.rate}%` : '—'}
-          note={
-            a.attendance?.recorded
-              ? `${a.attendance.present} of ${a.attendance.recorded} present`
-              : 'No attendance recorded yet'
-          }
-          meter={a.attendance?.rate}
-          tone="gold"
-        />
       </div>
 
-      {/* Trends */}
+      {/* Charts */}
       <div className="grid gap-6 lg:grid-cols-3">
-        <Panel title="Spending by month" className="lg:col-span-2" pdfChart>
-          <SpendingChart data={a.monthlySpending} />
-        </Panel>
         <Panel title="Projects by status" pdfChart>
           <StatusDonut data={statusData} colors={STATUS_COLOR} labels={STATUS_LABEL} />
         </Panel>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
         <Panel title="Budget vs spent" pdfChart>
           <BudgetBars data={a.spendByProject} />
         </Panel>
