@@ -1,5 +1,4 @@
 const prisma = require('../prisma');
-const { effectiveStatus } = require('./projectController');
 
 // GET /api/stats — dashboard summary numbers, status breakdown and the analytics behind
 // the dashboard charts. ?projectId= narrows everything to one project ("Sort by Project"):
@@ -14,7 +13,6 @@ async function getStats(req, res, next) {
     const [
       totalViewers,
       totalOfficials,
-      totalNews,
       upcomingEvents,
       projects,
       pendingDeletions,
@@ -22,7 +20,6 @@ async function getStats(req, res, next) {
     ] = await Promise.all([
       prisma.user.count({ where: { role: 'VIEWER' } }),
       prisma.official.count({ where: { isActive: true } }),
-      prisma.news.count({ where: { status: 'PUBLISHED' } }),
       prisma.event.count({ where: { startAt: { gte: now }, ...onlyLinked } }),
       // Archived projects are kept for the record but left out of the Dashboard numbers.
       prisma.project.findMany({
@@ -30,9 +27,6 @@ async function getStats(req, res, next) {
         select: {
           id: true,
           status: true,
-          startDate: true,
-          progressType: true,
-          events: { select: { startAt: true } },
           approvalState: true,
         },
       }),
@@ -51,16 +45,14 @@ async function getStats(req, res, next) {
       }),
     ]);
 
-    // Count on the effective status so a started PLANNING project shows as Ongoing.
-    // Rejected proposals never became projects, so they are left out of the totals.
+    // The stage is stored on each project (Proposed, Planning, Ongoing, Completed, Cancelled).
     const counts = {};
     let pendingApproval = 0;
     let totalProjects = 0;
 
     projects.forEach((p) => {
-      if (p.approvalState === 'REJECTED') return;
       totalProjects += 1;
-      const status = effectiveStatus(p);
+      const { status } = p;
       counts[status] = (counts[status] || 0) + 1;
       if (status === 'PROPOSED' && p.approvalState === 'PENDING') pendingApproval += 1;
     });
@@ -87,7 +79,6 @@ async function getStats(req, res, next) {
         pendingDeletions,
         totalViewers,
         totalOfficials,
-        totalNews,
         upcomingEvents,
         byStatus: Object.entries(counts).map(([status, count]) => ({ status, count })),
         analytics: {

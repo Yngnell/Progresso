@@ -4,8 +4,9 @@
 //   OFFICIAL  an SK official's own account: the same access as the SK Admin
 //   VIEWER    a registered resident (public site only)
 // The SK Chairperson is the OFFICIAL account linked to the official whose position is
-// "SK Chairperson" (Sehj Miranda). Only they show the attendance QR, mark projects as
-// complete and cancel projects; they also manage the accounts and the system settings.
+// "SK Chairperson" (Sehj Miranda). Only they show the attendance QR; they also manage
+// the accounts and the system settings. The project schedule, liquidation, checklist
+// and completion belong to the SK Admin account (requireSkAdmin).
 
 const SK_CHAIR_POSITION = /^sk chair(person|man)$/i;
 const STAFF_ROLES = ['ADMIN', 'CHAIRMAN', 'OFFICIAL'];

@@ -7,11 +7,6 @@ export const PROJECT_STATUS = {
   CANCELLED: { label: 'Cancelled', tone: 'red' },
 };
 
-export const NEWS_STATUS = {
-  DRAFT: { label: 'Draft', tone: 'slate' },
-  PUBLISHED: { label: 'Published', tone: 'green' },
-};
-
 export const EVENT_TYPE = {
   MEETING: { label: 'Meeting', tone: 'blue' },
   SESSION: { label: 'Session', tone: 'slate' },

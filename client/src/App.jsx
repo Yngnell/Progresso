@@ -13,8 +13,6 @@ import CheckIn from './pages/CheckIn';
 import Account from './pages/Account';
 import EventQrCheckin from './pages/admin/EventQrCheckin';
 import MeetingQrList from './pages/MeetingQrList';
-import NewsList from './pages/NewsList';
-import NewsDetail from './pages/NewsDetail';
 import ProjectsPublic from './pages/ProjectsPublic';
 import ProjectDetailPublic from './pages/ProjectDetailPublic';
 import OfficialsPublic from './pages/OfficialsPublic';
@@ -22,9 +20,7 @@ import EventsPublic from './pages/EventsPublic';
 
 import Dashboard from './pages/admin/Dashboard';
 import AdminOfficials from './pages/admin/AdminOfficials';
-import AdminNews from './pages/admin/AdminNews';
 import AdminProjects from './pages/admin/AdminProjects';
-import AdminProposals from './pages/admin/AdminProposals';
 import AdminArchive from './pages/admin/AdminArchive';
 import AdminProjectDetail from './pages/admin/AdminProjectDetail';
 import AdminCalendar from './pages/admin/AdminCalendar';
@@ -38,8 +34,6 @@ export default function App() {
       {/* Public site */}
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Home />} />
-        <Route path="/news" element={<NewsList />} />
-        <Route path="/news/:id" element={<NewsDetail />} />
         <Route path="/projects" element={<ProjectsPublic />} />
         <Route path="/projects/:id" element={<ProjectDetailPublic />} />
         <Route path="/officials" element={<OfficialsPublic />} />
@@ -98,31 +92,8 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="news"
-          element={
-            <ProtectedRoute roles={['ADMIN']}>
-              <AdminNews />
-            </ProtectedRoute>
-          }
-        />
         <Route path="projects" element={<AdminProjects />} />
-        <Route
-          path="proposals"
-          element={
-            <ProtectedRoute roles={['ADMIN', 'CHAIRMAN']}>
-              <AdminProposals />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="archive"
-          element={
-            <ProtectedRoute roles={['ADMIN', 'CHAIRMAN']}>
-              <AdminArchive />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="archive" element={<AdminArchive />} />
         <Route path="projects/:id" element={<AdminProjectDetail />} />
         <Route path="calendar" element={<AdminCalendar />} />
         <Route path="calendar/:id" element={<AdminEventDetail />} />

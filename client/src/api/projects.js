@@ -1,11 +1,48 @@
-// API helpers for Projects (and their expenses).
+// API helpers for Projects and their flow:
+// Project Request -> Proposed -> Planning -> Ongoing -> Completed (or Proposed -> Cancelled).
 import api from './axios';
 
 export const projectsApi = {
+  // Active projects (Proposed, Planning, Ongoing); { archive: 'completed' | 'cancelled' |
+  // 'deleted' } lists one tab of Archives.
   list: (params) => api.get('/projects', { params }).then((r) => r.data),
   get: (id) => api.get(`/projects/${id}`).then((r) => r.data),
+  // The Project Request: saved as Proposed.
   create: (data) => api.post('/projects', data).then((r) => r.data),
   update: (id, data) => api.put(`/projects/${id}`, data).then((r) => r.data),
+  // Barangay Chairman: { decision: 'APPROVE' | 'REJECT', remarks }
+  review: (id, data) => api.put(`/projects/${id}/review`, data).then((r) => r.data),
+  // SK Admin, Planning: { startDate, endDate } -> Ongoing
+  setSchedule: (id, data) => api.put(`/projects/${id}/schedule`, data).then((r) => r.data),
+  // SK Admin, Ongoing: receipt liquidation (JPG, PNG or PDF; several at once)
+  uploadLiquidation: (id, files) => {
+    const formData = new FormData();
+    [...files].forEach((f) => formData.append('files', f));
+    return api.post(`/projects/${id}/liquidation`, formData).then((r) => r.data);
+  },
+  deleteLiquidation: (id, fileId) =>
+    api.delete(`/projects/${id}/liquidation/${fileId}`).then((r) => r.data),
+  // The files need the login token, so they are fetched and opened from a blob URL.
+  openLiquidation: async (id, fileId) => {
+    const tab = window.open('', '_blank'); // opened first so the browser allows the pop-up
+    try {
+      const res = await api.get(`/projects/${id}/liquidation/${fileId}`, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      if (tab) tab.location.href = url;
+      else window.location.href = url;
+    } catch (err) {
+      if (tab) tab.close();
+      throw err;
+    }
+  },
+  // SK Admin, Ongoing: the optional checklist
+  addChecklistItem: (id, label) => api.post(`/projects/${id}/checklist`, { label }).then((r) => r.data),
+  updateChecklistItem: (id, itemId, data) =>
+    api.put(`/projects/${id}/checklist/${itemId}`, data).then((r) => r.data),
+  deleteChecklistItem: (id, itemId) =>
+    api.delete(`/projects/${id}/checklist/${itemId}`).then((r) => r.data),
+  // SK Admin, Ongoing -> Completed
+  complete: (id) => api.post(`/projects/${id}/complete`).then((r) => r.data),
   // Projects are never deleted directly: file a request with a reason, then the
   // chairman approves ({ decision: 'APPROVE' | 'REJECT', remarks }) or rejects it.
   requestDeletion: (id, reason) =>
@@ -16,42 +53,6 @@ export const projectsApi = {
     api.get('/projects/deletion-requests', { params }).then((r) => r.data),
   reviewDeletion: (requestId, data) =>
     api.put(`/projects/deletion-requests/${requestId}/review`, data).then((r) => r.data),
-  // Chairman: { decision: 'APPROVE' | 'RETURN' | 'REJECT', remarks }
-  review: (id, data) => api.put(`/projects/${id}/review`, data).then((r) => r.data),
-  // Completion is confirmed by SK council approval: { councilApprovedOn, councilResolutionNo }
-  complete: (id, data) => api.post(`/projects/${id}/complete`, data).then((r) => r.data),
-  // Cancelling needs a written reason: { reason }
-  cancel: (id, data) => api.post(`/projects/${id}/cancel`, data).then((r) => r.data),
-  // Archive: approved deletions land here instead of being erased. The chairman can restore.
-  archived: () => api.get('/projects', { params: { archived: 'true' } }).then((r) => r.data),
+  // Deleted projects (Archives > Deleted): the chairman can restore one.
   restore: (id) => api.post(`/projects/${id}/restore`).then((r) => r.data),
-  // An expense is a manual budget deduction and needs its receipt: sent as multipart
-  // form data with item, amount, date, voucherNo and the receipt file.
-  addExpense: (id, formData) =>
-    api.post(`/projects/${id}/expenses`, formData).then((r) => r.data),
-  attachReceipt: (id, expenseId, file) => {
-    const formData = new FormData();
-    formData.append('receipt', file);
-    return api.post(`/projects/${id}/expenses/${expenseId}/receipt`, formData).then((r) => r.data);
-  },
-  // Receipts need the login token, so they are fetched and opened from a blob URL.
-  openReceipt: async (id, expenseId) => {
-    const tab = window.open('', '_blank'); // opened first so the browser allows the pop-up
-    try {
-      const res = await api.get(`/projects/${id}/expenses/${expenseId}/receipt`, {
-        responseType: 'blob',
-      });
-      const url = URL.createObjectURL(res.data);
-      if (tab) tab.location.href = url;
-      else window.location.href = url;
-    } catch (err) {
-      if (tab) tab.close();
-      throw err;
-    }
-  },
-  removeExpense: (id, expenseId) =>
-    api.delete(`/projects/${id}/expenses/${expenseId}`).then((r) => r.data),
-  // Removes a wrong proof file from an expense so the right one can be uploaded.
-  removeReceipt: (id, expenseId) =>
-    api.delete(`/projects/${id}/expenses/${expenseId}/receipt`).then((r) => r.data),
 };

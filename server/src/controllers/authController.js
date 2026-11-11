@@ -42,7 +42,7 @@ function publicUser(user) {
     actsAsOfficial: user.actingOfficial ? { id: user.actingOfficial.id, name: user.actingOfficial.name, position: user.actingOfficial.position } : null,
     // Only the SK Chairperson's account may show the attendance QR code
     canShowQr: canShowQr(user),
-    // The SK Chairperson marks projects complete and manages the QR, accounts and the system settings
+    // The SK Chairperson shows the attendance QR and manages the accounts and the system settings
     isSkChair: isSkChair(user),
     pendingEmail: user.pendingEmail || null,
     // "Last login" in Settings → Security is the login before this session

@@ -5,7 +5,6 @@ const cors = require('cors');
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const officialRoutes = require('./routes/officialRoutes');
-const newsRoutes = require('./routes/newsRoutes');
 const projectRoutes = require('./routes/projectRoutes');
 const eventRoutes = require('./routes/eventRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
@@ -35,7 +34,6 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/officials', officialRoutes);
-app.use('/api/news', newsRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/attendance', attendanceRoutes);

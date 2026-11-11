@@ -3,18 +3,18 @@ const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
 
-// Receipts live outside the public web root and are only served through an
-// authenticated route (see projectController.getReceipt).
+// Receipt liquidation files live outside the public web root and are only served through
+// an authenticated route (see projectController.getLiquidationFile).
 const RECEIPT_DIR = path.join(__dirname, '..', '..', 'uploads', 'receipts');
 fs.mkdirSync(RECEIPT_DIR, { recursive: true });
 
 const ALLOWED_TYPES = {
   'image/jpeg': '.jpg',
   'image/png': '.png',
-  'image/webp': '.webp',
   'application/pdf': '.pdf',
 };
-const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_SIZE = 5 * 1024 * 1024; // 5 MB per file
+const MAX_FILES = 10; // per upload
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -23,10 +23,10 @@ const upload = multer({
     filename: (_req, file, cb) =>
       cb(null, crypto.randomUUID() + (ALLOWED_TYPES[file.mimetype] || '')),
   }),
-  limits: { fileSize: MAX_SIZE, files: 1 },
+  limits: { fileSize: MAX_SIZE, files: MAX_FILES },
   fileFilter: (_req, file, cb) => {
     if (!ALLOWED_TYPES[file.mimetype]) {
-      const err = new Error('The receipt must be a JPG, PNG or WebP image, or a PDF');
+      const err = new Error('Liquidation files must be JPG, PNG or PDF');
       err.status = 400;
       return cb(err);
     }
@@ -34,13 +34,16 @@ const upload = multer({
   },
 });
 
-// Reads one file from the form field "receipt" and turns upload problems into
+// Reads up to 10 files from the form field "files" and turns upload problems into
 // readable 400 responses.
-function receiptUpload(req, res, next) {
-  upload.single('receipt')(req, res, (err) => {
+function liquidationUpload(req, res, next) {
+  upload.array('files', MAX_FILES)(req, res, (err) => {
     if (!err) return next();
     err.status = 400;
-    if (err.code === 'LIMIT_FILE_SIZE') err.message = 'The receipt must be 5 MB or smaller';
+    if (err.code === 'LIMIT_FILE_SIZE') err.message = 'Each file must be 5 MB or smaller';
+    if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+      err.message = `Upload up to ${MAX_FILES} files at a time`;
+    }
     next(err);
   });
 }
@@ -116,7 +119,7 @@ function removePhotoFile(fileName) {
 }
 
 module.exports = {
-  receiptUpload,
+  liquidationUpload,
   receiptPath,
   removeReceiptFile,
   photoUpload,

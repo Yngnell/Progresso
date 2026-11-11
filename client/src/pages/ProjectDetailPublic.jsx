@@ -3,11 +3,9 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { projectsApi } from '../api/projects';
 import { Card } from '../components/ui';
-import { progressSummary } from '../components/ProjectCard';
-import { ProgressRoundel, ScheduleWords, StatusRibbon } from '../components/Roundel';
-import ProjectProgress from '../components/ProjectProgress';
+import { StageSteps, StatusRibbon } from '../components/Roundel';
 import PhotoGallery from '../components/PhotoGallery';
-import { formatPeso, formatDate, formatDateTime } from '../utils/format';
+import { formatPeso, formatDateTime } from '../utils/format';
 
 function Fact({ label, children }) {
   return (
@@ -37,8 +35,6 @@ export default function ProjectDetailPublic() {
       </div>
     );
 
-  const summary = progressSummary(project.progressBreakdown);
-
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <Link
@@ -48,23 +44,14 @@ export default function ProjectDetailPublic() {
         <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" /> Back to Projects
       </Link>
 
-      <div className="mt-5 flex flex-col gap-6 sm:flex-row sm:items-center">
-        <ProgressRoundel
-          value={project.progress}
-          breakdown={project.progressBreakdown}
-          size="lg"
-          className="mx-auto sm:mx-0"
-        />
-        <div className="min-w-0 text-center sm:text-left">
+      <div className="mt-5">
+        <div className="min-w-0">
           <StatusRibbon status={project.status} />
           <h1 className="mt-3 font-display text-4xl font-bold uppercase leading-none tracking-wide text-slate-900 sm:text-5xl">
             {project.title}
           </h1>
           {project.category && <p className="mt-1 text-slate-600">{project.category}</p>}
-          <div className="mt-2">
-            <ScheduleWords breakdown={project.progressBreakdown} />
-            {summary && <p className="mt-0.5 text-sm text-slate-600">{summary}</p>}
-          </div>
+          <StageSteps status={project.status} className="mt-4 max-w-xl" />
         </div>
       </div>
 
@@ -77,17 +64,8 @@ export default function ProjectDetailPublic() {
           <Fact label="Budget">{formatPeso(project.budget)}</Fact>
           <Fact label="Venue">{project.location}</Fact>
           <Fact label="Start">{formatDateTime(project.startDate)}</Fact>
-          <Fact label="Target completion">{formatDateTime(project.endDate)}</Fact>
+          <Fact label="End">{formatDateTime(project.endDate)}</Fact>
         </dl>
-      </Card>
-
-      <Card className="mt-6 p-6">
-        <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">
-          Progress details
-        </h2>
-        <div className="mt-4">
-          <ProjectProgress project={project} />
-        </div>
       </Card>
 
       {project.photos?.length > 0 && (
@@ -98,37 +76,6 @@ export default function ProjectDetailPublic() {
           </div>
         </Card>
       )}
-
-      {/* Expenses are public so residents can see where the budget goes. */}
-      <Card className="mt-6 p-6">
-        <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">
-          Expenses
-        </h2>
-        {(project.expenses || []).length === 0 ? (
-          <p className="mt-4 text-slate-600">No expenses recorded yet.</p>
-        ) : (
-          <table className="mt-4 w-full">
-            <thead className="border-b border-slate-200 text-left text-sm text-slate-600">
-              <tr>
-                <th className="py-2 font-semibold">Item</th>
-                <th className="py-2 font-semibold">Date</th>
-                <th className="py-2 text-right font-semibold">Amount</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {project.expenses.map((e) => (
-                <tr key={e.id}>
-                  <td className="py-2.5 pr-3 font-medium text-slate-900">{e.item}</td>
-                  <td className="py-2.5 pr-3 text-slate-600">{formatDate(e.date)}</td>
-                  <td className="py-2.5 text-right font-semibold text-slate-900">
-                    {formatPeso(e.amount)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
 
       {(project.officials || []).length > 0 && (
         <Card className="mt-6 p-6">

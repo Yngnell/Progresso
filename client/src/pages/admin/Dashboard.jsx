@@ -13,8 +13,7 @@ import { useAuth } from '../../context/AuthContext';
 import { isAdmin } from '../../utils/roles';
 import { Button, Card } from '../../components/ui';
 import { PROJECT_STATUS, formatPeso, formatDateTime } from '../../utils/format';
-import { ProgressBar } from '../../components/ProjectCard';
-import { ProgressRoundel, ScheduleWords, StatusRibbon } from '../../components/Roundel';
+import { STAGES, StageSteps, StatusRibbon } from '../../components/Roundel';
 import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
 import KpiCard from '../../components/KpiCard';
@@ -37,18 +36,13 @@ const STATUS_LABEL = Object.fromEntries(STATUS_ORDER.map((k) => [k, PROJECT_STAT
 
 const DAY = 24 * 60 * 60 * 1000;
 
-// Projects an official should look at first: behind schedule, past their end date and not yet
+// Ongoing projects an official should look at first: past their end date and not yet
 // completed, or ending within 3 days.
 function needsAttention(projects) {
   const now = Date.now();
   const ended = (p) => (p.endDate && new Date(p.endDate).getTime() <= now ? 0 : 1);
   return projects
-    .filter((p) => {
-      if (p.status !== 'ONGOING') return false;
-      const s = p.progressBreakdown?.schedule;
-      const endsSoon = p.endDate && new Date(p.endDate).getTime() - now <= 3 * DAY;
-      return s === 'BEHIND' || endsSoon;
-    })
+    .filter((p) => p.status === 'ONGOING' && p.endDate && new Date(p.endDate).getTime() - now <= 3 * DAY)
     .sort((a, b) => ended(a) - ended(b) || new Date(a.endDate) - new Date(b.endDate));
 }
 
@@ -137,8 +131,8 @@ export default function Dashboard() {
     queryFn: () => statsApi.get(projectId ? { projectId } : undefined),
   });
   const { data: projectsData } = useQuery({
-    queryKey: ['projects', 'admin'],
-    queryFn: () => projectsApi.list({}),
+    queryKey: ['projects', 'all'],
+    queryFn: () => projectsApi.list({ archive: 'all' }),
   });
   const { data: eventsData } = useQuery({
     queryKey: ['events', 'upcoming'],
@@ -155,7 +149,6 @@ export default function Dashboard() {
     .filter((e) => !selected || e.relatedProjectId === selected.id)
     .slice(0, 5);
   const recent = projects.slice(0, 6);
-  const spendingLabel = { OVERSPENDING: 'Overspending', UNDERSPENDING: 'Underspending' };
 
   const statusData = STATUS_ORDER.map((k) => ({
     status: k,
@@ -183,10 +176,10 @@ export default function Dashboard() {
         <div className="flex flex-wrap items-end gap-3">
           <DashboardExport user={user} projects={allProjects} projectId={projectId} onProject={setProjectId} />
           {isChairman && (
-          <Link to="/admin/proposals">
+          <Link to="/admin/projects?status=PROPOSED">
             <Button variant="primary">
               <ClipboardCheck size={18} strokeWidth={1.75} aria-hidden="true" />
-              Review approvals
+              Review proposals
             </Button>
           </Link>
           )}
@@ -196,7 +189,7 @@ export default function Dashboard() {
       {/* Chairman: proposals waiting for a decision */}
       {isChairman && awaiting > 0 && (
         <Link
-          to="/admin/proposals"
+          to={s.pendingApproval > 0 ? '/admin/projects?status=PROPOSED' : '/admin/projects'}
           className="flex items-center justify-between gap-4 rounded-xl border border-accent-300 bg-accent-100 px-5 py-4 text-accent-900 transition-colors hover:bg-accent-200"
         >
           <span className="font-semibold">
@@ -220,10 +213,13 @@ export default function Dashboard() {
       <div className="grid gap-4 sm:grid-cols-2">
         {selected ? (
           <KpiCard
-            label="Progress"
-            value={`${selected.progress ?? 0}%`}
-            note={PROJECT_STATUS[selected.status]?.label || selected.status}
-            meter={selected.progress}
+            label="Stage"
+            value={PROJECT_STATUS[selected.status]?.label || selected.status}
+            note={
+              selected.status === 'CANCELLED'
+                ? 'Rejected at the Proposed stage'
+                : `Stage ${STAGES.indexOf(selected.status) + 1} of ${STAGES.length}`
+            }
             tone="azure"
           />
         ) : (
@@ -235,9 +231,13 @@ export default function Dashboard() {
         )}
         {selected ? (
           <KpiCard
-            label="Spending"
-            value={spendingLabel[selected.spendingTag] || ((selected.expenses || []).length ? 'On budget' : '—')}
-            note={selected.canComplete ? 'Ready to mark as complete' : `${selected.missingProof || 0} expense(s) without proof`}
+            label="Liquidation"
+            value={`${selected.liquidationCount || 0} file${selected.liquidationCount === 1 ? '' : 's'}`}
+            note={
+              selected.checklistTotal
+                ? `Checklist: ${selected.checklistDone} of ${selected.checklistTotal} done`
+                : 'No checklist items'
+            }
             tone="green"
           />
         ) : (
@@ -272,7 +272,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-3 rounded-lg bg-green-50 px-4 py-5 text-green-800">
               <CircleCheck size={24} strokeWidth={1.75} aria-hidden="true" />
               <p className="font-semibold">
-                Every ongoing project is on track. Nothing is behind schedule or ending within 3 days.
+                No ongoing project has ended or ends within 3 days.
               </p>
             </div>
           ) : (
@@ -283,7 +283,6 @@ export default function Dashboard() {
                     to={`/admin/projects/${p.id}`}
                     className="-mx-2 flex items-center gap-4 rounded-lg px-2 py-3 transition-colors hover:bg-slate-50"
                   >
-                    <ProgressRoundel value={p.progress} breakdown={p.progressBreakdown} size="sm" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-base font-bold text-slate-900">
                         {p.title}
@@ -293,7 +292,7 @@ export default function Dashboard() {
                         {formatDateTime(p.endDate)}
                       </span>
                     </span>
-                    <ScheduleWords breakdown={p.progressBreakdown} className="hidden sm:inline-flex" />
+                    <StatusRibbon status={p.status} className="hidden sm:inline-flex" />
                     <ArrowRight
                       size={18}
                       strokeWidth={1.75}
@@ -345,7 +344,7 @@ export default function Dashboard() {
               <>
                 {' '}
                 <Link to="/admin/projects" className="font-semibold text-brand-700">
-                  Add your first project
+                  Send a Project Request
                 </Link>
                 .
               </>
@@ -359,7 +358,7 @@ export default function Dashboard() {
                 <thead>
                   <tr className="border-b border-slate-200 text-sm text-slate-600">
                     <th className="py-2 pr-4 font-semibold">Project</th>
-                    <th className="w-56 py-2 pr-4 font-semibold">Progress</th>
+                    <th className="w-56 py-2 pr-4 font-semibold">Stage</th>
                     <th className="py-2 text-right font-semibold">Budget</th>
                   </tr>
                 </thead>
@@ -376,7 +375,7 @@ export default function Dashboard() {
                         <StatusRibbon status={p.status} className="mt-1" />
                       </td>
                       <td className="py-3 pr-4">
-                        <ProgressBar value={p.progress} breakdown={p.progressBreakdown} />
+                        <StageSteps status={p.status} />
                       </td>
                       <td className="py-3 text-right font-semibold text-slate-900">
                         {formatPeso(p.budget)}
@@ -396,11 +395,7 @@ export default function Dashboard() {
                       <span className="font-bold text-slate-900">{p.title}</span>
                       <StatusRibbon status={p.status} />
                     </span>
-                    <ProgressBar
-                      value={p.progress}
-                      breakdown={p.progressBreakdown}
-                      className="mt-3"
-                    />
+                    <StageSteps status={p.status} className="mt-3" />
                     <span className="mt-2 block text-sm text-slate-600">Budget {formatPeso(p.budget)}</span>
                   </Link>
                 </li>

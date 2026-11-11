@@ -6,7 +6,6 @@ import { Button } from './ui';
 
 const publicLinks = [
   { to: '/', label: 'Home', end: true },
-  { to: '/news', label: 'News & Updates' },
   { to: '/projects', label: 'Projects' },
   { to: '/officials', label: 'Officials' },
   { to: '/events', label: 'Events' },

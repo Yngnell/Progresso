@@ -2,7 +2,7 @@ const prisma = require('../prisma');
 const { isMailConfigured, sendMail } = require('./mailer');
 
 // Emails for residents who ticked "I would like to receive news and updates by email"
-// when they signed up: project milestones, calendar reminders and new news articles.
+// when they signed up: projects wrapping up and calendar reminders.
 // Wording is public-friendly and every link goes to the public site, never to the admin
 // pages. Every email carries a "stop these emails" link.
 
@@ -12,7 +12,6 @@ const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ESCAPES[c]);
 
 // Alerts older than this are never emailed, so nobody gets a pile of old news.
 const EMAIL_WINDOW_MS = 48 * 60 * 60 * 1000;
-const PROGRESS_AT = { PROGRESS_50: 50, PROGRESS_75: 75, PROGRESS_90: 90 };
 
 // Philippine date and time, e.g. "Oct 22, 2026, 5:00 PM".
 function when(date) {
@@ -41,14 +40,6 @@ function publicLine(n) {
   const p = n.project;
   if (!p || p.archivedAt || p.approvalState !== 'APPROVED') return null;
   const link = `${APP_URL()}/projects/${p.id}`;
-  if (PROGRESS_AT[n.type]) {
-    return {
-      title: `${p.title} is ${PROGRESS_AT[n.type]}% done`,
-      message: `${p.title} has reached ${PROGRESS_AT[n.type]}% of its progress.`,
-      link,
-      linkText: 'See the project',
-    };
-  }
   if (n.type === 'ENDING_3D' || n.type === 'ENDING_1D') {
     return {
       title: `${p.title} is wrapping up`,
@@ -154,33 +145,4 @@ async function sendPendingViewerEmails() {
   }
 }
 
-// Emails a newly published news article to the residents who opted in. Safe to call more
-// than once: the article is claimed first, so it is only ever sent a single time.
-async function sendNewsEmail(article) {
-  if (!isMailConfigured() || article.status !== 'PUBLISHED') return 0;
-  const claim = await prisma.news.updateMany({
-    where: { id: article.id, emailedAt: null },
-    data: { emailedAt: new Date() },
-  });
-  if (claim.count === 0) return 0;
-
-  const item = {
-    title: `New: ${article.title}`,
-    message: article.excerpt || String(article.content || '').slice(0, 200),
-    link: `${APP_URL()}/news/${article.id}`,
-    linkText: 'Read the article',
-  };
-  let sent = 0;
-  for (const user of await subscribers()) {
-    try {
-      const { subject, text, html } = buildPublicDigest([item], user);
-      await sendMail({ to: user.email, subject, text, html });
-      sent += 1;
-    } catch (err) {
-      console.error(`News email to ${user.email} failed:`, err.message);
-    }
-  }
-  return sent;
-}
-
-module.exports = { publicLine, buildPublicDigest, sendPendingViewerEmails, sendNewsEmail };
+module.exports = { publicLine, buildPublicDigest, sendPendingViewerEmails };

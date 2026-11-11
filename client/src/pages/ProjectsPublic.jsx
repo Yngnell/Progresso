@@ -28,7 +28,7 @@ export default function ProjectsPublic() {
     <div className="mx-auto max-w-6xl px-4 py-10">
       <PageHeader
         title="SK Projects"
-        description="Follow the progress of programs and projects run by your Sangguniang Kabataan."
+        description="Follow the programs and projects run by your Sangguniang Kabataan, from planning to completion."
       />
 
       {projects.length > 0 && (

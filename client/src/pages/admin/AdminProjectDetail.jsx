@@ -2,30 +2,33 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '../../api/projects';
-import { ArrowLeft, Ban, CircleCheck, Paperclip, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, CircleCheck, FileText, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import OverflowMenu from '../../components/OverflowMenu';
-import { ProgressRoundel, ScheduleWords, StatusRibbon } from '../../components/Roundel';
+import { StageSteps, StatusRibbon } from '../../components/Roundel';
 import { Button, Card } from '../../components/ui';
-import { SpendingTag } from '../../components/ProjectCard';
-import ProjectProgress from '../../components/ProjectProgress';
 import PhotoGallery from '../../components/PhotoGallery';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
-import ProjectStatusDialog from '../../components/ProjectStatusDialog';
 import { formatPeso, formatDate, formatDateTime } from '../../utils/format';
 import { isAdmin, isManager, isWorker } from '../../utils/roles';
 
+const cardTitle = 'font-display text-2xl font-bold uppercase tracking-wide text-slate-900';
+const errorText = (err, fallback) => err?.response?.data?.message || fallback;
+
+// One project and its stage in the flow:
+//   Proposed  -> the Barangay Chairman approves (Planning) or rejects (Cancelled)
+//   Planning  -> the SK Admin saves the schedule (Ongoing)
+//   Ongoing   -> the SK Admin uploads the receipt liquidation and keeps the optional
+//                checklist, then clicks "Project Completed" (Completed)
+// Completed and Cancelled projects live in Archives and are view only.
 export default function AdminProjectDetail() {
   const { id } = useParams();
   const { user } = useAuth();
   const isChairman = user?.role === 'CHAIRMAN';
+  const isSkAdmin = user?.role === 'ADMIN';
   const qc = useQueryClient();
-  const [expenseForm, setExpenseForm] = useState({ item: '', amount: '', date: '', voucherNo: '' });
-  const [receiptFile, setReceiptFile] = useState(null);
-  const [fileKey, setFileKey] = useState(0); // changing it clears the file input
   const [error, setError] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [statusDialog, setStatusDialog] = useState(null); // 'complete' | 'cancel' | null
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['projects', id],
@@ -33,80 +36,26 @@ export default function AdminProjectDetail() {
   });
   const project = data?.project;
 
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['projects', id] });
+  // Every step returns the updated project; refresh the lists and the Dashboard too.
+  const refresh = (res) => {
+    if (res?.project) qc.setQueryData(['projects', id], (old) => ({ ...old, project: { ...res.project, photos: old?.project?.photos } }));
     qc.invalidateQueries({ queryKey: ['projects'] });
     qc.invalidateQueries({ queryKey: ['stats'] });
+    qc.invalidateQueries({ queryKey: ['deletion-requests'] });
+    setError('');
   };
-
-  const addExpenseMutation = useMutation({
-    mutationFn: (formData) => projectsApi.addExpense(id, formData),
-    onSuccess: () => {
-      invalidate();
-      setExpenseForm({ item: '', amount: '', date: '', voucherNo: '' });
-      setReceiptFile(null);
-      setFileKey((k) => k + 1);
-    },
-    onError: (err) => setError(err.response?.data?.message || 'Failed to add expense'),
-  });
-
-  const attachReceiptMutation = useMutation({
-    mutationFn: ({ expenseId, file }) => projectsApi.attachReceipt(id, expenseId, file),
-    onSuccess: invalidate,
-    onError: (err) => setError(err.response?.data?.message || 'Could not upload the receipt'),
-  });
-
-  async function viewReceipt(expenseId) {
-    try {
-      await projectsApi.openReceipt(id, expenseId);
-    } catch (err) {
-      setError('Could not open the receipt. It may be missing.');
-    }
-  }
+  const onFail = (fallback) => (err) => setError(errorText(err, fallback));
 
   const restoreMutation = useMutation({
     mutationFn: () => projectsApi.restore(id),
-    onSuccess: invalidate,
-    onError: (err) => setError(err.response?.data?.message || 'Could not restore the project'),
+    onSuccess: refresh,
+    onError: onFail('Could not restore the project'),
   });
-
-  const deleteExpenseMutation = useMutation({
-    mutationFn: (expenseId) => projectsApi.removeExpense(id, expenseId),
-    onSuccess: invalidate,
-  });
-
-  // Removes a wrong proof file so the right one can be uploaded.
-  const removeReceiptMutation = useMutation({
-    mutationFn: (expenseId) => projectsApi.removeReceipt(id, expenseId),
-    onSuccess: invalidate,
-    onError: (err) => setError(err.response?.data?.message || 'Could not remove the file'),
-  });
-
   const withdrawMutation = useMutation({
     mutationFn: () => projectsApi.withdrawDeletion(id),
-    onSuccess: () => {
-      invalidate();
-      qc.invalidateQueries({ queryKey: ['deletion-requests'] });
-    },
-    onError: (err) => setError(err.response?.data?.message || 'Could not withdraw the request'),
+    onSuccess: refresh,
+    onError: onFail('Could not withdraw the request'),
   });
-
-  // An expense is a manual deduction from the budget, so its receipt is required.
-  function handleAddExpense(e) {
-    e.preventDefault();
-    setError('');
-    if (!receiptFile) {
-      setError('Please upload the receipt as proof of this expense.');
-      return;
-    }
-    const formData = new FormData();
-    formData.append('item', expenseForm.item);
-    formData.append('amount', expenseForm.amount);
-    if (expenseForm.date) formData.append('date', expenseForm.date);
-    if (expenseForm.voucherNo) formData.append('voucherNo', expenseForm.voucherNo);
-    formData.append('receipt', receiptFile);
-    addExpenseMutation.mutate(formData);
-  }
 
   if (isLoading) return <p className="text-slate-600">Loading…</p>;
   if (isError || !project)
@@ -119,33 +68,33 @@ export default function AdminProjectDetail() {
       </div>
     );
 
-  // Only the SK Admin edits the project and its expenses. The chairman views and approves;
-  // the officials add pictures; only the SK Chairperson marks a project as complete.
-  // An archived project is read-only for everyone.
-  const archived = Boolean(project.archivedAt);
-  const readOnly = !isAdmin(user) || archived;
-  const canMarkComplete =
-    Boolean(user?.isSkChair) && !archived && (project.status === 'PLANNING' || project.status === 'ONGOING');
-  const canUploadPictures = isWorker(user) && !archived;
-  const canDeletePicture = (p) => !archived && (isManager(user) || (p.uploadedById && p.uploadedById === user?.id));
+  const deleted = Boolean(project.archivedAt);
+  const closed = project.status === 'COMPLETED' || project.status === 'CANCELLED';
+  // Completed, cancelled and deleted projects are view only.
+  const viewOnly = deleted || closed;
+  const canUploadPictures = isWorker(user) && !viewOnly;
+  const canDeletePicture = (p) => !viewOnly && (isManager(user) || (p.uploadedById && p.uploadedById === user?.id));
   // Most recent deletion request (server returns only the latest one).
   const deletion = project.deletionRequests?.[0];
+  const back = deleted
+    ? { to: '/admin/archive?tab=deleted', label: 'Archives' }
+    : closed
+      ? { to: `/admin/archive?tab=${project.status === 'COMPLETED' ? 'completed' : 'cancelled'}`, label: 'Archives' }
+      : { to: '/admin/projects', label: 'Projects' };
 
   return (
     <div>
       <Link
-        to={archived ? '/admin/archive' : '/admin/projects'}
+        to={back.to}
         className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-800"
       >
-        <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" /> Back to{' '}
-        {archived ? 'the Archive' : 'Projects'}
+        <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" /> Back to {back.label}
       </Link>
 
-      {archived && (
+      {deleted && (
         <div className="mt-3 rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-700">
           <p className="font-semibold">
-            Archived on {formatDate(project.archivedAt)}. The records are kept and cannot be
-            changed.
+            Deleted on {formatDate(project.archivedAt)}. The records are kept and cannot be changed.
           </p>
           {project.archivedReason && (
             <p className="mt-1">
@@ -167,96 +116,41 @@ export default function AdminProjectDetail() {
           )}
         </div>
       )}
-
-      <div className="mt-4 flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex items-center gap-5">
-          <ProgressRoundel
-            value={project.progress}
-            breakdown={project.progressBreakdown}
-            size="lg"
-          />
-          <div className="min-w-0">
-            <StatusRibbon status={project.status} />
-            <h1 className="mt-2 font-display text-4xl font-bold uppercase leading-none tracking-wide text-slate-900">
-              {project.title}
-            </h1>
-            {project.category && <p className="mt-1 text-slate-600">{project.category}</p>}
-            <ScheduleWords breakdown={project.progressBreakdown} className="mt-1" />
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {canMarkComplete && (
-            <Button
-              variant="primary"
-              disabled={!project.canComplete}
-              title={project.canComplete ? undefined : (project.completeBlockers || []).join(' ')}
-              onClick={() => setStatusDialog('complete')}
-            >
-              <CircleCheck size={18} strokeWidth={1.75} aria-hidden="true" />
-              Mark as Complete
-            </Button>
-          )}
-          {/* The risky actions live in a quiet menu so they never compete with the main ones */}
-          {!readOnly && (
-            <OverflowMenu
-              items={[
-                // Only the SK Chairperson cancels a project
-                user?.isSkChair &&
-                  project.status !== 'COMPLETED' &&
-                  project.status !== 'CANCELLED' && {
-                    label: 'Cancel project',
-                    Icon: Ban,
-                    danger: true,
-                    onClick: () => setStatusDialog('cancel'),
-                  },
-                deletion?.status !== 'PENDING' && {
-                  label: 'Request deletion',
-                  Icon: Trash2,
-                  danger: true,
-                  onClick: () => setDeleteOpen(true),
-                },
-              ]}
-            />
-          )}
-        </div>
-      </div>
-
-      {canMarkComplete && !project.canComplete && (
-        <div className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
-          <p className="font-semibold">Mark as Complete is not available yet:</p>
-          <ul className="mt-1 list-disc pl-5">
-            {(project.completeBlockers || []).map((b) => (
-              <li key={b}>{b}</li>
-            ))}
-          </ul>
-          <p className="mt-1 text-amber-800">Every expense needs its proof (image or PDF), and the total expenses must match the budget.</p>
-        </div>
+      {!deleted && closed && (
+        <p className="mt-3 rounded-lg bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
+          This project is in Archives under {project.status === 'COMPLETED' ? 'Completed' : 'Cancelled'}. It is view only.
+        </p>
       )}
+
+      <div className="mt-4 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 flex-1">
+          <StatusRibbon status={project.status} />
+          <h1 className="mt-2 font-display text-4xl font-bold uppercase leading-none tracking-wide text-slate-900">
+            {project.title}
+          </h1>
+          {project.category && <p className="mt-1 text-slate-600">{project.category}</p>}
+          <StageSteps status={project.status} className="mt-4 max-w-xl" />
+        </div>
+        {/* Deletion is a quiet menu item, not a red button */}
+        {isAdmin(user) && !viewOnly && deletion?.status !== 'PENDING' && (
+          <OverflowMenu
+            items={[{ label: 'Request deletion', Icon: Trash2, danger: true, onClick: () => setDeleteOpen(true) }]}
+          />
+        )}
+      </div>
 
       {/* Deletion request state */}
       {deletion?.status === 'PENDING' && (
-        <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
-          <p className="font-semibold">Deletion requested — awaiting the chairman’s approval</p>
-          <p className="mt-1">
-            <span className="font-medium">Reason:</span> {deletion.reason}
-          </p>
-          <p className="mt-1 text-xs text-red-600">
-            Requested by {deletion.requestedByName} on {formatDate(deletion.createdAt)}
-          </p>
-          {!readOnly && (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="mt-2"
-              disabled={withdrawMutation.isPending}
-              onClick={() => withdrawMutation.mutate()}
-            >
-              Withdraw request
-            </Button>
-          )}
-        </div>
+        <DeletionPending
+          deletion={deletion}
+          canWithdraw={isAdmin(user) && !viewOnly}
+          withdrawing={withdrawMutation.isPending}
+          onWithdraw={() => withdrawMutation.mutate()}
+          isChairman={isChairman}
+          onDecided={refresh}
+        />
       )}
-      {deletion?.status === 'REJECTED' && (
+      {deletion?.status === 'REJECTED' && !deleted && (
         <div className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <p className="font-semibold">
             Deletion request rejected by {deletion.reviewedByName || 'the chairman'}
@@ -264,85 +158,26 @@ export default function AdminProjectDetail() {
           {deletion.reviewRemarks && <p className="mt-1">{deletion.reviewRemarks}</p>}
         </div>
       )}
-      {deleteOpen && (
-        <DeletionRequestModal project={project} onClose={() => setDeleteOpen(false)} />
-      )}
-      {statusDialog && (
-        <ProjectStatusDialog
+      {deleteOpen && <DeletionRequestModal project={project} onClose={() => setDeleteOpen(false)} />}
+
+      {error && <p className="mt-3 text-sm font-medium text-red-600" role="alert">{error}</p>}
+
+      {/* The current stage */}
+      {!deleted && (
+        <StagePanel
           project={project}
-          mode={statusDialog}
-          onClose={() => setStatusDialog(null)}
+          isChairman={isChairman}
+          isSkAdmin={isSkAdmin}
+          onDone={refresh}
+          onFail={onFail}
         />
       )}
-
-      {/* Rejected proposal / cancelled / completed records */}
-      {project.approvalState === 'REJECTED' && (
-        <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
-          <p className="font-semibold">
-            Proposal rejected by {project.reviewedBy?.name || 'the chairman'}
-          </p>
-          {project.reviewRemarks && <p className="mt-1">{project.reviewRemarks}</p>}
-          <p className="mt-1 text-xs">
-            This proposal is closed. Propose a different program that fits the youth’s needs.
-          </p>
-        </div>
-      )}
-      {project.status === 'CANCELLED' && project.approvalState !== 'REJECTED' && project.cancelReason && (
-        <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
-          <p className="font-semibold">Project cancelled</p>
-          <p className="mt-1">{project.cancelReason}</p>
-        </div>
-      )}
-      {project.status === 'COMPLETED' && project.councilApprovedOn && (
-        <p className="mt-3 text-sm text-slate-600">
-          Completed with SK council approval on {formatDate(project.councilApprovedOn)}
-          {project.councilResolutionNo ? ` (${project.councilResolutionNo})` : ''}
-        </p>
-      )}
-
-      {/* Chairman review state */}
-      {project.status === 'PROPOSED' && (
-        <div
-          className={`mt-4 rounded-lg px-4 py-3 text-sm ${
-            project.approvalState === 'RETURNED'
-              ? 'bg-amber-50 text-amber-800'
-              : 'bg-slate-100 text-slate-600'
-          }`}
-        >
-          {project.approvalState === 'RETURNED' ? (
-            <>
-              <p className="font-semibold">
-                Returned by {project.reviewedBy?.name || 'the chairman'} for revision
-              </p>
-              {project.reviewRemarks && <p className="mt-1">{project.reviewRemarks}</p>}
-              {!readOnly && (
-                <p className="mt-1 text-xs">
-                  Edit the project to address this; saving it resubmits it for approval.
-                </p>
-              )}
-            </>
-          ) : (
-            <p>
-              <span className="font-semibold">Awaiting chairman approval.</span> Progress and the
-              public listing start once the Barangay Chairman approves this project.
-            </p>
-          )}
-        </div>
-      )}
-      {project.status !== 'PROPOSED' && project.approvalState === 'APPROVED' && project.reviewedAt && (
-        <p className="mt-3 text-sm text-slate-600">
-          Approved by {project.reviewedBy?.name || 'the Barangay Chairman'} on{' '}
-          {formatDate(project.reviewedAt)}
-          {project.reviewRemarks ? ` — “${project.reviewRemarks}”` : ''}
-        </p>
-      )}
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {/* Details */}
           <Card className="p-6">
-            <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Details</h2>
+            <h2 className={cardTitle}>Details</h2>
             <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
               {project.description || 'No description provided.'}
             </p>
@@ -352,31 +187,44 @@ export default function AdminProjectDetail() {
                 <p className="text-slate-700">{project.location || '—'}</p>
               </div>
               <div>
-                <p className="text-sm font-semibold text-slate-600">Timeline</p>
+                <p className="text-sm font-semibold text-slate-600">Schedule</p>
                 <p className="text-slate-700">
-                  {formatDateTime(project.startDate)} – {formatDateTime(project.endDate)}
+                  {project.startDate && project.endDate
+                    ? `${formatDateTime(project.startDate)} – ${formatDateTime(project.endDate)}`
+                    : 'Not set yet'}
                 </p>
               </div>
               <div>
                 <p className="text-sm font-semibold text-slate-600">Prepared by</p>
                 <p className="text-slate-700">
                   {project.proposedByName
-                    ? `${project.proposedByName}${
-                        project.proposedByPosition ? ` (${project.proposedByPosition})` : ''
-                      }`
+                    ? `${project.proposedByName}${project.proposedByPosition ? ` (${project.proposedByPosition})` : ''}`
                     : project.createdBy?.name || '—'}
                 </p>
               </div>
+              {project.reviewedAt && (
+                <div>
+                  <p className="text-sm font-semibold text-slate-600">
+                    {project.approvalState === 'REJECTED' ? 'Rejected by' : 'Approved by'}
+                  </p>
+                  <p className="text-slate-700">
+                    {project.reviewedBy?.name || 'the Barangay Chairman'} on {formatDate(project.reviewedAt)}
+                  </p>
+                </div>
+              )}
             </div>
+            {project.reviewRemarks && (
+              <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                <span className="font-semibold">Remarks:</span> {project.reviewRemarks}
+              </p>
+            )}
           </Card>
 
-          {/* Purchase requests (the sheet filled in on the proposal form) */}
+          {/* Purchase requests (the sheet filled in on the Project Request form) */}
           {(project.requestItems || []).length > 0 && (
             <Card className="p-6">
-              <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Purchase requests</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                The project budget is the total of these requests.
-              </p>
+              <h2 className={cardTitle}>Purchase requests</h2>
+              <p className="mt-1 text-sm text-slate-600">The project budget is the total of these requests.</p>
               <table className="mt-3 w-full text-sm">
                 <thead className="text-left text-sm text-slate-600">
                   <tr>
@@ -394,9 +242,7 @@ export default function AdminProjectDetail() {
                       <td className="py-2 text-slate-700">{r.prNo || '—'}</td>
                       <td className="py-2 text-slate-500">{formatDate(r.prDate)}</td>
                       <td className="py-2 uppercase text-slate-700">{r.requestedBy || '—'}</td>
-                      <td className="py-2 text-right font-medium text-slate-700">
-                        {formatPeso(r.amount)}
-                      </td>
+                      <td className="py-2 text-right font-medium text-slate-700">{formatPeso(r.amount)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -414,23 +260,27 @@ export default function AdminProjectDetail() {
             </Card>
           )}
 
-          {/* Progress */}
-          <Card className="p-6">
-            <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Progress</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Progress is calculated automatically from the project type: the time passed between the
-              start and the end for Date and Time Based projects, or the people who checked in at the
-              linked events against the target for Attendee Based projects. It reaches 100% only when
-              the SK Chairperson marks the project as complete.
-            </p>
-            <div className="mt-4">
-              <ProjectProgress project={project} eventLink={(ev) => `/admin/calendar/${ev.id}`} />
-            </div>
-          </Card>
+          {/* Liquidation and checklist: from Ongoing on (view only once closed) */}
+          {(project.status === 'ONGOING' || project.status === 'COMPLETED' || (project.liquidationFiles || []).length > 0) && (
+            <Liquidation
+              project={project}
+              canEdit={isSkAdmin && !viewOnly && project.status === 'ONGOING'}
+              onDone={refresh}
+              onFail={onFail}
+            />
+          )}
+          {(project.status === 'ONGOING' || (project.checklistItems || []).length > 0) && (
+            <Checklist
+              project={project}
+              canEdit={isSkAdmin && !viewOnly && project.status === 'ONGOING'}
+              onDone={refresh}
+              onFail={onFail}
+            />
+          )}
 
           {/* Pictures (also shown on the public project page) */}
           <Card className="p-6">
-            <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Pictures</h2>
+            <h2 className={cardTitle}>Pictures</h2>
             <p className="mt-1 mb-4 text-sm text-slate-600">
               Pictures of the work appear on the public project page so residents can see it.
               The uploader and the SK Chairperson can delete a picture.
@@ -444,177 +294,20 @@ export default function AdminProjectDetail() {
               emptyText="No pictures yet."
             />
           </Card>
-
-          {/* Expenses */}
-          <Card className="p-6">
-            <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Expenses</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Each expense is deducted from the budget and needs its receipt (photo or PDF, up to
-              5 MB) as proof.
-            </p>
-
-            {!readOnly && (
-            <form onSubmit={handleAddExpense} className="mt-4 flex flex-wrap items-end gap-2">
-              <input
-                className="input min-w-[140px] flex-1"
-                placeholder="Item"
-                value={expenseForm.item}
-                onChange={(e) => setExpenseForm({ ...expenseForm, item: e.target.value })}
-                required
-              />
-              <input
-                className="input w-32"
-                type="number"
-                min="0.01"
-                step="0.01"
-                placeholder="Amount"
-                value={expenseForm.amount}
-                onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
-                required
-              />
-              <input
-                className="input w-40"
-                type="date"
-                value={expenseForm.date}
-                onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
-              />
-              <input
-                className="input w-40"
-                placeholder="Voucher / OR no."
-                value={expenseForm.voucherNo}
-                onChange={(e) => setExpenseForm({ ...expenseForm, voucherNo: e.target.value })}
-              />
-              <div className="w-full">
-                <label className="label">Receipt * (JPG, PNG, WebP or PDF)</label>
-                <input
-                  key={fileKey}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,application/pdf"
-                  className="block w-full text-sm text-slate-600 file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-slate-300 file:bg-white file:px-4 file:py-2 file:text-[15px] file:font-semibold file:text-slate-700 hover:file:border-slate-400 hover:file:bg-slate-50"
-                  onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
-                />
-              </div>
-              <Button type="submit" variant="primary" disabled={addExpenseMutation.isPending}>
-                <Plus size={18} strokeWidth={2} aria-hidden="true" />
-                {addExpenseMutation.isPending ? 'Uploading…' : 'Add expense'}
-              </Button>
-            </form>
-            )}
-
-            <div className="mt-4">
-              {(project.expenses || []).length === 0 ? (
-                <p className="text-slate-600">No expenses recorded yet.</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead className="text-left text-sm text-slate-600">
-                    <tr>
-                      <th className="py-2">Item</th>
-                      <th className="py-2">Date</th>
-                      <th className="py-2">Voucher no.</th>
-                      <th className="py-2 text-right">Amount</th>
-                      <th className="py-2 pl-4">Receipt</th>
-                      <th className="py-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {project.expenses.map((e) => (
-                      <tr key={e.id}>
-                        <td className="py-2 text-slate-700">{e.item}</td>
-                        <td className="py-2 text-slate-500">{formatDate(e.date)}</td>
-                        <td className="py-2 text-slate-500">{e.voucherNo || '—'}</td>
-                        <td className="py-2 text-right font-medium text-slate-700">
-                          {formatPeso(e.amount)}
-                        </td>
-                        <td className="py-2 pl-4">
-                          {e.receiptFile ? (
-                            <button
-                              type="button"
-                              className="text-xs font-medium text-brand-600 hover:text-brand-700"
-                              onClick={() => viewReceipt(e.id)}
-                              title={e.receiptName}
-                            >
-                              <Paperclip size={14} strokeWidth={1.75} className="mr-1 inline" aria-hidden="true" />View
-                            </button>
-                          ) : (
-                            <span className="text-xs font-medium text-amber-600">No receipt</span>
-                          )}
-                          {!readOnly && (
-                            <label className="ml-2 cursor-pointer text-sm text-slate-600 hover:text-slate-700">
-                              {e.receiptFile ? 'Replace' : 'Attach file'}
-                              <input
-                                type="file"
-                                className="hidden"
-                                accept="image/jpeg,image/png,image/webp,application/pdf"
-                                onChange={(ev) => {
-                                  const file = ev.target.files?.[0];
-                                  ev.target.value = '';
-                                  if (file) attachReceiptMutation.mutate({ expenseId: e.id, file });
-                                }}
-                              />
-                            </label>
-                          )}
-                          {!readOnly && e.receiptFile && (
-                            <button
-                              type="button"
-                              className="ml-2 text-sm text-red-600 hover:text-red-700"
-                              disabled={removeReceiptMutation.isPending}
-                              onClick={() => {
-                                if (window.confirm(`Remove the proof file "${e.receiptName || 'receipt'}"? You can then upload the correct one.`)) {
-                                  removeReceiptMutation.mutate(e.id);
-                                }
-                              }}
-                            >
-                              Remove File
-                            </button>
-                          )}
-                        </td>
-                        <td className="py-2 text-right">
-                          {!readOnly && (
-                            <button
-                              className="text-xs text-red-600 hover:text-red-700"
-                              onClick={() => deleteExpenseMutation.mutate(e.id)}
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </Card>
         </div>
 
         {/* Right column: budget + team */}
         <div className="space-y-6">
           <Card className="p-6">
-            <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Budget</h2>
-            <div className="mt-3 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Total budget</span>
-                <span className="font-semibold text-slate-800">{formatPeso(project.budget)}</span>
-              </div>
-              {project.spendingTag && (
-                <div className="flex justify-end">
-                  <SpendingTag tag={project.spendingTag} />
-                </div>
-              )}
-              {(project.expenses || []).length > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Receipts on file</span>
-                  <span className="font-semibold text-slate-800">
-                    {project.expenses.filter((e) => e.receiptFile).length} of{' '}
-                    {project.expenses.length}
-                  </span>
-                </div>
-              )}
+            <h2 className={cardTitle}>Budget</h2>
+            <div className="mt-3 flex justify-between text-sm">
+              <span className="text-slate-500">Total budget</span>
+              <span className="font-semibold text-slate-800">{formatPeso(project.budget)}</span>
             </div>
           </Card>
 
           <Card className="p-6">
-            <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Team</h2>
+            <h2 className={cardTitle}>Team</h2>
             {(project.officials || []).length === 0 ? (
               <p className="mt-2 text-slate-600">No team members assigned.</p>
             ) : (
@@ -639,3 +332,467 @@ export default function AdminProjectDetail() {
   );
 }
 
+// What the current stage needs, and from whom.
+function StagePanel({ project, isChairman, isSkAdmin, onDone, onFail }) {
+  if (project.status === 'PROPOSED') {
+    return isChairman ? (
+      <ReviewPanel project={project} onDone={onDone} onFail={onFail} />
+    ) : (
+      <Notice tone="slate">
+        <span className="font-semibold">Proposed.</span> Waiting for the Barangay Chairman to approve or
+        reject this Project Request.
+      </Notice>
+    );
+  }
+  if (project.status === 'CANCELLED') {
+    return (
+      <Notice tone="red">
+        <p className="font-semibold">
+          {project.approvalState === 'REJECTED'
+            ? `Rejected by ${project.reviewedBy?.name || 'the Barangay Chairman'}`
+            : 'Project cancelled'}
+        </p>
+        {(project.reviewRemarks || project.cancelReason) && (
+          <p className="mt-1">{project.reviewRemarks || project.cancelReason}</p>
+        )}
+      </Notice>
+    );
+  }
+  if (project.status === 'PLANNING') {
+    return isSkAdmin ? (
+      <ScheduleForm project={project} onDone={onDone} onFail={onFail} />
+    ) : (
+      <Notice tone="slate">
+        <span className="font-semibold">Planning.</span> Approved by the Barangay Chairman. Waiting for the SK
+        Admin to set the schedule.
+      </Notice>
+    );
+  }
+  if (project.status === 'ONGOING') {
+    return <CompletePanel project={project} isSkAdmin={isSkAdmin} onDone={onDone} onFail={onFail} />;
+  }
+  return (
+    <Notice tone="green">
+      <span className="font-semibold">Completed.</span> The receipt liquidation was uploaded and the project was
+      marked as completed.
+    </Notice>
+  );
+}
+
+function Notice({ tone, children }) {
+  const tones = {
+    slate: 'bg-slate-100 text-slate-700',
+    red: 'bg-red-50 text-red-800',
+    green: 'bg-green-50 text-green-800',
+    amber: 'bg-amber-50 text-amber-900',
+  };
+  return <div className={`mt-4 rounded-lg px-4 py-3 text-sm ${tones[tone]}`}>{children}</div>;
+}
+
+// Proposed: the Barangay Chairman approves (-> Planning) or rejects (-> Cancelled).
+function ReviewPanel({ project, onDone, onFail }) {
+  const [remarks, setRemarks] = useState('');
+  const review = useMutation({
+    mutationFn: (decision) => projectsApi.review(project.id, { decision, remarks: remarks.trim() }),
+    onSuccess: onDone,
+    onError: onFail('Could not save your decision'),
+  });
+  function decide(decision) {
+    const question =
+      decision === 'APPROVE'
+        ? `Approve "${project.title}"? It moves to Planning.`
+        : `Reject "${project.title}"? It is cancelled and moves to Archives under Cancelled.`;
+    if (window.confirm(question)) review.mutate(decision);
+  }
+  return (
+    <Card className="mt-4 p-5">
+      <h2 className="text-lg font-bold text-slate-900">Approve or reject this Project Request</h2>
+      <label className="label mt-3" htmlFor="review-remarks">
+        Remarks (optional)
+      </label>
+      <textarea
+        id="review-remarks"
+        className="input"
+        rows={2}
+        value={remarks}
+        onChange={(e) => setRemarks(e.target.value)}
+      />
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button variant="primary" disabled={review.isPending} onClick={() => decide('APPROVE')}>
+          <CircleCheck size={18} strokeWidth={1.75} aria-hidden="true" />
+          Approve
+        </Button>
+        <Button variant="danger" disabled={review.isPending} onClick={() => decide('REJECT')}>
+          <X size={18} strokeWidth={1.75} aria-hidden="true" />
+          Reject
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+// Planning: the SK Admin saves the schedule; the project becomes Ongoing.
+function ScheduleForm({ project, onDone, onFail }) {
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+  const [problem, setProblem] = useState('');
+  const save = useMutation({
+    mutationFn: () =>
+      projectsApi.setSchedule(project.id, {
+        startDate: new Date(start).toISOString(),
+        endDate: new Date(end).toISOString(),
+      }),
+    onSuccess: onDone,
+    onError: onFail('Could not save the schedule'),
+  });
+  function submit(e) {
+    e.preventDefault();
+    if (!start || !end) return setProblem('Enter the start and the end date and time.');
+    if (new Date(end) <= new Date(start)) return setProblem('The end date and time must be later than the start.');
+    setProblem('');
+    save.mutate();
+  }
+  return (
+    <Card className="mt-4 p-5">
+      <h2 className="text-lg font-bold text-slate-900">Set the schedule</h2>
+      <p className="mt-1 text-sm text-slate-600">Saving the schedule moves the project to Ongoing.</p>
+      <form className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" onSubmit={submit}>
+        <label>
+          <span className="label">Start date and time *</span>
+          <input type="datetime-local" className="input" value={start} onChange={(e) => setStart(e.target.value)} required />
+        </label>
+        <label>
+          <span className="label">End date and time *</span>
+          <input
+            type="datetime-local"
+            className="input"
+            value={end}
+            min={start || undefined}
+            onChange={(e) => setEnd(e.target.value)}
+            required
+          />
+        </label>
+        <Button type="submit" variant="primary" disabled={save.isPending}>
+          {save.isPending ? 'Saving…' : 'Save schedule'}
+        </Button>
+      </form>
+      {problem && <p className="mt-2 text-sm font-medium text-red-600" role="alert">{problem}</p>}
+    </Card>
+  );
+}
+
+// Ongoing: "Project Completed" once the liquidation is uploaded and the checklist is done.
+function CompletePanel({ project, isSkAdmin, onDone, onFail }) {
+  const complete = useMutation({
+    mutationFn: () => projectsApi.complete(project.id),
+    onSuccess: onDone,
+    onError: onFail('Could not mark the project as completed'),
+  });
+  return (
+    <Card className="mt-4 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Ongoing</h2>
+          <p className="text-sm text-slate-600">
+            Upload the receipt liquidation and finish the checklist (if any), then mark the project as completed.
+          </p>
+        </div>
+        {isSkAdmin && (
+          <Button
+            variant="primary"
+            disabled={!project.canComplete || complete.isPending}
+            onClick={() => {
+              if (window.confirm(`Mark "${project.title}" as completed? It moves to Archives under Completed.`)) {
+                complete.mutate();
+              }
+            }}
+          >
+            <CircleCheck size={18} strokeWidth={1.75} aria-hidden="true" />
+            Project Completed
+          </Button>
+        )}
+      </div>
+      {!project.canComplete && (
+        <div className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+          <p className="font-semibold">Still missing:</p>
+          <ul className="mt-1 list-disc pl-5">
+            {(project.completeMissing || []).map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// Receipt liquidation files (JPG, PNG or PDF). Required before completion.
+function Liquidation({ project, canEdit, onDone, onFail }) {
+  const [fileKey, setFileKey] = useState(0); // changing it clears the file input
+  const files = project.liquidationFiles || [];
+  const upload = useMutation({
+    mutationFn: (list) => projectsApi.uploadLiquidation(project.id, list),
+    onSuccess: (res) => {
+      setFileKey((k) => k + 1);
+      onDone(res);
+    },
+    onError: (err) => {
+      setFileKey((k) => k + 1);
+      onFail('Could not upload the files')(err);
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (fileId) => projectsApi.deleteLiquidation(project.id, fileId),
+    onSuccess: onDone,
+    onError: onFail('Could not delete the file'),
+  });
+  async function view(fileId) {
+    try {
+      await projectsApi.openLiquidation(project.id, fileId);
+    } catch (err) {
+      onFail('Could not open the file. It may be missing.')(err);
+    }
+  }
+  return (
+    <Card className="p-6">
+      <h2 className={cardTitle}>Receipt liquidation</h2>
+      <p className="mt-1 text-sm text-slate-600">
+        Receipts as JPG, PNG or PDF (up to 5 MB each). At least one file is required before the project can be
+        marked as completed.
+      </p>
+      {canEdit && (
+        <label className="btn btn-accent mt-4 cursor-pointer px-4 py-2 text-[15px] focus-within:ring-2 focus-within:ring-brand-500">
+          <Upload size={18} strokeWidth={1.75} aria-hidden="true" />
+          {upload.isPending ? 'Uploading…' : 'Upload files'}
+          <input
+            key={fileKey}
+            type="file"
+            multiple
+            className="sr-only"
+            accept="image/jpeg,image/png,application/pdf"
+            disabled={upload.isPending}
+            onChange={(e) => {
+              const list = e.target.files;
+              if (list && list.length > 0) upload.mutate(list);
+            }}
+          />
+        </label>
+      )}
+      {files.length === 0 ? (
+        <p className="mt-4 text-slate-600">No liquidation files uploaded yet.</p>
+      ) : (
+        <ul className="mt-4 divide-y divide-slate-100">
+          {files.map((f) => (
+            <li key={f.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
+              <FileText size={18} strokeWidth={1.75} className="shrink-0 text-slate-500" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate font-medium text-slate-800" title={f.originalName}>
+                {f.originalName}
+              </span>
+              <span className="text-sm text-slate-500">{formatDate(f.createdAt)}</span>
+              <button type="button" className="text-sm font-semibold text-brand-700 hover:text-brand-800" onClick={() => view(f.id)}>
+                View
+              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-red-600 hover:text-red-700"
+                  disabled={remove.isPending}
+                  onClick={() => {
+                    if (window.confirm(`Delete "${f.originalName}"?`)) remove.mutate(f.id);
+                  }}
+                >
+                  Delete
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+// Optional checklist. When it has items, all of them must be checked before completion.
+function Checklist({ project, canEdit, onDone, onFail }) {
+  const items = project.checklistItems || [];
+  const [label, setLabel] = useState('');
+  const [editing, setEditing] = useState(null); // { id, label }
+  const add = useMutation({
+    mutationFn: () => projectsApi.addChecklistItem(project.id, label.trim()),
+    onSuccess: (res) => {
+      setLabel('');
+      onDone(res);
+    },
+    onError: onFail('Could not add the item'),
+  });
+  const update = useMutation({
+    mutationFn: ({ itemId, data }) => projectsApi.updateChecklistItem(project.id, itemId, data),
+    onSuccess: (res) => {
+      setEditing(null);
+      onDone(res);
+    },
+    onError: onFail('Could not update the item'),
+  });
+  const remove = useMutation({
+    mutationFn: (itemId) => projectsApi.deleteChecklistItem(project.id, itemId),
+    onSuccess: onDone,
+    onError: onFail('Could not delete the item'),
+  });
+  const done = items.filter((i) => i.done).length;
+  return (
+    <Card className="p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className={cardTitle}>Checklist</h2>
+        {items.length > 0 && (
+          <span className="text-sm font-semibold text-slate-700">
+            {done} of {items.length} done
+          </span>
+        )}
+      </div>
+      <p className="mt-1 text-sm text-slate-600">
+        Optional. If you add items, all of them must be checked before the project can be marked as completed.
+      </p>
+      {canEdit && (
+        <form
+          className="mt-4 flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (label.trim()) add.mutate();
+          }}
+        >
+          <input className="input flex-1" placeholder="New checklist item" value={label} onChange={(e) => setLabel(e.target.value)} />
+          <Button type="submit" variant="secondary" disabled={!label.trim() || add.isPending}>
+            <Plus size={16} strokeWidth={2} aria-hidden="true" />
+            Add
+          </Button>
+        </form>
+      )}
+      {items.length === 0 ? (
+        <p className="mt-4 text-slate-600">No checklist items.</p>
+      ) : (
+        <ul className="mt-4 divide-y divide-slate-100">
+          {items.map((item) => (
+            <li key={item.id} className="flex items-center gap-3 py-2.5">
+              <input
+                type="checkbox"
+                className="h-5 w-5 shrink-0 accent-green-600"
+                checked={item.done}
+                disabled={!canEdit || update.isPending}
+                aria-label={`Done: ${item.label}`}
+                onChange={(e) => update.mutate({ itemId: item.id, data: { done: e.target.checked } })}
+              />
+              {editing?.id === item.id ? (
+                <form
+                  className="flex flex-1 gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (editing.label.trim()) update.mutate({ itemId: item.id, data: { label: editing.label.trim() } });
+                  }}
+                >
+                  <input
+                    className="input flex-1"
+                    value={editing.label}
+                    onChange={(e) => setEditing({ ...editing, label: e.target.value })}
+                    aria-label="Checklist item"
+                    autoFocus
+                  />
+                  <Button type="submit" size="sm" variant="primary" disabled={update.isPending}>
+                    Save
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(null)}>
+                    Cancel
+                  </Button>
+                </form>
+              ) : (
+                <>
+                  <span className={`flex-1 ${item.done ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{item.label}</span>
+                  {canEdit && (
+                    <>
+                      <button
+                        type="button"
+                        className="text-slate-500 hover:text-slate-800"
+                        aria-label={`Edit ${item.label}`}
+                        onClick={() => setEditing({ id: item.id, label: item.label })}
+                      >
+                        <Pencil size={16} strokeWidth={1.75} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className="text-red-600 hover:text-red-700"
+                        aria-label={`Delete ${item.label}`}
+                        disabled={remove.isPending}
+                        onClick={() => {
+                          if (window.confirm(`Delete "${item.label}"?`)) remove.mutate(item.id);
+                        }}
+                      >
+                        <Trash2 size={16} strokeWidth={1.75} aria-hidden="true" />
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+// A pending deletion request. The Barangay Chairman approves (-> Archives > Deleted) or
+// rejects it with remarks; the admins can withdraw it.
+function DeletionPending({ deletion, canWithdraw, withdrawing, onWithdraw, isChairman, onDecided }) {
+  const [remarks, setRemarks] = useState('');
+  const [problem, setProblem] = useState('');
+  const decide = useMutation({
+    mutationFn: (decision) => projectsApi.reviewDeletion(deletion.id, { decision, remarks: remarks.trim() }),
+    onSuccess: () => onDecided(),
+    onError: (err) => setProblem(errorText(err, 'Could not save the decision')),
+  });
+  function choose(decision) {
+    if (decision === 'REJECT' && !remarks.trim()) return setProblem('Please write remarks before rejecting.');
+    if (decision === 'APPROVE' && !window.confirm('Approve this deletion? The project moves to Archives under Deleted; nothing is erased.')) return;
+    setProblem('');
+    decide.mutate(decision);
+  }
+  return (
+    <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+      <p className="font-semibold">Deletion requested — awaiting the Barangay Chairman’s approval</p>
+      <p className="mt-1">
+        <span className="font-medium">Reason:</span> {deletion.reason}
+      </p>
+      <p className="mt-1 text-xs text-red-600">
+        Requested by {deletion.requestedByName} on {formatDate(deletion.createdAt)}
+      </p>
+      {canWithdraw && (
+        <Button size="sm" variant="secondary" className="mt-2" disabled={withdrawing} onClick={onWithdraw}>
+          Withdraw request
+        </Button>
+      )}
+      {isChairman && (
+        <div className="mt-3 border-t border-red-100 pt-3">
+          <label className="label" htmlFor="deletion-remarks">
+            Remarks
+          </label>
+          <textarea
+            id="deletion-remarks"
+            className="input"
+            rows={2}
+            placeholder="Required when rejecting the request"
+            value={remarks}
+            onChange={(e) => setRemarks(e.target.value)}
+          />
+          {problem && <p className="mt-1 text-sm text-red-600">{problem}</p>}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button size="sm" variant="danger" disabled={decide.isPending} onClick={() => choose('APPROVE')}>
+              Approve deletion
+            </Button>
+            <Button size="sm" variant="secondary" disabled={decide.isPending} onClick={() => choose('REJECT')}>
+              Reject request
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

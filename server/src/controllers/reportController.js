@@ -1,5 +1,5 @@
 const prisma = require('../prisma');
-const { effectiveStatus, computeProgress } = require('./projectController');
+const { completionInfo } = require('./projectController');
 const { markAbsentees } = require('../utils/absentees');
 
 // Data behind the PDF and Excel exports (Dashboard and Attendance). Dates in the filters
@@ -110,23 +110,19 @@ const EVENT_SELECT = {
 async function projectSummary(projectId) {
   const p = await prisma.project.findUnique({
     where: { id: projectId },
-    include: {
-      events: { select: { id: true, startAt: true, endAt: true, _count: { select: { attendance: { where: { status: 'PRESENT' } } } } } },
-    },
+    include: { liquidationFiles: { select: { id: true } }, checklistItems: { select: { done: true } } },
   });
   if (!p) return null;
-  const status = effectiveStatus(p);
-  const { progress, progressBreakdown } = computeProgress({ ...p, status });
+  const info = completionInfo(p);
   return {
     id: p.id,
     title: p.title,
     category: p.category,
-    status,
-    progress,
+    status: p.status,
     budget: Number(p.budget || 0),
-    progressType: progressBreakdown.type,
-    attendees: progressBreakdown.attendees,
-    targetAttendees: progressBreakdown.targetAttendees,
+    liquidationCount: info.liquidationCount,
+    checklistDone: info.checklistDone,
+    checklistTotal: info.checklistTotal,
     startDate: p.startDate,
     endDate: p.endDate,
     location: p.location,
@@ -145,10 +141,10 @@ async function dashboardReport(req, res, next) {
     await markAbsentees();
 
     // Projects active in the range: their timeline overlaps it (or, without dates, they
-    // were created in it). Archived and rejected ones are left out, as on the Dashboard.
+    // were created in it). Archived (deleted) ones are left out, as on the Dashboard.
     const projects = await prisma.project.findMany({
-      where: projectId ? { id: projectId } : { archivedAt: null, approvalState: { not: 'REJECTED' } },
-      select: { id: true, title: true, status: true, startDate: true, endDate: true, createdAt: true, progressType: true, events: { select: { startAt: true } } },
+      where: projectId ? { id: projectId } : { archivedAt: null },
+      select: { id: true, title: true, status: true, startDate: true, endDate: true, createdAt: true },
     });
     const inRange = projects.filter((p) => {
       if (projectId || (!range.from && !range.to)) return true;
@@ -158,7 +154,7 @@ async function dashboardReport(req, res, next) {
     });
     const byStatus = { Planned: 0, Ongoing: 0, Completed: 0, Cancelled: 0 };
     inRange.forEach((p) => {
-      const s = effectiveStatus(p);
+      const s = p.status;
       if (s === 'PROPOSED' || s === 'PLANNING') byStatus.Planned += 1;
       else if (s === 'ONGOING') byStatus.Ongoing += 1;
       else if (s === 'COMPLETED') byStatus.Completed += 1;

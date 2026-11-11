@@ -164,6 +164,8 @@ model Project {
   notifications  Notification[]
   deletionRequests DeletionRequest[]
   photos         Photo[]
+  liquidationFiles LiquidationFile[]
+  checklistItems   ChecklistItem[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -331,6 +333,36 @@ model PendingSignup {
 }
 
 // A progress photo of a project or an event, shown on the public site.
+// Receipt liquidation of an Ongoing project (JPG, PNG or PDF). At least one is needed
+// before the project can be marked as completed. Files live in uploads/receipts.
+model LiquidationFile {
+  id             String   @id @default(uuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fileName       String   // stored file name inside uploads/receipts
+  originalName   String
+  mimeType       String
+  uploadedById   String?
+  uploadedByName String?
+  createdAt      DateTime @default(now())
+
+  @@index([projectId])
+}
+
+// Optional checklist of an Ongoing project. When it has items, all of them must be
+// checked before the project can be marked as completed.
+model ChecklistItem {
+  id           String   @id @default(uuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  label        String
+  done         Boolean  @default(false)
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([projectId])
+}
+
 model Photo {
   id             String   @id @default(uuid())
   projectId      String?

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '../../api/projects';
 import { officialsApi } from '../../api/officials';
@@ -14,20 +15,16 @@ import PageHeader from '../../components/PageHeader';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
 import ProjectProposalForm, { emptyItem } from '../../components/ProjectProposalForm';
 
-const statusOptions = Object.entries(PROJECT_STATUS).map(([value, v]) => ({
+// Active stages only: Completed and Cancelled projects are in Archives.
+const statusOptions = ['PROPOSED', 'PLANNING', 'ONGOING'].map((value) => ({
   value,
-  label: v.label,
+  label: PROJECT_STATUS[value].label,
 }));
 
 // A fresh form: one empty purchase request row, to which the + button adds more.
 const blankForm = () => ({
   purpose: '', // first line = project name, the rest = description
   items: [{ ...emptyItem }],
-  // How progress is measured: DATETIME (start to end) or ATTENDEE (target attendees)
-  progressType: 'DATETIME',
-  startDate: '',
-  endDate: '',
-  targetAttendees: '',
 });
 
 export default function AdminProjects() {
@@ -39,7 +36,11 @@ export default function AdminProjects() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(blankForm);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState('');
+  // ?status=PROPOSED (e.g. from the Dashboard) opens the list on that stage.
+  const [searchParams] = useSearchParams();
+  const [filter, setFilter] = useState(() =>
+    statusOptions.some((o) => o.value === searchParams.get('status')) ? searchParams.get('status') : ''
+  );
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const { data, isLoading } = useQuery({
@@ -91,10 +92,6 @@ export default function AdminProjects() {
       // Name on the first line and the description below it, so saving keeps both.
       purpose: project.description ? `${project.title}\n${project.description}` : project.title || '',
       items: rows.length > 0 ? rows : [{ ...emptyItem }],
-      progressType: project.progressType || 'DATETIME',
-      startDate: toDateTimeLocal(project.startDate),
-      endDate: toDateTimeLocal(project.endDate),
-      targetAttendees: project.targetAttendees ? String(project.targetAttendees) : '',
     });
     setError('');
     setModalOpen(true);
@@ -136,19 +133,6 @@ export default function AdminProjects() {
   function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    // The project type and its schedule or target are set later, in Edit Project.
-    const attendeeBased = form.progressType === 'ATTENDEE';
-    if (editing && attendeeBased) {
-      const n = Number(form.targetAttendees);
-      if (!Number.isInteger(n) || n < 1) {
-        setError('Enter the target number of attendees (1 or more).');
-        return;
-      }
-    } else if (editing && new Date(form.endDate) <= new Date(form.startDate)) {
-      setError('The end date and time must be after the start.');
-      return;
-    }
-
     // The purpose of request is the project: first line = name, the rest = description.
     const [firstLine = '', ...rest] = form.purpose.trim().split('\n');
     const title = firstLine.trim();
@@ -160,22 +144,11 @@ export default function AdminProjects() {
     // "Prepared by" is the SK Treasurer printed on the sheet.
     const treasurer = officials.find((o) => /treasurer/i.test(o.position || ''));
 
-    // datetime-local has no time zone; sending an ISO string stores the exact moment
-    // chosen in the browser's (Philippine) time. The budget is the total of the rows
-    // and is worked out by the server.
+    // A Project Request is saved as Proposed; the budget is the total of the rows and is
+    // worked out by the server. The schedule is set later, in the Planning stage.
     saveMutation.mutate({
       title,
       description: rest.join('\n').trim(),
-      // Each type sends only its own fields; the server clears the other type's fields.
-      ...(!editing
-        ? {}
-        : attendeeBased
-          ? { progressType: form.progressType, targetAttendees: Number(form.targetAttendees) }
-          : {
-              progressType: form.progressType,
-              startDate: new Date(form.startDate).toISOString(),
-              endDate: new Date(form.endDate).toISOString(),
-            }),
       requestItems: form.items,
       proposedByName: treasurer ? treasurer.name : '',
       proposedByPosition: treasurer ? treasurer.position : '',
@@ -232,7 +205,7 @@ export default function AdminProjects() {
             description={
               readOnly
                 ? 'Projects will appear here once the SK creates them.'
-                : 'Create your first SK project to start tracking progress.'
+                : 'Send a Project Request to start a project.'
             }
             action={
               readOnly ? undefined : (
@@ -248,15 +221,14 @@ export default function AdminProjects() {
             {projects.map((p) => {
               const deletionPending = p.deletionRequests?.[0]?.status === 'PENDING';
               // One line saying what the project is waiting for, if anything
-              const waiting =
-                p.approvalState === 'REJECTED'
-                  ? 'Proposal rejected by the chairman'
-                  : p.status === 'PROPOSED'
-                    ? p.approvalState === 'RETURNED'
-                      ? 'Returned by the chairman: needs revision'
-                      : 'Awaiting chairman approval'
-                    : deletionPending
-                      ? 'Deletion requested: awaiting chairman approval'
+              const waiting = deletionPending
+                ? 'Deletion requested: awaiting chairman approval'
+                : p.status === 'PROPOSED'
+                  ? 'Awaiting Barangay Chairman approval'
+                  : p.status === 'PLANNING'
+                    ? 'Waiting for the schedule'
+                    : p.status === 'ONGOING' && !p.canComplete
+                      ? 'Liquidation or checklist pending'
                       : null;
               return (
                 <ProjectCard
@@ -266,7 +238,7 @@ export default function AdminProjects() {
                   notice={waiting}
                   footer={
                     <div className="flex flex-wrap items-center gap-2">
-                      {!readOnly && p.approvalState !== 'REJECTED' && (
+                      {!readOnly && (
                         <Button size="sm" variant="secondary" onClick={() => openEdit(p)}>
                           <Pencil size={16} strokeWidth={1.75} aria-hidden="true" />
                           Edit
@@ -333,7 +305,6 @@ export default function AdminProjects() {
             addItem={addItem}
             removeItem={removeItem}
             officials={officials}
-            showType={Boolean(editing)}
           />
         </form>
       </Modal>

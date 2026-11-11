@@ -37,7 +37,7 @@ async function protect(req, res, next) {
 
 // Like protect, but does NOT reject when there is no/invalid token.
 // It just attaches req.user when a valid token is present.
-// Useful for routes that behave differently for logged-in users (e.g. news feed).
+// Useful for routes that behave differently for logged-in users (e.g. the public project pages).
 async function optionalAuth(req, res, next) {
   try {
     let token;
@@ -64,8 +64,8 @@ async function optionalAuth(req, res, next) {
 // Restricts a route to specific roles, e.g. restrictTo('ADMIN').
 // Must be used AFTER protect.
 // SK officials have the same access as the SK Admin, so an OFFICIAL passes wherever
-// 'ADMIN' is allowed. The SK Chairperson-only actions (attendance QR, Mark as Complete,
-// Cancel project) use requireSkChair instead.
+// 'ADMIN' is allowed. The SK Chairperson-only actions (attendance QR, settings) and the
+// SK Admin-only project steps use requireSkChair and requireSkAdmin instead.
 function restrictTo(...roles) {
   return (req, res, next) => {
     const role = req.user && req.user.role;

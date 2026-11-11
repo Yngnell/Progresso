@@ -2,17 +2,16 @@ import OfficialAvatar from '../components/OfficialAvatar';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight } from 'lucide-react';
-import { newsApi } from '../api/news';
 import { officialsApi } from '../api/officials';
 import { eventsApi } from '../api/events';
 import { projectsApi } from '../api/projects';
-import { EVENT_TYPE, formatDateTime, formatDate } from '../utils/format';
+import { EVENT_TYPE, formatDateTime } from '../utils/format';
 import { Button, Card, Badge } from '../components/ui';
-import { ProgressRoundel, ScheduleWords, StatusRibbon } from '../components/Roundel';
+import { StageSteps, StatusRibbon } from '../components/Roundel';
 import EventTypeIcon from '../components/EventTypeIcon';
 
 // Hero: the promise on the left, the proof on the right. The panel lists real
-// projects with their roundels, so a resident sees the system working at once.
+// projects with their stage, so a resident sees the system working at once.
 function Hero({ projects, loading }) {
   return (
     <section className="bg-brand-900">
@@ -70,16 +69,13 @@ function Hero({ projects, loading }) {
                 <li key={p.id}>
                   <Link
                     to={`/projects/${p.id}`}
-                    className="flex items-center gap-4 rounded-lg py-3 transition-colors hover:bg-slate-50"
+                    className="block rounded-lg py-3 transition-colors hover:bg-slate-50"
                   >
-                    <ProgressRoundel value={p.progress} breakdown={p.progressBreakdown} size="sm" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-base font-bold text-slate-900">
-                        {p.title}
-                      </span>
-                      <ScheduleWords breakdown={p.progressBreakdown} />
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate text-base font-bold text-slate-900">{p.title}</span>
+                      <StatusRibbon status={p.status} />
                     </span>
-                    <StatusRibbon status={p.status} className="hidden sm:inline-flex" />
+                    <StageSteps status={p.status} showLabels={false} className="mt-2" />
                   </Link>
                 </li>
               ))}
@@ -110,31 +106,6 @@ function SectionHead({ title, subtitle, to, linkLabel = 'View all' }) {
   );
 }
 
-function NewsCard({ item, wide = false }) {
-  return (
-    <Card
-      className={`flex flex-col p-5 transition-shadow duration-200 hover:shadow-cardHover ${
-        wide ? 'max-w-3xl sm:p-7' : ''
-      }`}
-    >
-      <div className="flex items-center gap-2 text-sm text-slate-500">
-        {item.category && <Badge tone="blue">{item.category}</Badge>}
-        <span>{formatDate(item.publishedAt || item.createdAt)}</span>
-      </div>
-      <h3 className="mt-3 line-clamp-2 text-lg font-bold leading-snug text-slate-900">
-        {item.title}
-      </h3>
-      <p className="mt-2 line-clamp-3 flex-1 text-slate-600">{item.excerpt || item.content}</p>
-      <Link
-        to={`/news/${item.id}`}
-        className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-800"
-      >
-        Read more <ArrowRight size={16} strokeWidth={1.75} />
-      </Link>
-    </Card>
-  );
-}
-
 function OfficialChip({ official }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
@@ -152,10 +123,6 @@ function OfficialChip({ official }) {
 }
 
 export default function Home() {
-  const { data: newsData } = useQuery({
-    queryKey: ['news', 'featured'],
-    queryFn: () => newsApi.list({ featured: 'true' }),
-  });
   const { data: officialsData } = useQuery({
     queryKey: ['officials', 'active'],
     queryFn: () => officialsApi.list({ active: 'true' }),
@@ -169,7 +136,6 @@ export default function Home() {
     queryFn: () => projectsApi.list({ status: 'ONGOING' }),
   });
 
-  const featured = (newsData?.news || []).slice(0, 3);
   const officials = (officialsData?.officials || []).slice(0, 4);
   const upcomingEvents = (eventsData?.events || []).slice(0, 3);
   const ongoing = (projectsData?.projects || []).slice(0, 3);
@@ -178,33 +144,8 @@ export default function Home() {
     <div>
       <Hero projects={ongoing} loading={projectsLoading} />
 
-      {/* Featured news */}
-      <section className="mx-auto max-w-6xl px-4 py-12">
-        <SectionHead title="News & Updates" subtitle="The latest from your SK council." to="/news" />
-        {featured.length > 0 ? (
-          // The grid follows how many articles exist, so one item is never a lone narrow card
-          <div
-            className={`grid gap-5 ${
-              featured.length === 1
-                ? 'grid-cols-1'
-                : featured.length === 2
-                  ? 'sm:grid-cols-2'
-                  : 'sm:grid-cols-2 lg:grid-cols-3'
-            }`}
-          >
-            {featured.map((item) => (
-              <NewsCard key={item.id} item={item} wide={featured.length === 1} />
-            ))}
-          </div>
-        ) : (
-          <Card className="p-8 text-center text-slate-600">
-            No news published yet. Check back soon!
-          </Card>
-        )}
-      </section>
-
       {/* Upcoming events */}
-      <section className="mx-auto max-w-6xl px-4 pb-12">
+      <section className="mx-auto max-w-6xl px-4 py-12">
         <SectionHead
           title="Upcoming Events"
           subtitle="Meetings, sessions, and activities."

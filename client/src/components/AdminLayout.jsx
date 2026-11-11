@@ -5,14 +5,12 @@ import {
   UserRound,
   Archive,
   CalendarDays,
-  ClipboardCheck,
   ExternalLink,
   FolderKanban,
   LayoutDashboard,
   ListChecks,
   LogOut,
   Menu,
-  Newspaper,
   Settings as SettingsIcon,
   Users,
   X,
@@ -30,17 +28,8 @@ const groups = [
     label: 'Work',
     links: [
       { to: '/admin', label: 'Dashboard', Icon: LayoutDashboard, end: true },
-      { to: '/admin/projects', label: 'Projects', Icon: FolderKanban },
-      // The chairman approves; the admin only follows the status of their proposals.
-      {
-        to: '/admin/proposals',
-        label: 'Approvals',
-        labelFor: { ADMIN: 'Proposals' },
-        Icon: ClipboardCheck,
-        badge: true,
-        firstFor: ['CHAIRMAN'],
-        roles: ['ADMIN', 'CHAIRMAN'],
-      },
+      // The badge counts what waits for the Barangay Chairman's decision.
+      { to: '/admin/projects', label: 'Projects', Icon: FolderKanban, badge: true },
       { to: '/admin/calendar', label: 'Calendar', Icon: CalendarDays },
       { to: '/admin/attendance', label: 'Attendance', Icon: ListChecks },
     ],
@@ -48,9 +37,9 @@ const groups = [
   {
     label: 'Records',
     links: [
-      { to: '/admin/archive', label: 'Archive', Icon: Archive, roles: ['ADMIN', 'CHAIRMAN'] },
+      // Completed, cancelled and deleted projects (view only)
+      { to: '/admin/archive', label: 'Archives', Icon: Archive },
       { to: '/admin/officials', label: 'Officials', Icon: Users, roles: ['ADMIN'] },
-      { to: '/admin/news', label: 'News & Updates', Icon: Newspaper, roles: ['ADMIN'] },
     ],
   },
   {
@@ -126,36 +115,28 @@ export default function AdminLayout() {
   // A new page closes the phone menu.
   useEffect(() => setDrawerOpen(false), [location.pathname]);
 
-  // Each role sees only its own links, under the name that fits what it can do there.
-  // A link marked `firstFor` a role moves to the top of its group for that role.
+  // Each role sees only its own links.
   const role = accessRole(user); // an SK official sees what the admin sees
   const links = groups
-    .map((g) => {
-      const visible = g.links
-        .filter((l) => !l.roles || l.roles.includes(role))
-        .map((l) => ({ ...l, label: l.labelFor?.[role] || l.label }));
-      const first = visible.filter((l) => l.firstFor?.includes(role));
-      return { ...g, links: [...first, ...visible.filter((l) => !first.includes(l))] };
-    })
+    .map((g) => ({ ...g, links: g.links.filter((l) => !l.roles || l.roles.includes(role)) }))
     .filter((g) => g.links.length > 0);
 
-  // Items that need the current user's action: pending proposals for the
-  // chairman, returned proposals for the admin.
+  // What waits for the Barangay Chairman: proposals to approve or reject, and
+  // deletion requests. Only the chairman sees the count.
+  const isChairman = user?.role === 'CHAIRMAN';
   const { data: proposalData } = useQuery({
     queryKey: ['projects', 'proposals'],
     queryFn: () => projectsApi.list({ status: 'PROPOSED' }),
+    enabled: isChairman,
   });
-  const isChairman = user?.role === 'CHAIRMAN';
-  const actionState = isChairman ? 'PENDING' : 'RETURNED';
   const { data: deletionData } = useQuery({
     queryKey: ['deletion-requests', 'pending'],
     queryFn: () => projectsApi.deletionRequests({ status: 'PENDING' }),
     enabled: isChairman,
   });
-  // Chairman also decides deletion requests; admin only needs to act on returns.
-  const pendingCount =
-    (proposalData?.projects || []).filter((p) => p.approvalState === actionState).length +
-    (isChairman ? (deletionData?.requests || []).length : 0);
+  const pendingCount = isChairman
+    ? (proposalData?.projects || []).length + (deletionData?.requests || []).length
+    : 0;
 
   const today = new Date().toLocaleDateString('en-PH', {
     weekday: 'long',
