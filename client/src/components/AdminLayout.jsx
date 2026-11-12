@@ -137,8 +137,7 @@ export default function AdminLayout() {
   const isChairman = user?.role === 'CHAIRMAN';
   const { data: proposalData } = useQuery({
     queryKey: ['projects', 'proposals'],
-    // Requests the SK Admin submitted and the chairman has not decided yet
-    queryFn: () => projectsApi.list({ status: 'PENDING_APPROVAL', submitted: 'true' }),
+    queryFn: () => projectsApi.list({ status: 'PROPOSED' }),
     enabled: isChairman,
   });
   const { data: deletionData } = useQuery({

@@ -1,52 +1,41 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Circle, CircleCheck } from 'lucide-react';
 import { projectsApi } from '../../api/projects';
 import { StatusRibbon } from '../../components/Roundel';
-import { Badge, Card, EmptyState } from '../../components/ui';
+import { Card, EmptyState } from '../../components/ui';
 import PageHeader from '../../components/PageHeader';
 import ProjectReviewPanel from '../../components/ProjectReviewPanel';
-import { formatDate, formatDateTime, formatPeso } from '../../utils/format';
+import { formatDate, formatPeso } from '../../utils/format';
 
 const cardTitle = 'section-title';
 
-// Approvals (Barangay Chairman): the Project Requests the SK Admin submitted (Pending
-// Approval). Approve moves a request to Approved; Reject (remarks required) moves it to
-// Archives under Rejected. Both notify the SK Admin.
+// Approvals (Barangay Chairman): the Project Requests waiting for a decision (Proposed).
+// Approve moves a request to Planning; Reject cancels it (Archives > Cancelled).
 export default function AdminApprovals() {
   const qc = useQueryClient();
-  const [notice, setNotice] = useState(null); // { ok, text }
+  const [error, setError] = useState('');
   const { data, isLoading } = useQuery({
     queryKey: ['projects', 'proposals'],
-    queryFn: () => projectsApi.list({ status: 'PENDING_APPROVAL', submitted: 'true' }),
+    queryFn: () => projectsApi.list({ status: 'PROPOSED' }),
   });
   const requests = data?.projects || [];
 
-  const onDone = (_res, message) => {
+  const onDone = () => {
     qc.invalidateQueries({ queryKey: ['projects'] });
     qc.invalidateQueries({ queryKey: ['stats'] });
-    qc.invalidateQueries({ queryKey: ['notifications'] });
-    setNotice(message ? { ok: true, text: message } : null);
+    setError('');
   };
-  const onFail = (fallback) => (err) => setNotice({ ok: false, text: err?.response?.data?.message || fallback });
+  const onFail = (fallback) => (err) => setError(err?.response?.data?.message || fallback);
 
   return (
     <div>
       <PageHeader
         title="Approvals"
-        description="Project Requests the SK Admin submitted. Check the documents, then approve or reject (remarks are required to reject)."
-        actions={
-          !isLoading && (
-            <Badge tone={requests.length ? 'amber' : 'slate'}>
-              {requests.length} pending
-            </Badge>
-          )
-        }
+        description="Project Requests waiting for your decision. Approve moves a request to Planning; Reject cancels it."
       />
-      {notice && (
-        <p className={`notice mt-4 ${notice.ok ? 'notice-ok' : 'notice-error'}`} role={notice.ok ? 'status' : 'alert'}>
-          {notice.text}
+      {error && (
+        <p className="mt-4 text-sm font-medium text-red-600" role="alert">
+          {error}
         </p>
       )}
 
@@ -54,7 +43,7 @@ export default function AdminApprovals() {
         {isLoading ? (
           <p className="text-slate-600">Loading…</p>
         ) : requests.length === 0 ? (
-          <EmptyState title="No Project Requests" description="Requests the SK Admin submits appear here for your approval." />
+          <EmptyState title="No Project Requests" description="New Project Requests from the SK appear here for approval." />
         ) : (
           requests.map((p) => <RequestCard key={p.id} project={p} onDone={onDone} onFail={onFail} />)
         )}
@@ -63,10 +52,9 @@ export default function AdminApprovals() {
   );
 }
 
-// One Project Request with its full details and documents, then Approve / Reject.
+// One Project Request with its full details, then Approve / Reject.
 function RequestCard({ project, onDone, onFail }) {
   const items = project.requestItems || [];
-  const documents = (project.checklist || []).find((g) => g.stage === 'PENDING_APPROVAL')?.documents || [];
   return (
     <section aria-labelledby={`request-${project.id}`}>
       <Card className="p-6">
@@ -89,7 +77,7 @@ function RequestCard({ project, onDone, onFail }) {
           </div>
           <div>
             <p className="font-semibold text-slate-600">Submitted</p>
-            <p className="text-slate-700">{formatDateTime(project.submittedAt || project.createdAt)}</p>
+            <p className="text-slate-700">{formatDate(project.createdAt)}</p>
           </div>
           <div>
             <p className="font-semibold text-slate-600">Total budget</p>
@@ -136,36 +124,6 @@ function RequestCard({ project, onDone, onFail }) {
             </table>
           </div>
         )}
-        {project.abyipItem && (
-          <p className="mt-4 text-sm">
-            <span className="font-semibold text-slate-600">ABYIP item:</span>{' '}
-            <span className="text-slate-700">{project.abyipItem}</span>
-          </p>
-        )}
-
-        <h3 className="mt-5 text-sm font-semibold text-slate-600">Documents</h3>
-        <ul className="mt-1 space-y-1 text-sm">
-          {documents.map((d) => (
-            <li key={d.id} className="flex items-center gap-2">
-              {d.complete ? (
-                <CircleCheck size={16} strokeWidth={1.75} className="shrink-0 text-sage" aria-label="Complete" />
-              ) : (
-                <Circle size={16} strokeWidth={1.75} className="shrink-0 text-slate-400" aria-label="Not complete" />
-              )}
-              <span className="text-slate-800">{d.name}</span>
-              <span className="text-slate-500">
-                · {d.files.length} file{d.files.length === 1 ? '' : 's'}
-              </span>
-            </li>
-          ))}
-        </ul>
-        <Link
-          to={`/admin/projects/${project.id}`}
-          className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-pine hover:underline"
-        >
-          Open the documents <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" />
-        </Link>
-
         <ProjectReviewPanel project={project} onDone={onDone} onFail={onFail} inline />
       </Card>
     </section>

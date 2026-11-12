@@ -3,39 +3,17 @@ const { parsePhDate } = require('../utils/phTime');
 const { receiptPath, removeReceiptFile } = require('../middleware/upload');
 const { photosForProject } = require('./photoController');
 const { isStaff } = require('../utils/roles');
-const { notifyProject } = require('../utils/notifications');
 
-// The SK project process. Each step only goes to the next stage; skipped stages are refused.
-//   PENDING_APPROVAL -> APPROVED -> PURCHASING -> FUND_RELEASE -> IMPLEMENTATION -> LIQUIDATION -> COMPLETED
-// - PENDING_APPROVAL: the SK Admin uploads and checks the stage's documents, then submits the
-//   request. The Barangay Chairman approves it (-> APPROVED) or rejects it with remarks (-> REJECTED).
-// - APPROVED: the SK Admin sets the schedule (start and end), then proceeds to Purchasing.
-// - PURCHASING to LIQUIDATION: "Proceed to Next Stage" only when every required document of the
-//   current stage has enough checked uploads (and, at Liquidation, the amount spent is entered).
-// - ON_HOLD (from Approved to Liquidation): paused; it resumes at the same stage.
-// - COMPLETED -> ARCHIVED: filed away. Completed, rejected and archived projects are view only.
-// Every stage change is written to ProjectStageLog.
-
-const FLOW = ['PENDING_APPROVAL', 'APPROVED', 'PURCHASING', 'FUND_RELEASE', 'IMPLEMENTATION', 'LIQUIDATION', 'COMPLETED'];
-// Stages that can be put on hold and moved forward with "Proceed to Next Stage".
-const WORK_STAGES = ['APPROVED', 'PURCHASING', 'FUND_RELEASE', 'IMPLEMENTATION', 'LIQUIDATION'];
-// The stages the staff's Projects list shows (the rest are in Archives).
-const ACTIVE_STATUSES = ['PENDING_APPROVAL', ...WORK_STAGES, 'ON_HOLD'];
-// What the public site may show (approved and not paused, rejected or filed away).
-const PUBLIC_STATUSES = [...WORK_STAGES, 'COMPLETED'];
-const CLOSED_STATUSES = ['COMPLETED', 'REJECTED', 'ARCHIVED'];
-const STAGE_NAME = {
-  PENDING_APPROVAL: 'Pending Approval',
-  APPROVED: 'Approved',
-  PURCHASING: 'Purchasing',
-  FUND_RELEASE: 'Fund Release',
-  IMPLEMENTATION: 'Implementation',
-  LIQUIDATION: 'Liquidation',
-  COMPLETED: 'Completed',
-  REJECTED: 'Rejected',
-  ON_HOLD: 'On Hold',
-  ARCHIVED: 'Archived',
-};
+// Project flow (each step only to the next one; skipped stages are refused):
+//   Project Request -> PROPOSED -> PLANNING -> ONGOING -> COMPLETED
+//   PROPOSED -> CANCELLED when the Barangay Chairman rejects it
+//   ONGOING -> ON_HOLD (paused) -> ONGOING again (Resume), or -> Archives (On Hold tab)
+// - PROPOSED: the Barangay Chairman approves (-> PLANNING) or rejects (-> CANCELLED).
+// - PLANNING: the SK Admin saves the schedule (start and end) -> ONGOING.
+// - ONGOING: the SK Admin uploads the receipt liquidation (required) and keeps an optional
+//   checklist; "Project Completed" -> COMPLETED once both are done.
+// - ON_HOLD: paused; no liquidation, checklist or completion until it is resumed.
+// Completed, cancelled and archived On Hold projects are shown in Archives and are view only.
 
 // Archived (deleted) projects are kept for the record but cannot be changed.
 const ARCHIVED_MESSAGE = 'This project is archived and can no longer be changed';
@@ -44,7 +22,7 @@ const CLOSED_MESSAGE = 'This project is closed and can only be viewed';
 const MIN_REASON_LENGTH = 10;
 
 // Shared include so lists and details always carry the team, creator, the latest deletion
-// request, the purchase requests and the uploaded documents.
+// request, the purchase requests, the liquidation files and the checklist.
 const includeOpts = {
   officials: { orderBy: { displayOrder: 'asc' } },
   createdBy: { select: { id: true, name: true } },
@@ -52,142 +30,79 @@ const includeOpts = {
   // Latest deletion request (any status) so the UI can show pending/rejected.
   deletionRequests: { orderBy: { createdAt: 'desc' }, take: 1 },
   requestItems: { orderBy: { displayOrder: 'asc' } },
-  documents: {
-    orderBy: { uploadedAt: 'asc' },
-    select: {
-      id: true,
-      requiredDocumentId: true,
-      originalName: true,
-      mimeType: true,
-      isChecked: true,
-      uploadedAt: true,
-      uploadedBy: { select: { id: true, name: true } },
-    },
+  liquidationFiles: {
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, originalName: true, mimeType: true, uploadedByName: true, createdAt: true },
   },
-};
-// One project's page also carries its stage history.
-const detailInclude = {
-  ...includeOpts,
-  stageLogs: { orderBy: { changedAt: 'asc' }, include: { changedBy: { select: { id: true, name: true } } } },
+  checklistItems: { orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }] },
 };
 
-const requiredDocuments = () =>
-  prisma.requiredDocument.findMany({ orderBy: [{ stage: 'asc' }, { displayOrder: 'asc' }] });
-
-// The stage whose documents count right now (an On Hold project keeps the stage it paused at).
-const docStage = (project) => (project.status === 'ON_HOLD' ? project.heldFromStatus : project.status);
-
-// The checklist of every stage that has documents, with each project's uploads, and what
-// still stands between the project and the next stage.
-function stageInfo(project, required) {
-  const files = project.documents || [];
-  const stages = [];
-  for (const rd of required) {
-    let group = stages.find((g) => g.stage === rd.stage);
-    if (!group) {
-      group = { stage: rd.stage, label: STAGE_NAME[rd.stage], documents: [] };
-      stages.push(group);
-    }
-    const uploads = files.filter((f) => f.requiredDocumentId === rd.id);
-    const checked = uploads.filter((f) => f.isChecked).length;
-    group.documents.push({
-      id: rd.id,
-      name: rd.name,
-      minFiles: rd.minFiles,
-      files: uploads,
-      checkedCount: checked,
-      complete: checked >= rd.minFiles,
-    });
-  }
-  stages.sort((a, b) => FLOW.indexOf(a.stage) - FLOW.indexOf(b.stage));
-  stages.forEach((g) => {
-    g.complete = g.documents.every((d) => d.complete);
-  });
-
-  const current = stages.find((g) => g.stage === docStage(project));
+// What still stands between an Ongoing project and "Project Completed".
+function completionInfo(project) {
+  const files = (project.liquidationFiles || []).length;
+  const items = project.checklistItems || [];
+  const open = items.filter((i) => !i.done).length;
   const missing = [];
-  (current?.documents || []).forEach((d) => {
-    if (d.complete) return;
-    if (d.minFiles > 1) missing.push(`${d.name} (at least ${d.minFiles} checked files, ${d.checkedCount} so far)`);
-    else missing.push(d.files.length ? `${d.name} (not checked yet)` : d.name);
-  });
-  if (project.status === 'APPROVED' && !(project.startDate && project.endDate)) {
-    missing.push('The schedule (start and end date)');
-  }
-  if (project.status === 'LIQUIDATION' && project.amountSpent == null) {
-    missing.push('The amount spent');
-  }
-
-  const index = FLOW.indexOf(project.status);
-  const canMove = WORK_STAGES.includes(project.status);
+  if (files === 0) missing.push('Upload at least one receipt liquidation file.');
+  if (open > 0) missing.push(`Check off the remaining ${open} checklist item${open === 1 ? '' : 's'}.`);
   return {
-    checklist: stages,
-    docsChecked: current ? current.documents.filter((d) => d.complete).length : 0,
-    docsTotal: current ? current.documents.length : 0,
-    stageMissing: missing,
-    nextStatus: canMove ? FLOW[index + 1] : null,
-    canProceed: canMove && missing.length === 0,
-    canSubmit: project.status === 'PENDING_APPROVAL' && !project.submittedAt && missing.length === 0,
+    canComplete: project.status === 'ONGOING' && missing.length === 0,
+    completeMissing: missing,
+    liquidationCount: files,
+    checklistDone: items.length - open,
+    checklistTotal: items.length,
   };
 }
 
+const withInfo = (project) => ({ ...project, ...completionInfo(project) });
+
 // The SK side (admin, chairman, officials) sees everything; the public never sees
-// requests, rejected or archived projects, the documents or the stage history.
-function canSeeInternal(user) {
+// proposals or rejected projects, and never the liquidation files.
+function canSeeProposed(user) {
   return isStaff(user);
 }
 
 function stripInternal(project) {
-  const {
-    deletionRequests,
-    documents,
-    stageLogs,
-    checklist,
-    stageMissing,
-    rejectionRemarks,
-    canProceed,
-    canSubmit,
-    ...rest
-  } = project;
+  const { deletionRequests, liquidationFiles, ...rest } = project;
   return rest;
 }
 
 // GET /api/projects — public.
-//   ?archive=completed|rejected|archived|deleted (SK side) lists one tab of Archives
-//   (the old names cancelled and onhold still work); ?archive=all (SK side) lists every
-//   project that is not deleted (the Dashboard); otherwise the active projects.
-//   ?status=A,B narrows the list to those stages; ?submitted=true keeps only requests that
-//   were submitted to the Barangay Chairman (his Approvals list).
+//   ?archive=completed|cancelled|onhold|deleted (SK side) lists one tab of Archives;
+//   ?archive=all (SK side) lists every project that is not deleted (the Dashboard);
+//   otherwise the active projects (Proposed, Planning, Ongoing, On Hold). The public list also
+//   shows completed projects, as before.
 async function getProjects(req, res, next) {
   try {
-    const { category, archive } = req.query;
-    const staff = canSeeInternal(req.user);
-    const statuses = req.query.status ? String(req.query.status).split(',').filter((s) => STAGE_NAME[s]) : null;
+    const { status, category, archive } = req.query;
+    const staff = canSeeProposed(req.user);
     const where = { archivedAt: null };
     if (category) where.category = category;
     if (staff && archive === 'deleted') where.archivedAt = { not: null };
     else if (staff && archive === 'completed') where.status = 'COMPLETED';
-    else if (staff && (archive === 'rejected' || archive === 'cancelled')) where.status = 'REJECTED';
-    else if (staff && (archive === 'archived' || archive === 'onhold')) where.status = 'ARCHIVED';
+    else if (staff && archive === 'cancelled') where.status = 'CANCELLED';
+    else if (staff && archive === 'onhold') {
+      where.status = 'ON_HOLD';
+      where.holdArchivedAt = { not: null };
+    }
     else if (staff && archive === 'all') {
       // every stage
     } else if (staff) {
-      where.status = { in: statuses || ACTIVE_STATUSES };
-    } else {
-      where.status = { in: statuses ? statuses.filter((s) => PUBLIC_STATUSES.includes(s)) : PUBLIC_STATUSES };
+      where.status = { in: ['PROPOSED', 'PLANNING', 'ONGOING', 'ON_HOLD'] };
+      where.holdArchivedAt = null;
+    }
+    else {
+      where.status = { in: ['PLANNING', 'ONGOING', 'COMPLETED'] };
       where.approvalState = 'APPROVED';
     }
-    if (staff && req.query.submitted === 'true') where.submittedAt = { not: null };
+    if (status) where.status = status;
 
-    const [projects, required] = await Promise.all([
-      prisma.project.findMany({
-        where,
-        orderBy: archive ? { updatedAt: 'desc' } : { createdAt: 'desc' },
-        include: includeOpts,
-      }),
-      requiredDocuments(),
-    ]);
-    let result = projects.map((p) => ({ ...p, ...stageInfo(p, required) }));
+    const projects = await prisma.project.findMany({
+      where,
+      orderBy: archive ? { updatedAt: 'desc' } : { createdAt: 'desc' },
+      include: includeOpts,
+    });
+    let result = projects.map(withInfo);
     if (!staff) result = result.map(stripInternal);
     res.json({ projects: result });
   } catch (err) {
@@ -195,38 +110,34 @@ async function getProjects(req, res, next) {
   }
 }
 
-// Loads one project with its checklist and stage history.
-async function projectWithInfo(id) {
-  const [project, required] = await Promise.all([
-    prisma.project.findUnique({ where: { id }, include: detailInclude }),
-    requiredDocuments(),
-  ]);
-  return project ? { ...project, ...stageInfo(project, required) } : null;
-}
-
-// GET /api/projects/:id — public (the SK side also gets the checklist and the stage history).
+// GET /api/projects/:id — public.
 async function getProject(req, res, next) {
   try {
-    const project = await projectWithInfo(req.params.id);
+    const project = await prisma.project.findUnique({
+      where: { id: req.params.id },
+      include: includeOpts,
+    });
     const hiddenFromPublic =
-      project && ((!PUBLIC_STATUSES.includes(project.status) && project.status !== 'ON_HOLD') || project.archivedAt);
-    if (!project || (hiddenFromPublic && !canSeeInternal(req.user))) {
+      project &&
+      (project.status === 'PROPOSED' || project.status === 'CANCELLED' || project.archivedAt || project.holdArchivedAt);
+    if (!project || (hiddenFromPublic && !canSeeProposed(req.user))) {
       return res.status(404).json({ message: 'Project not found' });
     }
+    const result = withInfo(project);
     // Progress photos shown on the public project page
-    project.photos = await photosForProject(project.id);
-    res.json({ project: canSeeInternal(req.user) ? project : stripInternal(project) });
+    result.photos = await photosForProject(project.id);
+    res.json({ project: canSeeProposed(req.user) ? result : stripInternal(result) });
   } catch (err) {
     next(err);
   }
 }
 
-// Today's date in the Philippines, as YYYY-MM-DD.
-const phToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-
 // Turns the form's purchase request rows into rows ready to save. Blank rows are
 // dropped; amounts must be numbers that are not negative. Returns null when the
 // body sent no rows at all (so an update leaves the saved rows alone).
+// Today's date in the Philippines, as YYYY-MM-DD.
+const phToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+
 // keepDates: the PR dates the project already has (editing keeps them even if past).
 function cleanRequestItems(raw, keepDates = new Set()) {
   if (!Array.isArray(raw)) return null;
@@ -264,7 +175,7 @@ function cleanRequestItems(raw, keepDates = new Set()) {
 // Normalize the Project Request form into Prisma-ready data + team ids. The status and
 // the schedule are not accepted here: they only change through the flow's own steps.
 function parseProjectBody(body, keepDates) {
-  const { title, description, category, budget, location, coverImageUrl, officialIds, proposedByName, proposedByPosition, abyipItem } = body;
+  const { title, description, category, budget, location, coverImageUrl, officialIds, proposedByName, proposedByPosition } = body;
 
   const data = {};
   if (title !== undefined) data.title = title;
@@ -273,7 +184,6 @@ function parseProjectBody(body, keepDates) {
   if (budget !== undefined) data.budget = budget;
   if (location !== undefined) data.location = location;
   if (coverImageUrl !== undefined) data.coverImageUrl = coverImageUrl;
-  if (abyipItem !== undefined) data.abyipItem = String(abyipItem || '').trim().slice(0, 200) || null;
   // "Prepared by" on the request form; blank clears it.
   if (proposedByName !== undefined) data.proposedByName = proposedByName || null;
   if (proposedByPosition !== undefined) data.proposedByPosition = proposedByPosition || null;
@@ -288,52 +198,33 @@ function parseProjectBody(body, keepDates) {
   return { data, officialIds, requestItems };
 }
 
-const round2 = (n) => Math.round(n * 100) / 100;
-
-// Loads a project for a change and refuses deleted or closed ones.
+// Loads a project for a change and refuses archived or closed ones.
 // Returns { project } or { error: [status, message] }.
 async function loadOpen(id) {
   const project = await prisma.project.findUnique({ where: { id } });
   if (!project) return { error: [404, 'Project not found'] };
   if (project.archivedAt) return { error: [400, ARCHIVED_MESSAGE] };
-  if (CLOSED_STATUSES.includes(project.status)) return { error: [400, CLOSED_MESSAGE] };
+  if (project.status === 'COMPLETED' || project.status === 'CANCELLED' || project.holdArchivedAt) {
+    return { error: [400, CLOSED_MESSAGE] };
+  }
   return { project };
 }
 
-// Like loadOpen, and the project must be at one of the given stages.
-async function loadAtStage(id, stages, action) {
+// Like loadOpen, and the project must be at the given stage.
+async function loadAtStage(id, stage, action) {
   const r = await loadOpen(id);
   if (r.error) return r;
-  const list = [].concat(stages);
-  if (!list.includes(r.project.status)) {
-    return { error: [400, `${action} is only possible while the project is ${list.map((s) => STAGE_NAME[s]).join(' or ')}`] };
+  if (r.project.status !== stage) {
+    return { error: [400, `${action} is only possible while the project is ${STAGE_NAME[stage]}`] };
   }
   return r;
 }
 
 const fail = (res, [code, message]) => res.status(code).json({ message });
+const STAGE_NAME = { PROPOSED: 'Proposed', PLANNING: 'Planning', ONGOING: 'Ongoing', ON_HOLD: 'On Hold' };
 
-// Moves a project to another stage and writes the stage history in one transaction.
-async function moveStage(project, toStatus, user, { data = {}, remarks = null } = {}) {
-  await prisma.$transaction([
-    prisma.project.update({ where: { id: project.id }, data: { ...data, status: toStatus } }),
-    prisma.projectStageLog.create({
-      data: {
-        projectId: project.id,
-        fromStatus: project.status,
-        toStatus,
-        remarks: remarks || null,
-        changedById: user.id,
-      },
-    }),
-  ]);
-  return projectWithInfo(project.id);
-}
-
-const cleanRemarks = (value) => String(value || '').trim().slice(0, 1000);
-
-// POST /api/projects — SK Admin. The Project Request: saved at Pending Approval. The SK Admin
-// then uploads its documents and submits it to the Barangay Chairman.
+// POST /api/projects — admin. The Project Request: saved as Proposed, waiting for the
+// Barangay Chairman.
 async function createProject(req, res, next) {
   try {
     if (!req.body.title) {
@@ -343,25 +234,21 @@ async function createProject(req, res, next) {
     if (requestItems && requestItems.length > 0) {
       data.requestItems = { create: requestItems };
     }
-    data.status = 'PENDING_APPROVAL';
+    data.status = 'PROPOSED';
     data.approvalState = 'PENDING';
     data.createdById = req.user.id;
-    data.stageLogs = {
-      create: { fromStatus: null, toStatus: 'PENDING_APPROVAL', remarks: 'Project Request created', changedById: req.user.id },
-    };
     if (Array.isArray(officialIds)) {
       data.officials = { connect: officialIds.map((id) => ({ id })) };
     }
 
-    const created = await prisma.project.create({ data });
-    res.status(201).json({ project: await projectWithInfo(created.id) });
+    const project = await prisma.project.create({ data, include: includeOpts });
+    res.status(201).json({ project: withInfo(project) });
   } catch (err) {
     next(err);
   }
 }
 
-// PUT /api/projects/:id — SK Admin. Edits the request details (not the stage or schedule).
-// At Liquidation it also takes { amountSpent }; the amount returned is worked out here.
+// PUT /api/projects/:id — admin. Edits the request details (not the stage or schedule).
 async function updateProject(req, res, next) {
   try {
     const r = await loadOpen(req.params.id);
@@ -383,145 +270,50 @@ async function updateProject(req, res, next) {
       data.officials = { set: officialIds.map((id) => ({ id })) };
     }
 
-    const budget = Number(data.budget ?? r.project.budget ?? 0);
-    if (req.body.amountSpent !== undefined) {
-      if (r.project.status !== 'LIQUIDATION') {
-        return res.status(400).json({ message: 'The amount spent is entered at the Liquidation stage' });
-      }
-      const spent = Number(req.body.amountSpent);
-      if (req.body.amountSpent === '' || req.body.amountSpent === null || !Number.isFinite(spent) || spent < 0) {
-        return res.status(400).json({ message: 'Enter the amount spent as a number that is not negative' });
-      }
-      if (round2(spent) > round2(budget)) {
-        return res.status(400).json({ message: 'The amount spent cannot be more than the budget' });
-      }
-      data.amountSpent = round2(spent);
-      data.amountReturned = round2(budget - spent);
-    } else if (data.budget !== undefined && r.project.amountSpent != null) {
-      // A new budget changes what goes back.
-      data.amountReturned = round2(budget - Number(r.project.amountSpent));
-    }
-
-    await prisma.project.update({ where: { id: req.params.id }, data });
-    res.json({ project: await projectWithInfo(req.params.id) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// PATCH /api/projects/:id/submit — SK Admin. Sends a Pending Approval request, with all its
-// documents uploaded and checked, to the Barangay Chairman.
-async function submitProject(req, res, next) {
-  try {
-    const r = await loadAtStage(req.params.id, 'PENDING_APPROVAL', 'Submitting the request');
-    if (r.error) return fail(res, r.error);
-    if (r.project.submittedAt) {
-      return res.status(400).json({ message: 'This request was already submitted to the Barangay Chairman' });
-    }
-    const current = await projectWithInfo(req.params.id);
-    if (current.stageMissing.length > 0) {
-      return res.status(400).json({
-        message: `Complete the documents first: ${current.stageMissing.join(', ')}`,
-        missing: current.stageMissing,
-      });
-    }
-    await prisma.$transaction([
-      prisma.project.update({ where: { id: r.project.id }, data: { submittedAt: new Date(), approvalState: 'PENDING' } }),
-      prisma.projectStageLog.create({
-        data: {
-          projectId: r.project.id,
-          fromStatus: 'PENDING_APPROVAL',
-          toStatus: 'PENDING_APPROVAL',
-          remarks: 'Submitted to the Barangay Chairman for approval',
-          changedById: req.user.id,
-        },
-      }),
-    ]);
-    await notifyProject({
-      projectId: r.project.id,
-      type: 'REQUEST_SUBMITTED',
-      audience: 'CHAIRMAN',
-      title: `Waiting for your approval: ${r.project.title}`,
-      message: `The SK Admin submitted the Project Request "${r.project.title}" with its documents. Please approve or reject it.`,
+    const project = await prisma.project.update({
+      where: { id: req.params.id },
+      data,
+      include: includeOpts,
     });
-    res.json({ project: await projectWithInfo(r.project.id) });
+    res.json({ project: withInfo(project) });
   } catch (err) {
     next(err);
   }
 }
 
-// Loads a request the Barangay Chairman can decide on: Pending Approval and submitted.
-async function loadSubmitted(id) {
-  const r = await loadAtStage(id, 'PENDING_APPROVAL', 'Approving or rejecting');
-  if (r.error) return r;
-  if (!r.project.submittedAt) return { error: [400, 'The SK Admin has not submitted this request yet'] };
-  return r;
-}
-
-// PATCH /api/projects/:id/approve — Barangay Chairman. { remarks? } -> Approved.
-async function approveProject(req, res, next) {
+// PUT /api/projects/:id/review — Barangay Chairman. { decision: APPROVE | REJECT, remarks? }
+//   APPROVE -> Planning; REJECT -> Cancelled (it moves to Archives under Cancelled).
+async function reviewProject(req, res, next) {
   try {
-    const r = await loadSubmitted(req.params.id);
+    const r = await loadAtStage(req.params.id, 'PROPOSED', 'Approving or rejecting');
     if (r.error) return fail(res, r.error);
-    const remarks = cleanRemarks(req.body?.remarks);
-    const project = await moveStage(r.project, 'APPROVED', req.user, {
-      remarks: remarks || 'Approved by the Barangay Chairman',
+    const { decision } = req.body;
+    if (decision !== 'APPROVE' && decision !== 'REJECT') {
+      return res.status(400).json({ message: 'Decision must be APPROVE or REJECT' });
+    }
+    const remarks = (req.body.remarks || '').trim();
+    const project = await prisma.project.update({
+      where: { id: req.params.id },
       data: {
-        approvalState: 'APPROVED',
+        status: decision === 'APPROVE' ? 'PLANNING' : 'CANCELLED',
+        approvalState: decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
         reviewedById: req.user.id,
         reviewedAt: new Date(),
         reviewRemarks: remarks || null,
-        rejectionRemarks: null,
       },
+      include: includeOpts,
     });
-    await notifyProject({
-      projectId: r.project.id,
-      type: 'REQUEST_APPROVED',
-      audience: 'ADMIN',
-      title: `Approved: ${r.project.title}`,
-      message: `The Barangay Chairman approved "${r.project.title}". Set its schedule, then proceed to Purchasing.${remarks ? ` Remarks: ${remarks}` : ''}`,
-    });
-    res.json({ project });
+    res.json({ project: withInfo(project) });
   } catch (err) {
     next(err);
   }
 }
 
-// PATCH /api/projects/:id/reject — Barangay Chairman. { remarks } (required) -> Rejected.
-async function rejectProject(req, res, next) {
-  try {
-    const r = await loadSubmitted(req.params.id);
-    if (r.error) return fail(res, r.error);
-    const remarks = cleanRemarks(req.body?.remarks);
-    if (!remarks) return res.status(400).json({ message: 'Remarks are required when rejecting a request' });
-    const project = await moveStage(r.project, 'REJECTED', req.user, {
-      remarks,
-      data: {
-        approvalState: 'REJECTED',
-        reviewedById: req.user.id,
-        reviewedAt: new Date(),
-        reviewRemarks: remarks,
-        rejectionRemarks: remarks,
-      },
-    });
-    await notifyProject({
-      projectId: r.project.id,
-      type: 'REQUEST_REJECTED',
-      audience: 'ADMIN',
-      title: `Rejected: ${r.project.title}`,
-      message: `The Barangay Chairman rejected "${r.project.title}". Remarks: ${remarks}`,
-    });
-    res.json({ project });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// PUT /api/projects/:id/schedule — SK Admin, while Approved. { startDate, endDate } (date and
-// time). Needed before the project can proceed to Purchasing.
+// PUT /api/projects/:id/schedule — SK Admin. { startDate, endDate } (date and time).
+// Saving the schedule of a Planning project makes it Ongoing.
 async function setSchedule(req, res, next) {
   try {
-    const r = await loadAtStage(req.params.id, 'APPROVED', 'Setting the schedule');
+    const r = await loadAtStage(req.params.id, 'PLANNING', 'Setting the schedule');
     if (r.error) return fail(res, r.error);
     const start = req.body.startDate ? parsePhDate(req.body.startDate) : null;
     const end = req.body.endDate ? parsePhDate(req.body.endDate) : null;
@@ -535,184 +327,205 @@ async function setSchedule(req, res, next) {
     if (end <= start) {
       return res.status(400).json({ message: 'The end date and time must be later than the start' });
     }
-    await prisma.project.update({ where: { id: req.params.id }, data: { startDate: start, endDate: end } });
-    res.json({ project: await projectWithInfo(req.params.id) });
+    const project = await prisma.project.update({
+      where: { id: req.params.id },
+      data: { startDate: start, endDate: end, status: 'ONGOING' },
+      include: includeOpts,
+    });
+    res.json({ project: withInfo(project) });
   } catch (err) {
     next(err);
   }
 }
 
-// PATCH /api/projects/:id/next-stage — SK Admin. { remarks? } Approved -> Purchasing -> Fund
-// Release -> Implementation -> Liquidation -> Completed, only when the current stage is complete.
-async function nextStage(req, res, next) {
-  try {
-    const r = await loadAtStage(req.params.id, WORK_STAGES, 'Proceeding to the next stage');
-    if (r.error) return fail(res, r.error);
-    const current = await projectWithInfo(req.params.id);
-    if (!current.canProceed) {
-      return res.status(400).json({
-        message: `The ${STAGE_NAME[current.status]} stage is not complete. Still missing: ${current.stageMissing.join(', ')}`,
-        missing: current.stageMissing,
-      });
-    }
-    const project = await moveStage(r.project, current.nextStatus, req.user, { remarks: cleanRemarks(req.body?.remarks) });
-    res.json({ project });
-  } catch (err) {
-    next(err);
-  }
-}
+// ---------- Receipt liquidation (Ongoing) ----------
 
-// PATCH /api/projects/:id/hold — SK Admin. { remarks? } Puts an Approved to Liquidation project
-// on hold, or resumes an On Hold project at the stage it was paused at.
-async function toggleHold(req, res, next) {
-  try {
-    const r = await loadAtStage(req.params.id, [...WORK_STAGES, 'ON_HOLD'], 'Holding or resuming');
-    if (r.error) return fail(res, r.error);
-    const remarks = cleanRemarks(req.body?.remarks);
-    let project;
-    if (r.project.status === 'ON_HOLD') {
-      const back = WORK_STAGES.includes(r.project.heldFromStatus) ? r.project.heldFromStatus : 'IMPLEMENTATION';
-      project = await moveStage(r.project, back, req.user, {
-        remarks: remarks || 'Resumed',
-        data: { heldFromStatus: null },
-      });
-    } else {
-      project = await moveStage(r.project, 'ON_HOLD', req.user, {
-        remarks: remarks || 'Put on hold',
-        data: { heldFromStatus: r.project.status },
-      });
-    }
-    res.json({ project });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// PATCH /api/projects/:id/archive — SK Admin. Completed -> Archived (read only).
-async function archiveProject(req, res, next) {
-  try {
-    const project = await prisma.project.findUnique({ where: { id: req.params.id } });
-    if (!project) return res.status(404).json({ message: 'Project not found' });
-    if (project.archivedAt) return res.status(400).json({ message: ARCHIVED_MESSAGE });
-    if (project.status !== 'COMPLETED') {
-      return res.status(400).json({ message: 'Only completed projects can be archived' });
-    }
-    res.json({ project: await moveStage(project, 'ARCHIVED', req.user, { remarks: cleanRemarks(req.body?.remarks) || 'Archived' }) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// ---------- Stage documents ----------
-
-// The documents of the current stage can be changed by the SK Admin; a Pending Approval
-// request is locked once it is submitted, and an On Hold project until it is resumed.
-async function loadForDocuments(id) {
-  const r = await loadOpen(id);
-  if (r.error) return r;
-  const { project } = r;
-  if (project.status === 'ON_HOLD') return { error: [400, 'Resume the project before changing its documents'] };
-  if (project.status === 'PENDING_APPROVAL' && project.submittedAt) {
-    return { error: [400, 'The request was submitted; its documents are locked while the Barangay Chairman decides'] };
-  }
-  return r;
-}
-
-// POST /api/projects/:id/documents — SK Admin. multipart: requiredDocumentId + "files"
-// (PDF, JPG or PNG, up to 10 MB each). Only for a document of the current stage.
-async function uploadDocuments(req, res, next) {
+// POST /api/projects/:id/liquidation — SK Admin. multipart "files" (JPG, PNG or PDF, many).
+async function addLiquidation(req, res, next) {
   const files = req.files || [];
   const discard = () => files.forEach((f) => removeReceiptFile(f.filename));
   try {
-    const r = await loadForDocuments(req.params.id);
+    const r = await loadAtStage(req.params.id, 'ONGOING', 'Uploading the liquidation');
     if (r.error) {
       discard();
       return fail(res, r.error);
     }
-    const rd = req.body.requiredDocumentId
-      ? await prisma.requiredDocument.findUnique({ where: { id: String(req.body.requiredDocumentId) } })
-      : null;
-    if (!rd) {
-      discard();
-      return res.status(400).json({ message: 'Choose which document the files are for' });
-    }
-    if (rd.stage !== r.project.status) {
-      discard();
-      return res.status(400).json({ message: `${rd.name} belongs to the ${STAGE_NAME[rd.stage]} stage, not the current one` });
-    }
     if (files.length === 0) return res.status(400).json({ message: 'Choose at least one file to upload' });
-    await prisma.projectDocument.createMany({
+    await prisma.liquidationFile.createMany({
       data: files.map((f) => ({
-        projectId: r.project.id,
-        requiredDocumentId: rd.id,
-        fileUrl: f.filename,
+        projectId: req.params.id,
+        fileName: f.filename,
         originalName: f.originalname,
         mimeType: f.mimetype,
         uploadedById: req.user.id,
+        uploadedByName: req.user.name,
       })),
     });
-    res.status(201).json({ project: await projectWithInfo(r.project.id) });
+    const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: includeOpts });
+    res.status(201).json({ project: withInfo(project) });
   } catch (err) {
     discard();
     next(err);
   }
 }
 
-// Loads an uploaded document of a project that the SK Admin may still change.
-async function loadDocument(req) {
-  const r = await loadForDocuments(req.params.id);
-  if (r.error) return r;
-  const doc = await prisma.projectDocument.findUnique({
-    where: { id: req.params.docId },
-    include: { requiredDocument: true },
-  });
-  if (!doc || doc.projectId !== r.project.id) return { error: [404, 'Document not found'] };
-  if (doc.requiredDocument.stage !== r.project.status) {
-    return { error: [400, `Documents of the ${STAGE_NAME[doc.requiredDocument.stage]} stage can no longer be changed`] };
-  }
-  return { ...r, doc };
-}
-
-// PATCH /api/projects/:id/documents/:docId/check — SK Admin. { isChecked } (toggles when left out)
-async function checkDocument(req, res, next) {
+// GET /api/projects/:id/liquidation/:fileId — SK side (also from Archives).
+async function getLiquidationFile(req, res, next) {
   try {
-    const r = await loadDocument(req);
-    if (r.error) return fail(res, r.error);
-    const isChecked = typeof req.body?.isChecked === 'boolean' ? req.body.isChecked : !r.doc.isChecked;
-    await prisma.projectDocument.update({ where: { id: r.doc.id }, data: { isChecked } });
-    res.json({ project: await projectWithInfo(r.project.id) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// DELETE /api/projects/:id/documents/:docId — SK Admin. Removes a wrong upload.
-async function deleteDocument(req, res, next) {
-  try {
-    const r = await loadDocument(req);
-    if (r.error) return fail(res, r.error);
-    await prisma.projectDocument.delete({ where: { id: r.doc.id } });
-    // The same stored file can still belong to an old expense record; keep it then.
-    const stillUsed = await prisma.expense.count({ where: { receiptFile: r.doc.fileUrl } });
-    if (!stillUsed) removeReceiptFile(r.doc.fileUrl);
-    res.json({ project: await projectWithInfo(r.project.id) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// GET /api/projects/:id/documents/:docId/file — SK side (also view only from Archives).
-async function getDocumentFile(req, res, next) {
-  try {
-    const doc = await prisma.projectDocument.findUnique({ where: { id: req.params.docId } });
-    if (!doc || doc.projectId !== req.params.id) {
+    const file = await prisma.liquidationFile.findUnique({ where: { id: req.params.fileId } });
+    if (!file || file.projectId !== req.params.id) {
       return res.status(404).json({ message: 'File not found' });
     }
-    res.type(doc.mimeType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(doc.originalName || 'document')}`);
-    res.sendFile(receiptPath(doc.fileUrl), (err) => {
+    res.type(file.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.originalName || 'liquidation')}`);
+    res.sendFile(receiptPath(file.fileName), (err) => {
       if (err && !res.headersSent) res.status(404).json({ message: 'The file is missing' });
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// DELETE /api/projects/:id/liquidation/:fileId — SK Admin, while Ongoing.
+async function deleteLiquidationFile(req, res, next) {
+  try {
+    const r = await loadAtStage(req.params.id, 'ONGOING', 'Deleting a liquidation file');
+    if (r.error) return fail(res, r.error);
+    const file = await prisma.liquidationFile.findUnique({ where: { id: req.params.fileId } });
+    if (!file || file.projectId !== req.params.id) {
+      return res.status(404).json({ message: 'File not found' });
+    }
+    await prisma.liquidationFile.delete({ where: { id: file.id } });
+    // The same stored file can still belong to an old expense record; keep it then.
+    const stillUsed = await prisma.expense.count({ where: { receiptFile: file.fileName } });
+    if (!stillUsed) removeReceiptFile(file.fileName);
+    const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: includeOpts });
+    res.json({ project: withInfo(project) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ---------- Checklist (Ongoing, optional) ----------
+
+async function projectWithInfo(id) {
+  const project = await prisma.project.findUnique({ where: { id }, include: includeOpts });
+  return withInfo(project);
+}
+
+// POST /api/projects/:id/checklist — SK Admin. { label }
+async function addChecklistItem(req, res, next) {
+  try {
+    const r = await loadAtStage(req.params.id, 'ONGOING', 'Changing the checklist');
+    if (r.error) return fail(res, r.error);
+    const label = String(req.body.label || '').trim();
+    if (!label) return res.status(400).json({ message: 'Write the checklist item' });
+    const count = await prisma.checklistItem.count({ where: { projectId: req.params.id } });
+    await prisma.checklistItem.create({
+      data: { projectId: req.params.id, label: label.slice(0, 200), displayOrder: count },
+    });
+    res.status(201).json({ project: await projectWithInfo(req.params.id) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PUT /api/projects/:id/checklist/:itemId — SK Admin. { label?, done? }
+async function updateChecklistItem(req, res, next) {
+  try {
+    const r = await loadAtStage(req.params.id, 'ONGOING', 'Changing the checklist');
+    if (r.error) return fail(res, r.error);
+    const item = await prisma.checklistItem.findUnique({ where: { id: req.params.itemId } });
+    if (!item || item.projectId !== req.params.id) {
+      return res.status(404).json({ message: 'Checklist item not found' });
+    }
+    const data = {};
+    if (req.body.label !== undefined) {
+      const label = String(req.body.label || '').trim();
+      if (!label) return res.status(400).json({ message: 'Write the checklist item' });
+      data.label = label.slice(0, 200);
+    }
+    if (req.body.done !== undefined) data.done = Boolean(req.body.done);
+    await prisma.checklistItem.update({ where: { id: item.id }, data });
+    res.json({ project: await projectWithInfo(req.params.id) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// DELETE /api/projects/:id/checklist/:itemId — SK Admin.
+async function deleteChecklistItem(req, res, next) {
+  try {
+    const r = await loadAtStage(req.params.id, 'ONGOING', 'Changing the checklist');
+    if (r.error) return fail(res, r.error);
+    const item = await prisma.checklistItem.findUnique({ where: { id: req.params.itemId } });
+    if (!item || item.projectId !== req.params.id) {
+      return res.status(404).json({ message: 'Checklist item not found' });
+    }
+    await prisma.checklistItem.delete({ where: { id: item.id } });
+    res.json({ project: await projectWithInfo(req.params.id) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/projects/:id/complete — SK Admin. "Project Completed": needs at least one
+// liquidation file and every checklist item (if any) checked. Moves it to Archives.
+async function completeProject(req, res, next) {
+  try {
+    const r = await loadAtStage(req.params.id, 'ONGOING', 'Marking the project as completed');
+    if (r.error) return fail(res, r.error);
+    const current = await projectWithInfo(req.params.id);
+    if (!current.canComplete) {
+      return res.status(400).json({ message: `The project cannot be completed yet. ${current.completeMissing.join(' ')}` });
+    }
+    const project = await prisma.project.update({
+      where: { id: req.params.id },
+      data: { status: 'COMPLETED' },
+      include: includeOpts,
+    });
+    res.json({ project: withInfo(project) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ---------- On Hold ----------
+
+// Moves the project from one stage to another (the given checks already passed).
+async function setStage(id, data) {
+  const project = await prisma.project.update({ where: { id }, data, include: includeOpts });
+  return withInfo(project);
+}
+
+// POST /api/projects/:id/hold — SK Admin. Ongoing -> On Hold (paused).
+async function holdProject(req, res, next) {
+  try {
+    const r = await loadAtStage(req.params.id, 'ONGOING', 'Putting the project on hold');
+    if (r.error) return fail(res, r.error);
+    res.json({ project: await setStage(req.params.id, { status: 'ON_HOLD' }) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/projects/:id/resume — SK Admin. On Hold -> Ongoing.
+async function resumeProject(req, res, next) {
+  try {
+    const r = await loadAtStage(req.params.id, 'ON_HOLD', 'Resuming the project');
+    if (r.error) return fail(res, r.error);
+    res.json({ project: await setStage(req.params.id, { status: 'ONGOING' }) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/projects/:id/archive-hold — SK Admin. On Hold -> Archives (On Hold tab), view only.
+async function archiveHeldProject(req, res, next) {
+  try {
+    const r = await loadAtStage(req.params.id, 'ON_HOLD', 'Moving the project to Archives');
+    if (r.error) return fail(res, r.error);
+    res.json({ project: await setStage(req.params.id, { holdArchivedAt: new Date() }) });
   } catch (err) {
     next(err);
   }
@@ -856,11 +669,12 @@ async function restoreProject(req, res, next) {
     if (!existing.archivedAt) {
       return res.status(400).json({ message: 'This project is not in the archive' });
     }
-    await prisma.project.update({
+    const project = await prisma.project.update({
       where: { id: req.params.id },
       data: { archivedAt: null, archivedReason: null, archivedByName: null },
+      include: includeOpts,
     });
-    res.json({ project: await projectWithInfo(req.params.id) });
+    res.json({ project: withInfo(project) });
   } catch (err) {
     next(err);
   }
@@ -871,23 +685,22 @@ module.exports = {
   getProject,
   createProject,
   updateProject,
-  submitProject,
-  approveProject,
-  rejectProject,
+  reviewProject,
   setSchedule,
-  nextStage,
-  toggleHold,
-  archiveProject,
-  uploadDocuments,
-  checkDocument,
-  deleteDocument,
-  getDocumentFile,
+  addLiquidation,
+  getLiquidationFile,
+  deleteLiquidationFile,
+  addChecklistItem,
+  updateChecklistItem,
+  deleteChecklistItem,
+  completeProject,
+  holdProject,
+  resumeProject,
+  archiveHeldProject,
   requestDeletion,
   withdrawDeletion,
   listDeletionRequests,
   reviewDeletion,
   restoreProject,
-  STAGE_NAME,
-  WORK_STAGES,
-  ACTIVE_STATUSES,
+  completionInfo,
 };

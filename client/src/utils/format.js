@@ -1,25 +1,12 @@
 ﻿// Maps backend enum values to label + badge tone for display.
-// The SK project process: Pending Approval > Approved > Purchasing > Fund Release >
-// Implementation > Liquidation > Completed (plus Rejected, On Hold and Archived).
 export const PROJECT_STATUS = {
-  PENDING_APPROVAL: { label: 'Pending Approval', tone: 'amber' },
-  APPROVED: { label: 'Approved', tone: 'blue' },
-  PURCHASING: { label: 'Purchasing', tone: 'blue' },
-  FUND_RELEASE: { label: 'Fund Release', tone: 'blue' },
-  IMPLEMENTATION: { label: 'Implementation', tone: 'blue' },
-  LIQUIDATION: { label: 'Liquidation', tone: 'blue' },
+  PROPOSED: { label: 'Proposed', tone: 'slate' },
+  PLANNING: { label: 'Planning', tone: 'blue' },
+  ONGOING: { label: 'Ongoing', tone: 'amber' },
   COMPLETED: { label: 'Completed', tone: 'green' },
-  REJECTED: { label: 'Rejected', tone: 'red' },
+  CANCELLED: { label: 'Cancelled', tone: 'red' },
   ON_HOLD: { label: 'On Hold', tone: 'slate' },
-  ARCHIVED: { label: 'Archived', tone: 'slate' },
 };
-
-// The stages a project moves through, in order.
-export const STAGE_FLOW = ['PENDING_APPROVAL', 'APPROVED', 'PURCHASING', 'FUND_RELEASE', 'IMPLEMENTATION', 'LIQUIDATION', 'COMPLETED'];
-// Approved and being carried out (can be held, and moved on with "Proceed to Next Stage").
-export const WORK_STAGES = ['APPROVED', 'PURCHASING', 'FUND_RELEASE', 'IMPLEMENTATION', 'LIQUIDATION'];
-// The schedule is running: Purchasing to Liquidation (shown as "Ongoing" on the public site).
-export const RUNNING_STAGES = ['PURCHASING', 'FUND_RELEASE', 'IMPLEMENTATION', 'LIQUIDATION'];
 
 export const EVENT_TYPE = {
   MEETING: { label: 'Meeting', tone: 'blue' },
@@ -38,12 +25,6 @@ export const ATTENDANCE_STATUS = {
 export function formatPeso(amount) {
   const n = Number(amount || 0);
   return '₱' + n.toLocaleString('en-PH', { maximumFractionDigits: 2 });
-}
-
-// Peso with exactly two decimals (liquidation amounts).
-export function formatPeso2(amount) {
-  const n = Number(amount || 0);
-  return '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // Format an ISO date string to a readable date.

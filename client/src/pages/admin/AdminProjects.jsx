@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import OverflowMenu from '../../components/OverflowMenu';
 import { Button, Modal, EmptyState } from '../../components/ui';
-import { PROJECT_STATUS, WORK_STAGES, toDateTimeLocal } from '../../utils/format';
+import { PROJECT_STATUS, toDateTimeLocal } from '../../utils/format';
 import { ProjectCard } from '../../components/ProjectCard';
 
 import PageHeader from '../../components/PageHeader';
@@ -16,8 +16,8 @@ import { useConfirm } from '../../components/ConfirmDialog';
 import ProjectProposalForm, { emptyItem, prDateOk } from '../../components/ProjectProposalForm';
 import ChairmanProjects from './ChairmanProjects';
 
-// Active stages only: Completed, Rejected and Archived projects are in Archives.
-const statusOptions = ['PENDING_APPROVAL', ...WORK_STAGES, 'ON_HOLD'].map((value) => ({
+// Active stages only: Completed and Cancelled projects are in Archives.
+const statusOptions = ['PROPOSED', 'PLANNING', 'ONGOING', 'ON_HOLD'].map((value) => ({
   value,
   label: PROJECT_STATUS[value].label,
 }));
@@ -25,7 +25,6 @@ const statusOptions = ['PENDING_APPROVAL', ...WORK_STAGES, 'ON_HOLD'].map((value
 // A fresh form: one empty purchase request row, to which the + button adds more.
 const blankForm = () => ({
   purpose: '', // first line = project name, the rest = description
-  abyipItem: '', // the ABYIP item the project is funded under (optional)
   items: [{ ...emptyItem }],
 });
 
@@ -42,7 +41,7 @@ function ProjectManagement() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(blankForm);
   const [error, setError] = useState('');
-  // ?status=PENDING_APPROVAL (e.g. from the Dashboard) opens the list on that stage.
+  // ?status=PROPOSED (e.g. from the Dashboard) opens the list on that stage.
   const [searchParams] = useSearchParams();
   const [filter, setFilter] = useState(() =>
     statusOptions.some((o) => o.value === searchParams.get('status')) ? searchParams.get('status') : ''
@@ -77,9 +76,7 @@ function ProjectManagement() {
       invalidate();
       setNotice({
         ok: true,
-        text: editing
-          ? 'The project was updated.'
-          : 'Project Request saved. Open it to upload its documents, then submit it to the Barangay Chairman.',
+        text: editing ? 'The project was updated.' : 'Project Request sent to the Barangay Chairman for approval.',
       });
       closeModal();
     },
@@ -113,7 +110,6 @@ function ProjectManagement() {
     setForm({
       // Name on the first line and the description below it, so saving keeps both.
       purpose: project.description ? `${project.title}\n${project.description}` : project.title || '',
-      abyipItem: project.abyipItem || '',
       items: rows.length > 0 ? rows : [{ ...emptyItem }],
     });
     setError('');
@@ -173,12 +169,11 @@ function ProjectManagement() {
     // "Prepared by" is the SK Treasurer printed on the sheet.
     const treasurer = officials.find((o) => /treasurer/i.test(o.position || ''));
 
-    // A Project Request is saved at Pending Approval; the budget is the total of the rows and
-    // is worked out by the server. The schedule is set later, at the Approved stage.
+    // A Project Request is saved as Proposed; the budget is the total of the rows and is
+    // worked out by the server. The schedule is set later, in the Planning stage.
     saveMutation.mutate({
       title,
       description: rest.join('\n').trim(),
-      abyipItem: form.abyipItem.trim(),
       requestItems: form.items,
       proposedByName: treasurer ? treasurer.name : '',
       proposedByPosition: treasurer ? treasurer.position : '',
@@ -189,7 +184,7 @@ function ProjectManagement() {
     <div>
       <PageHeader
         title="Project Management"
-        description="Move each SK project through its stages, from the request to liquidation."
+        description="Track SK projects, progress, and expenses through liquidation reports."
         actions={
           <Button variant="accent" onClick={openCreate}>
             <Plus size={18} strokeWidth={2} aria-hidden="true" />
@@ -251,19 +246,15 @@ function ProjectManagement() {
               // One line saying what the project is waiting for, if anything
               const waiting = deletionPending
                 ? 'Deletion requested: awaiting chairman approval'
-                : p.status === 'PENDING_APPROVAL'
-                  ? p.submittedAt
-                    ? 'Awaiting Barangay Chairman approval'
-                    : `Not submitted: ${p.docsChecked} of ${p.docsTotal} documents ready`
-                  : p.status === 'APPROVED' && !p.startDate
+                : p.status === 'PROPOSED'
+                  ? 'Awaiting Barangay Chairman approval'
+                  : p.status === 'PLANNING'
                     ? 'Waiting for the schedule'
-                    : p.status === 'ON_HOLD'
-                      ? 'On hold'
-                      : p.canProceed
-                        ? 'Ready for the next stage'
-                        : p.docsTotal
-                          ? `${p.docsChecked} of ${p.docsTotal} documents complete`
-                          : null;
+                    : p.status === 'ONGOING' && !p.canComplete
+                      ? 'Liquidation or checklist pending'
+                      : p.status === 'ON_HOLD'
+                        ? 'On hold'
+                        : null;
               return (
                 <ProjectCard
                   key={p.id}

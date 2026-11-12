@@ -4,9 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
   CalendarClock,
-  CircleCheck,
-  CircleX,
-  ClipboardCheck,
   Flag,
   Mail,
   Target,
@@ -25,10 +22,6 @@ const TYPE_STYLE = {
   // Calendar reminders
   EVENT_1D: { Icon: CalendarClock, tone: 'bg-brand-50', color: 'text-brand-700' },
   EVENT_1H: { Icon: CalendarClock, tone: 'bg-brand-100', color: 'text-brand-800' },
-  // Project Requests: submitted (to the chairman), approved or rejected (to the SK Admin)
-  REQUEST_SUBMITTED: { Icon: ClipboardCheck, tone: 'bg-amber-50', color: 'text-amber-800' },
-  REQUEST_APPROVED: { Icon: CircleCheck, tone: 'bg-green-50', color: 'text-green-700' },
-  REQUEST_REJECTED: { Icon: CircleX, tone: 'bg-red-50', color: 'text-red-700' },
 };
 
 function timeAgo(iso) {
@@ -111,8 +104,8 @@ export default function NotificationBell() {
             <div className="max-h-[60vh] overflow-y-auto sm:max-h-96">
               {notifications.length === 0 ? (
                 <p className="px-4 py-8 text-center text-sm text-slate-600">
-                  No notifications yet. You will be alerted about Project Requests, meetings coming up,
-                  and projects about to end.
+                  No notifications yet. You will be alerted at 50%, 75% and 90% progress, and when
+                  a project is about to end.
                 </p>
               ) : (
                 notifications.map((n) => {

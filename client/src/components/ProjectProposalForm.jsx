@@ -254,22 +254,6 @@ export default function ProjectProposalForm({
         </p>
       </div>
 
-      {/* The ABYIP (Annual Barangay Youth Investment Program) item that funds the project */}
-      <div className="mt-4">
-        <label className="text-sm font-bold uppercase text-black" htmlFor="abyip-item">
-          ABYIP item
-        </label>
-        <input
-          id="abyip-item"
-          className="input mt-1"
-          maxLength={200}
-          value={form.abyipItem || ''}
-          onChange={(e) => update('abyipItem', e.target.value)}
-          placeholder="e.g. Sports Development: Basketball League"
-        />
-        <p className="mt-1 text-xs text-slate-500">Optional. The item in the ABYIP that funds this project.</p>
-      </div>
-
     </div>
   );
 }

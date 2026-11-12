@@ -156,22 +156,17 @@ const generatedBy = (user) => `${user?.name || ''} (${roleLabel(user)})`;
 
 // ---------------- Dashboard ----------------
 
-// Planned: Pending Approval and Approved; Ongoing: Purchasing to Liquidation; Completed includes Archived.
-const PROJECT_ROWS = ['Planned', 'Ongoing', 'On Hold', 'Completed', 'Rejected'];
+const PROJECT_ROWS = ['Planned', 'Ongoing', 'On Hold', 'Completed', 'Cancelled'];
 
 const peso = (n) =>
   `PHP ${Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const PROJECT_STATUS_LABEL = {
-  PENDING_APPROVAL: 'Pending Approval',
-  APPROVED: 'Approved',
-  PURCHASING: 'Purchasing',
-  FUND_RELEASE: 'Fund Release',
-  IMPLEMENTATION: 'Implementation',
-  LIQUIDATION: 'Liquidation',
+  PROPOSED: 'Proposed',
+  PLANNING: 'Planning',
+  ONGOING: 'Ongoing',
   COMPLETED: 'Completed',
-  REJECTED: 'Rejected',
+  CANCELLED: 'Cancelled',
   ON_HOLD: 'On Hold',
-  ARCHIVED: 'Archived',
 };
 const slug = (t) =>
   String(t || '')
@@ -201,9 +196,8 @@ function projectRows(p) {
     ['Project', p.title],
     ['Category', p.category || '-'],
     ['Status', PROJECT_STATUS_LABEL[p.status] || p.status],
-    ['Documents', `${p.documentsChecked || 0} checked of ${p.documentCount || 0} uploaded`],
-    ['Amount spent', p.amountSpent == null ? '-' : peso(p.amountSpent)],
-    ['Amount returned', p.amountReturned == null ? '-' : peso(p.amountReturned)],
+    ['Liquidation files', String(p.liquidationCount || 0)],
+    ['Checklist', p.checklistTotal ? `${p.checklistDone} of ${p.checklistTotal} done` : 'No checklist items'],
     ['Schedule', timeline],
     ['Location', p.location || '-'],
     ['Budget', peso(p.budget)],
@@ -510,8 +504,8 @@ export async function exportAttendanceExcel({ data, settings, user, filters }) {
 
 const ARCHIVE_TITLE = {
   completed: 'Completed Projects',
-  rejected: 'Rejected Projects',
-  archived: 'Archived Projects',
+  cancelled: 'Cancelled Projects',
+  onhold: 'On Hold Projects (Archived)',
   deleted: 'Deleted Projects',
 };
 
@@ -536,15 +530,11 @@ function archiveTable(tab, projects) {
       widths: [6, 28, 16, 14, 14, 30, 20, 20],
     };
   }
-  const when = (p) => (tab === 'rejected' ? p.reviewedAt || p.updatedAt : p.updatedAt);
-  const note = (p) =>
-    tab === 'rejected'
-      ? p.rejectionRemarks || p.reviewRemarks || '-'
-      : p.amountSpent != null
-        ? `Spent ${peso(p.amountSpent)}, returned ${peso(p.amountReturned)}`
-        : '-';
+  const when = (p) =>
+    tab === 'onhold' ? p.holdArchivedAt : tab === 'cancelled' ? p.reviewedAt || p.updatedAt : p.updatedAt;
+  const note = (p) => (tab === 'cancelled' ? p.reviewRemarks || p.cancelReason || '-' : '-');
   return {
-    head: ['No.', 'Project', 'Status', 'Schedule', 'Budget', tab === 'archived' ? 'Archived on' : 'Date', 'Remarks'],
+    head: ['No.', 'Project', 'Status', 'Schedule', 'Budget', tab === 'onhold' ? 'Moved to Archives' : 'Date', 'Remarks'],
     rows: projects.map((p, i) => [
       String(i + 1),
       p.title,

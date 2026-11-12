@@ -51,7 +51,7 @@ export default function ProjectDetailPublic() {
             {project.title}
           </h1>
           {project.category && <p className="mt-1 text-slate-600">{project.category}</p>}
-          <StageSteps status={project.status} heldFrom={project.heldFromStatus} allLabels className="mt-4 max-w-2xl" />
+          <StageSteps status={project.status} className="mt-4 max-w-xl" />
         </div>
       </div>
 

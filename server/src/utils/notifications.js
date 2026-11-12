@@ -2,9 +2,6 @@ const prisma = require('../prisma');
 const { isMailConfigured, sendMail } = require('./mailer');
 
 const HOUR = 60 * 60 * 1000;
-// The stages where a project is being carried out (its schedule is running): ending-soon
-// alerts watch these.
-const RUNNING_STAGES = ['PURCHASING', 'FUND_RELEASE', 'IMPLEMENTATION', 'LIQUIDATION'];
 
 // Philippine date and time, e.g. "Oct 22, 2026, 5:00 PM".
 function when(date) {
@@ -23,7 +20,7 @@ function when(date) {
 // { type, title, message }; the unique (project, type) key in the database makes sure
 // every alert is only ever created once.
 function evaluateProject(project, now = new Date()) {
-  if (!RUNNING_STAGES.includes(project.status)) return [];
+  if (project.status !== 'ONGOING') return [];
   const alerts = [];
 
   if (project.endDate) {
@@ -34,7 +31,7 @@ function evaluateProject(project, now = new Date()) {
       alerts.push({
         type: 'ENDING_1D',
         title: `Ending within a day: ${project.title}`,
-        message: `${project.title} ends on ${when(project.endDate)}. Finish the required documents of its current stage.`,
+        message: `${project.title} ends on ${when(project.endDate)}. Upload the receipt liquidation and finish the checklist before marking it as completed.`,
       });
     } else if (left <= 72 * HOUR) {
       const days = Math.ceil(left / (24 * HOUR));
@@ -88,7 +85,7 @@ async function syncNotifications({ force = false } = {}) {
   await prisma.notification.deleteMany({ where: { type: 'OVERDUE' } });
 
   const projects = await prisma.project.findMany({
-    where: { archivedAt: null, status: { in: RUNNING_STAGES } },
+    where: { archivedAt: null, status: 'ONGOING' },
     select: { id: true, title: true, status: true, endDate: true },
   });
 
@@ -129,11 +126,9 @@ const APP_URL = () => (process.env.APP_URL || 'http://localhost:5173').replace(/
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
 const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ESCAPES[c]);
 
-// Emailed alerts: a meeting about to start, a running project about to end, and the
-// decisions on a Project Request (submitted -> the chairman; approved or rejected -> the
-// SK Admin). (Older kinds such as progress milestones stay in the bell.)
-const REQUEST_TYPES = ['REQUEST_SUBMITTED', 'REQUEST_APPROVED', 'REQUEST_REJECTED'];
-const EMAIL_TYPES = ['EVENT_1H', 'EVENT_1D', 'ENDING_1D', 'ENDING_3D', ...REQUEST_TYPES];
+// Only alerts about something still to come are emailed: a meeting about to start, or
+// an ongoing project about to end. (Older kinds such as progress milestones stay in the bell.)
+const EMAIL_TYPES = ['EVENT_1H', 'EVENT_1D', 'ENDING_1D', 'ENDING_3D'];
 
 // Where an alert's button leads. The SK Admin opens the meeting or the project itself; the
 // Barangay Chairman has no Meetings page, so a meeting alert opens the Dashboard (which lists
@@ -144,7 +139,6 @@ function alertLink(a, role) {
       ? { href: `${APP_URL()}/admin`, label: 'Open the dashboard' }
       : { href: `${APP_URL()}/admin/meetings/${a.eventId}`, label: 'Open the meeting' };
   }
-  if (a.type === 'REQUEST_SUBMITTED') return { href: `${APP_URL()}/admin/projects/${a.projectId}`, label: 'Review the request' };
   return { href: `${APP_URL()}/admin/projects/${a.projectId}`, label: 'Open the project' };
 }
 
@@ -154,9 +148,6 @@ const KIND = {
   EVENT_1D: { text: 'Meeting · coming up', color: '#1F4D3A' },
   ENDING_1D: { text: 'Project · ends within a day', color: '#A9502C' },
   ENDING_3D: { text: 'Project · ending soon', color: '#8A5F12' },
-  REQUEST_SUBMITTED: { text: 'Project Request · waiting for approval', color: '#8A5F12' },
-  REQUEST_APPROVED: { text: 'Project Request · approved', color: '#1F4D3A' },
-  REQUEST_REJECTED: { text: 'Project Request · rejected', color: '#A9502C' },
 };
 
 // Builds one email that lists every given alert, for one kind of account (role decides the
@@ -164,7 +155,7 @@ const KIND = {
 // pine buttons. Inline styles and table layout so every mail app shows it the same way.
 function buildDigest(alerts, { role = 'ADMIN' } = {}) {
   const subject =
-    alerts.length === 1 ? `SK Monitoring: ${alerts[0].title}` : `SK Monitoring: ${alerts.length} new alerts`;
+    alerts.length === 1 ? `SK Monitoring: ${alerts[0].title}` : `SK Monitoring: ${alerts.length} upcoming alerts`;
 
   const text = [
     'SK Salinas 1 · Project Monitoring',
@@ -217,15 +208,14 @@ function buildDigest(alerts, { role = 'ADMIN' } = {}) {
 const EMAIL_WINDOW_MS = 6 * 60 * 60 * 1000;
 let emailing = false;
 
-// True while the meeting or project the alert is about is still ahead (a decision on a
-// request is always news, unless the project was deleted).
+// True while the meeting or project the alert is about is still ahead.
 function stillUpcoming(n, now) {
   if (n.event) return new Date(n.event.startAt) > now;
-  if (n.project && REQUEST_TYPES.includes(n.type)) return !n.project.archivedAt;
   if (n.project) {
     return (
-      RUNNING_STAGES.includes(n.project.status) &&
+      n.project.status === 'ONGOING' &&
       !n.project.archivedAt &&
+      !n.project.holdArchivedAt &&
       Boolean(n.project.endDate) &&
       new Date(n.project.endDate) > now
     );
@@ -233,9 +223,8 @@ function stillUpcoming(n, now) {
   return false;
 }
 
-// Emails new alerts about upcoming meetings, projects ending soon and Project Request decisions
-// to the registered email of every active SK Admin and Barangay Chairman account (one digest per
-// account; an alert with an audience only goes to that role's accounts). Alerts that
+// Emails new alerts about upcoming meetings and projects ending soon, to the registered email
+// of every active SK Admin and Barangay Chairman account (one digest per account). Alerts that
 // are of another kind or are no longer upcoming are marked as handled without being sent, so
 // old news is never emailed. Alerts are marked only after sending; if the mail service fails
 // they are retried on the next check. Does nothing until mail is set up.
@@ -247,12 +236,12 @@ async function sendPendingEmails() {
     const pending = await prisma.notification.findMany({
       where: {
         emailedAt: null,
-        OR: [{ audience: null }, { audience: { in: ['ADMIN', 'CHAIRMAN'] } }],
+        audience: null,
         createdAt: { gt: new Date(now.getTime() - EMAIL_WINDOW_MS) },
       },
       include: {
         event: { select: { startAt: true } },
-        project: { select: { status: true, endDate: true, archivedAt: true } },
+        project: { select: { status: true, endDate: true, archivedAt: true, holdArchivedAt: true } },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -273,9 +262,7 @@ async function sendPendingEmails() {
       });
       if (targets.length === 0) return 0; // no accounts to send to: keep them for later
       for (const u of targets) {
-        const mine = toSend.filter((a) => !a.audience || a.audience === u.role);
-        if (mine.length === 0) continue;
-        const { subject, text, html } = buildDigest(mine, { role: u.role });
+        const { subject, text, html } = buildDigest(toSend, { role: u.role });
         await sendMail({ to: u.email.trim(), subject, text, html });
       }
     }
@@ -289,23 +276,4 @@ async function sendPendingEmails() {
   }
 }
 
-// A bell alert (and email) about one project for one kind of account: audience 'CHAIRMAN'
-// or 'ADMIN'. Replaces an older alert of the same type for the project, so the newest
-// decision is the one shown and sent. The email goes out right away, without waiting.
-async function notifyProject({ projectId, type, title, message, audience }) {
-  await prisma.$transaction([
-    prisma.notification.deleteMany({ where: { projectId, type } }),
-    prisma.notification.create({ data: { projectId, type, title, message, audience } }),
-  ]);
-  sendPendingEmails().catch((err) => console.error('Alert email failed:', err.message));
-}
-
-module.exports = {
-  evaluateProject,
-  evaluateEvent,
-  syncNotifications,
-  buildDigest,
-  sendPendingEmails,
-  notifyProject,
-  RUNNING_STAGES,
-};
+module.exports = { evaluateProject, evaluateEvent, syncNotifications, buildDigest, sendPendingEmails };

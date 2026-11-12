@@ -38,7 +38,7 @@ export function ProjectCard({ project, footer, to, notice }) {
           header
         )}
 
-        <StageSteps status={project.status} heldFrom={project.heldFromStatus} className="mt-4" />
+        <StageSteps status={project.status} className="mt-4" />
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           {project.startDate && project.endDate ? (
             <span className="text-sm text-slate-600">
