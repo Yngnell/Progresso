@@ -13,23 +13,26 @@ import { exportArchiveExcel, exportArchivePdf } from '../../utils/reportExport';
 
 const TABS = [
   { id: 'completed', label: 'Completed' },
-  { id: 'cancelled', label: 'Cancelled' },
-  { id: 'onhold', label: 'On Hold' },
+  { id: 'rejected', label: 'Rejected' },
+  { id: 'archived', label: 'Archived' },
   { id: 'deleted', label: 'Deleted' },
 ];
+// Old links (before the SK project process) still open the matching tab.
+const OLD_TABS = { cancelled: 'rejected', onhold: 'archived' };
 
 const EMPTY = {
-  completed: ['No completed projects yet', 'A project appears here after the SK Admin marks it as completed.'],
-  cancelled: ['No cancelled projects', 'A Project Request appears here when the Barangay Chairman rejects it.'],
-  onhold: ['No on hold projects', 'An On Hold project appears here after the SK Admin moves it to Archives.'],
+  completed: ['No completed projects yet', 'A project appears here after its Liquidation stage is complete.'],
+  rejected: ['No rejected projects', 'A Project Request appears here when the Barangay Chairman rejects it.'],
+  archived: ['No archived projects', 'A completed project appears here after the SK Admin archives it.'],
   deleted: ['No deleted projects', 'A project appears here after the Barangay Chairman approves its deletion request.'],
 };
 
-// Archives: completed, cancelled, on hold and deleted projects. They are view only; nothing is
+// Archives: completed, rejected, archived and deleted projects. They are view only; nothing is
 // erased, and the Barangay Chairman can restore a deleted project.
 export default function AdminArchive() {
   const [params, setParams] = useSearchParams();
-  const tab = TABS.some((t) => t.id === params.get('tab')) ? params.get('tab') : 'completed';
+  const asked = OLD_TABS[params.get('tab')] || params.get('tab');
+  const tab = TABS.some((t) => t.id === asked) ? asked : 'completed';
   const { user } = useAuth();
   const [notice, setNotice] = useState(null); // { ok, text } after an export
 
@@ -59,7 +62,7 @@ export default function AdminArchive() {
     <div>
       <PageHeader
         title="Archives"
-        description="Completed, cancelled, on hold and deleted projects. They are view only and their records are kept."
+        description="Completed, rejected, archived and deleted projects. They are view only and their records are kept."
         actions={<ExportMenu onExport={onExport} disabled={isLoading} />}
       />
       {notice && (
@@ -98,7 +101,7 @@ export default function AdminArchive() {
   );
 }
 
-// Completed, Cancelled or archived On Hold projects, opened read only.
+// Completed, Rejected or Archived projects, opened read only.
 function ClosedList({ tab }) {
   const { data, isLoading } = useQuery({
     queryKey: ['projects', 'archive', tab],

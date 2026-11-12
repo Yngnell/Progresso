@@ -1,10 +1,10 @@
 const prisma = require('../prisma');
 const { syncNotifications } = require('../utils/notifications');
 
-// Alerts with an audience were only for the SK Chairperson's account, which no longer
-// exists; everyone sees the alerts without an audience.
-function visibleTo() {
-  return { audience: null };
+// Alerts without an audience are for the whole SK side; an alert with an audience ('ADMIN' or
+// 'CHAIRMAN') is only for that kind of account (e.g. a request waiting for the chairman).
+function visibleTo(user) {
+  return { OR: [{ audience: null }, { audience: user.role }] };
 }
 
 // GET /api/notifications — the SK side. Newest first, with a per-user read flag.
@@ -62,7 +62,8 @@ async function markAllRead(req, res, next) {
     await prisma.$executeRaw`
       UPDATE "Notification"
       SET "readByIds" = array_append("readByIds", ${uid})
-      WHERE NOT (${uid} = ANY("readByIds"))`;
+      WHERE NOT (${uid} = ANY("readByIds"))
+        AND ("audience" IS NULL OR "audience" = ${req.user.role})`;
     res.json({ ok: true });
   } catch (err) {
     next(err);

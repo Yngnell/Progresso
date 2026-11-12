@@ -6,13 +6,16 @@ import { projectsApi } from '../api/projects';
 import { ProjectCard } from '../components/ProjectCard';
 import { EmptyState } from '../components/ui';
 import PageHeader from '../components/PageHeader';
+import { RUNNING_STAGES } from '../utils/format';
 
+// Ongoing: Purchasing to Liquidation; Approved: waiting to start.
 const FILTERS = [
   { key: '', label: 'All' },
-  { key: 'ONGOING', label: 'Ongoing' },
-  { key: 'PLANNING', label: 'Planning' },
-  { key: 'COMPLETED', label: 'Completed' },
+  { key: 'ONGOING', label: 'Ongoing', statuses: RUNNING_STAGES },
+  { key: 'APPROVED', label: 'Approved', statuses: ['APPROVED'] },
+  { key: 'COMPLETED', label: 'Completed', statuses: ['COMPLETED'] },
 ];
+const inFilter = (key, p) => !key || FILTERS.find((f) => f.key === key).statuses.includes(p.status);
 
 export default function ProjectsPublic() {
   const [filter, setFilter] = useState('');
@@ -21,8 +24,8 @@ export default function ProjectsPublic() {
     queryFn: () => projectsApi.list({}),
   });
   const projects = data?.projects || [];
-  const shown = filter ? projects.filter((p) => p.status === filter) : projects;
-  const count = (key) => (key ? projects.filter((p) => p.status === key).length : projects.length);
+  const shown = projects.filter((p) => inFilter(filter, p));
+  const count = (key) => projects.filter((p) => inFilter(key, p)).length;
 
   return (
     <div className="mx-auto max-w-content px-4 py-10 sm:px-8">

@@ -19,13 +19,22 @@ enum Role {
   VIEWER
 }
 
+// The SK project process. Each project moves one stage at a time:
+//   PENDING_APPROVAL -> APPROVED -> PURCHASING -> FUND_RELEASE -> IMPLEMENTATION -> LIQUIDATION -> COMPLETED
+// REJECTED: the Barangay Chairman rejected the request (with remarks).
+// ON_HOLD: paused; it resumes at the stage it was held from (heldFromStatus).
+// ARCHIVED: a completed project filed away (read only).
 enum ProjectStatus {
-  PROPOSED
-  PLANNING
-  ONGOING
+  PENDING_APPROVAL
+  APPROVED
+  PURCHASING
+  FUND_RELEASE
+  IMPLEMENTATION
+  LIQUIDATION
   COMPLETED
-  CANCELLED
+  REJECTED
   ON_HOLD
+  ARCHIVED
 }
 
 enum EventType {
@@ -94,6 +103,8 @@ model User {
   news         News[]    // articles authored (admin)
   createdProjects  Project[] @relation("ProjectCreator")
   reviewedProjects Project[] @relation("ProjectReviewer")
+  uploadedDocuments ProjectDocument[]
+  stageChanges      ProjectStageLog[]
 
   @@index([role])
 }
@@ -126,8 +137,19 @@ model Project {
   title          String
   description    String?
   category       String?
-  status         ProjectStatus @default(PROPOSED)
+  status         ProjectStatus @default(PENDING_APPROVAL)
   budget         Decimal       @default(0) @db.Decimal(12, 2)
+  // The ABYIP (Annual Barangay Youth Investment Program) item the project is funded under.
+  abyipItem      String?
+  // Liquidation: what was spent, and what goes back (budget - spent, 2 decimals).
+  amountSpent    Decimal?      @db.Decimal(12, 2)
+  amountReturned Decimal?      @db.Decimal(12, 2)
+  // The Barangay Chairman's remarks when the request is rejected.
+  rejectionRemarks String?
+  // Set when the SK Admin submits the request (with its documents) to the Barangay Chairman.
+  submittedAt    DateTime?
+  // The stage an On Hold project returns to when it is resumed.
+  heldFromStatus ProjectStatus?
   progress       Int           @default(0) // legacy; progress is now computed
   // How progress is measured: DATETIME (elapsed share of the start-to-end time) or
   // ATTENDEE (people who checked in at the linked events / targetAttendees)
@@ -165,8 +187,8 @@ model Project {
   notifications  Notification[]
   deletionRequests DeletionRequest[]
   photos         Photo[]
-  liquidationFiles LiquidationFile[]
-  checklistItems   ChecklistItem[]
+  documents      ProjectDocument[]
+  stageLogs      ProjectStageLog[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -235,11 +257,11 @@ model Notification {
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   eventId   String?
   event     Event?   @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  type      String   // PROGRESS_50/75/90 | ENDING_3D | ENDING_1D (projects) | EVENT_1D | EVENT_1H (calendar)
+  type      String   // ENDING_3D | ENDING_1D | REQUEST_SUBMITTED/APPROVED/REJECTED (projects) | EVENT_1D | EVENT_1H (calendar)
   title     String
   message   String
   readByIds String[] @default([])
-  // Who sees it: empty = the whole SK side; "SK_CHAIR" = only the SK Chairperson
+  // Who sees it: empty = the whole SK side; "ADMIN" or "CHAIRMAN" = only that kind of account
   audience  String?
   emailedAt DateTime? // set once the alert has been emailed to everyone who opted in
   viewerEmailedAt DateTime? // same, for the residents who ticked "email me updates"
@@ -336,38 +358,57 @@ model PendingSignup {
 
   @@index([createdAt])
 }
+// A progress photo of a project or an event, shown on the public site.
+// The documents each stage needs before the project can move on (seeded; see seed.js).
+// minFiles: how many checked uploads the document needs (e.g. at least 3 supplier canvasses).
+model RequiredDocument {
+  id           String        @id @default(uuid())
+  stage        ProjectStatus
+  name         String
+  minFiles     Int           @default(1)
+  displayOrder Int           @default(0)
+  documents    ProjectDocument[]
+
+  @@unique([stage, name])
+  @@index([stage])
+}
+
+// One uploaded file for a required document of a project. The SK Admin checks it after
+// reviewing it; a stage is complete when every required document has enough checked files.
+model ProjectDocument {
+  id                 String           @id @default(uuid())
+  projectId          String
+  project            Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requiredDocumentId String
+  requiredDocument   RequiredDocument @relation(fields: [requiredDocumentId], references: [id])
+  fileUrl            String           // stored file name inside uploads/receipts (served through the API)
+  originalName       String
+  mimeType           String
+  isChecked          Boolean          @default(false)
+  uploadedById       String?
+  uploadedBy         User?            @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedAt         DateTime         @default(now())
+
+  @@index([projectId])
+  @@index([requiredDocumentId])
+}
+
+// Every stage change of a project: who moved it, from where to where, and why.
+model ProjectStageLog {
+  id          String         @id @default(uuid())
+  projectId   String
+  project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fromStatus  ProjectStatus?
+  toStatus    ProjectStatus
+  remarks     String?
+  changedById String?
+  changedBy   User?          @relation(fields: [changedById], references: [id], onDelete: SetNull)
+  changedAt   DateTime       @default(now())
+
+  @@index([projectId, changedAt])
+}
 
 // A progress photo of a project or an event, shown on the public site.
-// Receipt liquidation of an Ongoing project (JPG, PNG or PDF). At least one is needed
-// before the project can be marked as completed. Files live in uploads/receipts.
-model LiquidationFile {
-  id             String   @id @default(uuid())
-  projectId      String
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  fileName       String   // stored file name inside uploads/receipts
-  originalName   String
-  mimeType       String
-  uploadedById   String?
-  uploadedByName String?
-  createdAt      DateTime @default(now())
-
-  @@index([projectId])
-}
-
-// Optional checklist of an Ongoing project. When it has items, all of them must be
-// checked before the project can be marked as completed.
-model ChecklistItem {
-  id           String   @id @default(uuid())
-  projectId    String
-  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  label        String
-  done         Boolean  @default(false)
-  displayOrder Int      @default(0)
-  createdAt    DateTime @default(now())
-
-  @@index([projectId])
-}
-
 model Photo {
   id             String   @id @default(uuid())
   projectId      String?

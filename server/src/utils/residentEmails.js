@@ -1,5 +1,7 @@
 const prisma = require('../prisma');
 const { isMailConfigured, sendMail } = require('./mailer');
+// The stages where a project's schedule is running (kept the same as in notifications.js).
+const RUNNING_STAGES = ['PURCHASING', 'FUND_RELEASE', 'IMPLEMENTATION', 'LIQUIDATION'];
 
 // Emails for residents who ticked "I would like to receive news and updates by email"
 // when they signed up: projects wrapping up and calendar reminders.
@@ -108,12 +110,13 @@ async function sendPendingViewerEmails() {
     const pending = await prisma.notification.findMany({
       where: {
         viewerEmailedAt: null,
+        audience: null, // alerts meant for one SK account (request decisions) never go to residents
         createdAt: { gt: new Date(Date.now() - EMAIL_WINDOW_MS) },
       },
       orderBy: { createdAt: 'asc' },
       include: {
         project: {
-          select: { id: true, title: true, status: true, endDate: true, archivedAt: true, holdArchivedAt: true, approvalState: true },
+          select: { id: true, title: true, status: true, endDate: true, archivedAt: true, approvalState: true },
         },
         event: { select: { id: true, title: true, startAt: true, location: true } },
       },
@@ -125,7 +128,7 @@ async function sendPendingViewerEmails() {
     const upcoming = pending.filter((n) =>
       n.event
         ? new Date(n.event.startAt) > now
-        : Boolean(n.project && n.project.status === 'ONGOING' && !n.project.holdArchivedAt && n.project.endDate && new Date(n.project.endDate) > now)
+        : Boolean(n.project && RUNNING_STAGES.includes(n.project.status) && n.project.endDate && new Date(n.project.endDate) > now)
     );
 
     let sent = 0;

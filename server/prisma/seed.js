@@ -55,8 +55,43 @@ async function ensureOfficials() {
   }
 }
 
+// The documents each stage of the SK project process needs (minFiles: checked uploads needed).
+// The same list is added by the 20261118090000_sk_project_process migration.
+const REQUIRED_DOCUMENTS = [
+  ['PENDING_APPROVAL', 'Project Proposal', 1],
+  ['PENDING_APPROVAL', 'SK Resolution', 1],
+  ['PENDING_APPROVAL', 'Meeting Minutes', 1],
+  ['PURCHASING', 'Purchase Request', 1],
+  ['PURCHASING', 'Supplier Canvass', 3],
+  ['PURCHASING', 'Abstract of Canvass', 1],
+  ['PURCHASING', 'Purchase Order', 1],
+  ['FUND_RELEASE', 'Obligation Request', 1],
+  ['FUND_RELEASE', 'Disbursement Voucher', 1],
+  ['FUND_RELEASE', 'Check or Cash Advance Record', 1],
+  ['IMPLEMENTATION', 'Attendance Sheet', 1],
+  ['IMPLEMENTATION', 'Activity Photos', 3],
+  ['IMPLEMENTATION', 'Delivery Receipt', 1],
+  ['IMPLEMENTATION', 'Inspection or Acceptance Report', 1],
+  ['LIQUIDATION', 'Liquidation Report', 1],
+  ['LIQUIDATION', 'Official Receipts or Sales Invoices', 1],
+];
+
+async function ensureRequiredDocuments() {
+  const order = {};
+  for (const [stage, name, minFiles] of REQUIRED_DOCUMENTS) {
+    order[stage] = (order[stage] || 0) + 1;
+    await prisma.requiredDocument.upsert({
+      where: { stage_name: { stage, name } },
+      update: {},
+      create: { stage, name, minFiles, displayOrder: order[stage] },
+    });
+  }
+  console.log(`Required documents ready: ${REQUIRED_DOCUMENTS.length}`);
+}
+
 async function main() {
   await ensureOfficials();
+  await ensureRequiredDocuments();
 
   await ensureUser({
     email: process.env.ADMIN_EMAIL || 'admin.sksalinas1@gmail.com',

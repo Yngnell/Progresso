@@ -12,7 +12,7 @@ import { eventsApi } from '../../api/events';
 import { useAuth } from '../../context/AuthContext';
 import { isAdmin } from '../../utils/roles';
 import { Badge, Button, Card } from '../../components/ui';
-import { PROJECT_STATUS, formatPeso, formatDateTime } from '../../utils/format';
+import { PROJECT_STATUS, RUNNING_STAGES, formatPeso, formatDateTime } from '../../utils/format';
 import { STAGES, StageSteps, StatusRibbon } from '../../components/Roundel';
 import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
@@ -23,27 +23,28 @@ import {
 } from '../../components/charts/DashboardCharts';
 import { CHART } from '../../components/charts/palette';
 
-// Same colours as the status ribbons, so the donut and the ribbons read as one system.
-const STATUS_COLOR = {
-  PROPOSED: CHART.gold,
-  PLANNING: '#6A967A',
-  ONGOING: CHART.azure,
-  COMPLETED: CHART.green,
-  CANCELLED: CHART.red,
-  ON_HOLD: CHART.slate,
-};
-const STATUS_ORDER = ['PROPOSED', 'PLANNING', 'ONGOING', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
-const STATUS_LABEL = Object.fromEntries(STATUS_ORDER.map((k) => [k, PROJECT_STATUS[k].label]));
+// The donut groups the stages so it stays readable: Purchasing to Liquidation are "In progress"
+// and Archived counts as Completed. Same colours as the status ribbons.
+const STATUS_GROUPS = [
+  { key: 'PENDING_APPROVAL', label: 'Pending Approval', color: CHART.gold, statuses: ['PENDING_APPROVAL'] },
+  { key: 'APPROVED', label: 'Approved', color: '#6A967A', statuses: ['APPROVED'] },
+  { key: 'RUNNING', label: 'In progress', color: CHART.azure, statuses: RUNNING_STAGES },
+  { key: 'ON_HOLD', label: 'On Hold', color: CHART.slate, statuses: ['ON_HOLD'] },
+  { key: 'COMPLETED', label: 'Completed', color: CHART.green, statuses: ['COMPLETED', 'ARCHIVED'] },
+  { key: 'REJECTED', label: 'Rejected', color: CHART.red, statuses: ['REJECTED'] },
+];
+const STATUS_COLOR = Object.fromEntries(STATUS_GROUPS.map((g) => [g.key, g.color]));
+const STATUS_LABEL = Object.fromEntries(STATUS_GROUPS.map((g) => [g.key, g.label]));
 
 const DAY = 24 * 60 * 60 * 1000;
 
-// Ongoing projects an official should look at first: past their end date and not yet
-// completed, or ending within 3 days.
+// Running projects (Purchasing to Liquidation) an official should look at first: past their
+// end date and not yet completed, or ending within 3 days.
 function needsAttention(projects) {
   const now = Date.now();
   const ended = (p) => (p.endDate && new Date(p.endDate).getTime() <= now ? 0 : 1);
   return projects
-    .filter((p) => p.status === 'ONGOING' && p.endDate && new Date(p.endDate).getTime() - now <= 3 * DAY)
+    .filter((p) => RUNNING_STAGES.includes(p.status) && p.endDate && new Date(p.endDate).getTime() - now <= 3 * DAY)
     .sort((a, b) => ended(a) - ended(b) || new Date(a.endDate) - new Date(b.endDate));
 }
 
@@ -162,9 +163,9 @@ export default function Dashboard() {
     .slice(0, 5);
   const recent = projects.slice(0, 6);
 
-  const statusData = STATUS_ORDER.map((k) => ({
-    status: k,
-    count: (s.byStatus || []).find((row) => row.status === k)?.count || 0,
+  const statusData = STATUS_GROUPS.map((g) => ({
+    status: g.key,
+    count: (s.byStatus || []).filter((row) => g.statuses.includes(row.status)).reduce((sum, row) => sum + row.count, 0),
   })).filter((d) => d.count > 0);
   const awaiting = (s.pendingApproval || 0) + (s.pendingDeletions || 0);
 
@@ -191,7 +192,7 @@ export default function Dashboard() {
           <Link to="/admin/approvals">
             <Button variant="primary">
               <ClipboardCheck size={18} strokeWidth={1.75} aria-hidden="true" />
-              Review proposals
+              Review requests
             </Button>
           </Link>
           )}
@@ -207,7 +208,7 @@ export default function Dashboard() {
           <span className="font-semibold">
             {[
               s.pendingApproval > 0 &&
-                `${s.pendingApproval} ${s.pendingApproval === 1 ? 'proposal' : 'proposals'}`,
+                `${s.pendingApproval} Project ${s.pendingApproval === 1 ? 'Request' : 'Requests'}`,
               s.pendingDeletions > 0 &&
                 `${s.pendingDeletions} deletion ${s.pendingDeletions === 1 ? 'request' : 'requests'}`,
             ]
@@ -228,11 +229,13 @@ export default function Dashboard() {
             label="Stage"
             value={PROJECT_STATUS[selected.status]?.label || selected.status}
             note={
-              selected.status === 'CANCELLED'
-                ? 'Rejected at the Proposed stage'
+              selected.status === 'REJECTED'
+                ? 'Rejected at the Pending Approval stage'
                 : selected.status === 'ON_HOLD'
-                  ? 'Paused at the Ongoing stage'
-                  : `Stage ${STAGES.indexOf(selected.status) + 1} of ${STAGES.length}`
+                  ? `Paused at the ${PROJECT_STATUS[selected.heldFromStatus]?.label || 'Implementation'} stage`
+                  : selected.status === 'ARCHIVED'
+                    ? 'Completed and filed away'
+                    : `Stage ${STAGES.indexOf(selected.status) + 1} of ${STAGES.length}`
             }
             tone="azure"
           />
@@ -245,12 +248,14 @@ export default function Dashboard() {
         )}
         {selected && (
           <KpiCard
-            label="Liquidation"
-            value={`${selected.liquidationCount || 0} file${selected.liquidationCount === 1 ? '' : 's'}`}
+            label="Stage documents"
+            value={selected.docsTotal ? `${selected.docsChecked} of ${selected.docsTotal}` : '—'}
             note={
-              selected.checklistTotal
-                ? `Checklist: ${selected.checklistDone} of ${selected.checklistTotal} done`
-                : 'No checklist items'
+              selected.amountSpent != null
+                ? `Spent ${formatPeso(selected.amountSpent)}, returned ${formatPeso(selected.amountReturned)}`
+                : selected.docsTotal
+                  ? 'Documents complete at the current stage'
+                  : 'No documents needed at this stage'
             }
             tone="green"
           />
@@ -386,7 +391,7 @@ export default function Dashboard() {
                         <StatusRibbon status={p.status} className="mt-1" />
                       </td>
                       <td className="py-3 pr-4">
-                        <StageSteps status={p.status} showLabels={false} />
+                        <StageSteps status={p.status} heldFrom={p.heldFromStatus} showLabels={false} />
                       </td>
                       <td className="py-3 text-right font-semibold text-slate-900">
                         {formatPeso(p.budget)}
@@ -406,7 +411,7 @@ export default function Dashboard() {
                       <span className="font-bold text-slate-900">{p.title}</span>
                       <StatusRibbon status={p.status} />
                     </span>
-                    <StageSteps status={p.status} className="mt-3" />
+                    <StageSteps status={p.status} heldFrom={p.heldFromStatus} className="mt-3" />
                     <span className="mt-2 block text-sm text-slate-600">Budget {formatPeso(p.budget)}</span>
                   </Link>
                 </li>

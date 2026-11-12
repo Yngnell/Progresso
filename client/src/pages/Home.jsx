@@ -5,7 +5,7 @@ import { ArrowRight } from 'lucide-react';
 import { officialsApi } from '../api/officials';
 import { eventsApi } from '../api/events';
 import { projectsApi } from '../api/projects';
-import { EVENT_TYPE, formatDateTime } from '../utils/format';
+import { EVENT_TYPE, RUNNING_STAGES, formatDateTime } from '../utils/format';
 import { Button, Card, Badge } from '../components/ui';
 import { StageSteps, StatusRibbon } from '../components/Roundel';
 import EventTypeIcon from '../components/EventTypeIcon';
@@ -73,7 +73,7 @@ function Hero({ projects, loading }) {
                       <span className="min-w-0 truncate text-base font-medium text-ink">{p.title}</span>
                       <StatusRibbon status={p.status} />
                     </span>
-                    <StageSteps status={p.status} showLabels={false} className="mt-2" />
+                    <StageSteps status={p.status} heldFrom={p.heldFromStatus} showLabels={false} className="mt-2" />
                   </Link>
                 </li>
               ))}
@@ -131,7 +131,8 @@ export default function Home() {
   });
   const { data: projectsData, isLoading: projectsLoading } = useQuery({
     queryKey: ['projects', 'home'],
-    queryFn: () => projectsApi.list({ status: 'ONGOING' }),
+    // Running projects: Purchasing to Liquidation
+    queryFn: () => projectsApi.list({ status: RUNNING_STAGES.join(',') }),
   });
 
   const officials = (officialsData?.officials || []).slice(0, 4);

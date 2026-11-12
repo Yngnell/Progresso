@@ -1,5 +1,5 @@
 const prisma = require('../prisma');
-const { completionInfo } = require('./projectController');
+const { RUNNING_STAGES } = require('../utils/notifications');
 const { markAbsentees } = require('../utils/absentees');
 
 // Data behind the PDF and Excel exports (Dashboard and Attendance). Dates in the filters
@@ -109,19 +109,20 @@ const EVENT_SELECT = {
 async function projectSummary(projectId) {
   const p = await prisma.project.findUnique({
     where: { id: projectId },
-    include: { liquidationFiles: { select: { id: true } }, checklistItems: { select: { done: true } } },
+    include: { documents: { select: { isChecked: true } } },
   });
   if (!p) return null;
-  const info = completionInfo(p);
+  const docs = p.documents || [];
   return {
     id: p.id,
     title: p.title,
     category: p.category,
     status: p.status,
     budget: Number(p.budget || 0),
-    liquidationCount: info.liquidationCount,
-    checklistDone: info.checklistDone,
-    checklistTotal: info.checklistTotal,
+    documentCount: docs.length,
+    documentsChecked: docs.filter((d) => d.isChecked).length,
+    amountSpent: p.amountSpent == null ? null : Number(p.amountSpent),
+    amountReturned: p.amountReturned == null ? null : Number(p.amountReturned),
     startDate: p.startDate,
     endDate: p.endDate,
     location: p.location,
@@ -151,14 +152,15 @@ async function dashboardReport(req, res, next) {
       const end = p.endDate ? new Date(p.endDate) : start;
       return (!range.to || start <= range.to) && (!range.from || end >= range.from);
     });
-    const byStatus = { Planned: 0, Ongoing: 0, 'On Hold': 0, Completed: 0, Cancelled: 0 };
+    // Planned: waiting for approval or approved; Ongoing: Purchasing to Liquidation.
+    const byStatus = { Planned: 0, Ongoing: 0, 'On Hold': 0, Completed: 0, Rejected: 0 };
     inRange.forEach((p) => {
       const s = p.status;
-      if (s === 'PROPOSED' || s === 'PLANNING') byStatus.Planned += 1;
-      else if (s === 'ONGOING') byStatus.Ongoing += 1;
+      if (s === 'PENDING_APPROVAL' || s === 'APPROVED') byStatus.Planned += 1;
+      else if (RUNNING_STAGES.includes(s)) byStatus.Ongoing += 1;
       else if (s === 'ON_HOLD') byStatus['On Hold'] += 1;
-      else if (s === 'COMPLETED') byStatus.Completed += 1;
-      else if (s === 'CANCELLED') byStatus.Cancelled += 1;
+      else if (s === 'COMPLETED' || s === 'ARCHIVED') byStatus.Completed += 1;
+      else if (s === 'REJECTED') byStatus.Rejected += 1;
     });
     const total = inRange.length;
 

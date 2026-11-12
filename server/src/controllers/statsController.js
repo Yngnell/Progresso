@@ -1,4 +1,5 @@
 const prisma = require('../prisma');
+const { RUNNING_STAGES } = require('../utils/notifications');
 
 // GET /api/stats — dashboard summary numbers, status breakdown and the analytics behind
 // the dashboard charts. ?projectId= narrows everything to one project ("Sort by Project"):
@@ -28,6 +29,7 @@ async function getStats(req, res, next) {
           id: true,
           status: true,
           approvalState: true,
+          submittedAt: true,
         },
       }),
       prisma.deletionRequest.count({ where: { status: 'PENDING' } }),
@@ -45,7 +47,7 @@ async function getStats(req, res, next) {
       }),
     ]);
 
-    // The stage is stored on each project (Proposed, Planning, Ongoing, Completed, Cancelled).
+    // The stage is stored on each project (Pending Approval through Completed, Rejected, On Hold, Archived).
     const counts = {};
     let pendingApproval = 0;
     let totalProjects = 0;
@@ -54,7 +56,8 @@ async function getStats(req, res, next) {
       totalProjects += 1;
       const { status } = p;
       counts[status] = (counts[status] || 0) + 1;
-      if (status === 'PROPOSED' && p.approvalState === 'PENDING') pendingApproval += 1;
+      // Requests the SK Admin submitted and the Barangay Chairman has not decided yet
+      if (status === 'PENDING_APPROVAL' && p.submittedAt) pendingApproval += 1;
     });
 
     // Present and Absent per session that already happened (Attendance by session chart)
@@ -68,10 +71,11 @@ async function getStats(req, res, next) {
       if (sessionAttendance.length < 8) sessionAttendance.push(row);
     });
 
+    const running = RUNNING_STAGES.reduce((sum, s) => sum + (counts[s] || 0), 0);
     res.json({
       stats: {
         totalProjects,
-        ongoingProjects: counts.ONGOING || 0,
+        ongoingProjects: running,
         pendingApproval,
         pendingDeletions,
         totalViewers,
@@ -79,7 +83,7 @@ async function getStats(req, res, next) {
         upcomingEvents,
         byStatus: Object.entries(counts).map(([status, count]) => ({ status, count })),
         analytics: {
-          activeProjects: (counts.ONGOING || 0) + (counts.PLANNING || 0),
+          activeProjects: running + (counts.APPROVED || 0),
           sessionAttendance: sessionAttendance.reverse(), // oldest first, so the chart reads left to right
         },
       },

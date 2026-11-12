@@ -3,8 +3,8 @@ const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
 
-// Receipt liquidation files live outside the public web root and are only served through
-// an authenticated route (see projectController.getLiquidationFile).
+// Project documents (the files each stage needs) live outside the public web root and are
+// only served through an authenticated route (see projectController.getDocumentFile).
 const RECEIPT_DIR = path.join(__dirname, '..', '..', 'uploads', 'receipts');
 fs.mkdirSync(RECEIPT_DIR, { recursive: true });
 
@@ -13,7 +13,8 @@ const ALLOWED_TYPES = {
   'image/png': '.png',
   'application/pdf': '.pdf',
 };
-const MAX_SIZE = 5 * 1024 * 1024; // 5 MB per file
+const MAX_SIZE = 5 * 1024 * 1024; // 5 MB per picture
+const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024; // 10 MB per project document
 const MAX_FILES = 10; // per upload
 
 const upload = multer({
@@ -23,10 +24,12 @@ const upload = multer({
     filename: (_req, file, cb) =>
       cb(null, crypto.randomUUID() + (ALLOWED_TYPES[file.mimetype] || '')),
   }),
-  limits: { fileSize: MAX_SIZE, files: MAX_FILES },
+  limits: { fileSize: MAX_DOCUMENT_SIZE, files: MAX_FILES },
   fileFilter: (_req, file, cb) => {
-    if (!ALLOWED_TYPES[file.mimetype]) {
-      const err = new Error('Liquidation files must be JPG, PNG or PDF');
+    // Both the type and the file name's extension must be PDF, JPG or PNG.
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (!ALLOWED_TYPES[file.mimetype] || !['.pdf', '.jpg', '.jpeg', '.png'].includes(ext)) {
+      const err = new Error('Only PDF, JPG and PNG files can be uploaded');
       err.status = 400;
       return cb(err);
     }
@@ -36,11 +39,11 @@ const upload = multer({
 
 // Reads up to 10 files from the form field "files" and turns upload problems into
 // readable 400 responses.
-function liquidationUpload(req, res, next) {
+function documentUpload(req, res, next) {
   upload.array('files', MAX_FILES)(req, res, (err) => {
     if (!err) return next();
     err.status = 400;
-    if (err.code === 'LIMIT_FILE_SIZE') err.message = 'Each file must be 5 MB or smaller';
+    if (err.code === 'LIMIT_FILE_SIZE') err.message = 'Each file must be 10 MB or smaller';
     if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
       err.message = `Upload up to ${MAX_FILES} files at a time`;
     }
@@ -119,7 +122,7 @@ function removePhotoFile(fileName) {
 }
 
 module.exports = {
-  liquidationUpload,
+  documentUpload,
   receiptPath,
   removeReceiptFile,
   photoUpload,
