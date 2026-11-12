@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { accountApi } from '../../api/account';
 import { Button, Input } from '../ui';
 import VerifyChangeModal from './VerifyChangeModal';
+import { useConfirm } from '../ConfirmDialog';
 import { Notice, Section, errorText } from './shared';
 
 const ROLE_NAME = { ADMIN: 'SK Admin', CHAIRMAN: 'Barangay Chairman', OFFICIAL: 'SK Official', VIEWER: 'Resident' };
@@ -49,6 +50,7 @@ function ContactSection({ user, refreshUser }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [verifying, setVerifying] = useState(null); // { email } while the code dialog is open
+  const [ask, askDialog] = useConfirm();
   const clean = phone.replace(/[\s-]/g, '');
   const invalid = clean.length > 0 && !PHONE_PATTERN.test(clean);
 
@@ -58,6 +60,7 @@ function ContactSection({ user, refreshUser }) {
       setMsg({ ok: false, text: 'Enter an 11-digit mobile number that starts with 09, e.g. 09171234567.' });
       return;
     }
+    if (!(await ask('Are you sure you want to update your contact number?'))) return;
     setBusy(true);
     setMsg(null);
     try {
@@ -97,6 +100,7 @@ function ContactSection({ user, refreshUser }) {
           {busy ? 'Sending code…' : 'Send code'}
         </Button>
       </form>
+      {askDialog}
       <VerifyChangeModal
         open={Boolean(verifying)}
         email={verifying?.email}

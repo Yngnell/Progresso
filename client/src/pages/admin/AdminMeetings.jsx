@@ -2,7 +2,7 @@
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { eventsApi } from '../../api/events';
-import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pencil, Plus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { isAdmin } from '../../utils/roles';
 import PageHeader from '../../components/PageHeader';
@@ -12,7 +12,7 @@ import { AttendanceQrButton } from '../../components/AttendanceQr';
 import AttendanceSettings from '../../components/AttendanceSettings';
 import MonthCalendar, { MONTHS } from '../../components/MonthCalendar';
 import { Button, Card, Modal, Input } from '../../components/ui';
-import ConfirmDialog from '../../components/ConfirmDialog';
+import ConfirmDialog, { useConfirm } from '../../components/ConfirmDialog';
 import { formatDateTime, toDateTimeLocal } from '../../utils/format';
 
 // Every event is a Meeting (the server names it "Meeting").
@@ -40,6 +40,8 @@ export default function AdminMeetings() {
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
   const [confirmSave, setConfirmSave] = useState(false);
+  const [notice, setNotice] = useState(null); // { ok, text } after saving
+  const [ask, askDialog] = useConfirm();
 
   const { data, isLoading } = useQuery({
     queryKey: ['events', 'admin'],
@@ -59,17 +61,13 @@ export default function AdminMeetings() {
     onSuccess: () => {
       invalidate();
       setConfirmSave(false);
+      setNotice({ ok: true, text: editing ? 'The meeting was updated.' : 'The meeting was added.' });
       closeModal();
     },
     onError: (err) => {
       setConfirmSave(false);
       setError(err.response?.data?.message || 'Failed to save event');
     },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id) => eventsApi.remove(id),
-    onSuccess: invalidate,
   });
 
   function prevMonth() {
@@ -110,10 +108,19 @@ export default function AdminMeetings() {
     setForm((f) => ({ ...f, [field]: value }));
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     const now = new Date();
+    // Editing: only the end time and the meeting link can change (the start stays).
+    if (editing) {
+      if (form.endAt && new Date(form.endAt) < now) return setError('The end date and time cannot be in the past.');
+      if (form.endAt && new Date(form.endAt) <= new Date(form.startAt)) {
+        return setError('The end date and time must be after the start.');
+      }
+      if (await ask('Are you sure you want to update this meeting?')) save();
+      return;
+    }
     if (!form.startAt) return setError('Enter the start date and time.');
     if (new Date(form.startAt) < now || (form.endAt && new Date(form.endAt) < now)) {
       return setError('The date and time cannot be in the past.');
@@ -121,22 +128,16 @@ export default function AdminMeetings() {
     if (form.endAt && new Date(form.endAt) <= new Date(form.startAt)) {
       return setError('The end date and time must be after the start.');
     }
-    // A new meeting is confirmed first ("Save this meeting?"); an edit saves at once.
-    if (editing) save();
-    else setConfirmSave(true);
+    // A new meeting is confirmed first ("Save this meeting?").
+    setConfirmSave(true);
   }
 
   function save() {
     // datetime-local has no time zone; convert it here so the server stores the
     // exact moment picked (in the browser's Philippine time), not the same clock time in UTC.
     const toIso = (v) => (v ? new Date(v).toISOString() : '');
-    saveMutation.mutate({ ...form, startAt: toIso(form.startAt), endAt: toIso(form.endAt) });
-  }
-
-  function handleDelete(event) {
-    if (window.confirm(`Delete "${event.title}"?`)) {
-      deleteMutation.mutate(event.id);
-    }
+    if (editing) saveMutation.mutate({ endAt: toIso(form.endAt), meetingLink: form.meetingLink });
+    else saveMutation.mutate({ ...form, startAt: toIso(form.startAt), endAt: toIso(form.endAt) });
   }
 
   // Earliest date and time the pickers allow: now (past dates and times are disabled).
@@ -165,6 +166,19 @@ export default function AdminMeetings() {
           )
         }
       />
+
+      {notice && (
+        <p className={`notice mt-4 ${notice.ok ? 'notice-ok' : 'notice-error'}`} role={notice.ok ? 'status' : 'alert'}>
+          {notice.text}
+        </p>
+      )}
+
+      {/* Attendance settings: the defaults for new attendance QR codes (SK Admin) */}
+      {user?.role === 'ADMIN' && (
+        <div className="mt-6">
+          <AttendanceSettings />
+        </div>
+      )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         {/* Calendar */}
@@ -231,29 +245,16 @@ export default function AdminMeetings() {
                         </Button>
                       </Link>
                       {!readOnly && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => openEdit(e)}
-                            disabled={isFinished(e)}
-                            title={isFinished(e) ? 'This meeting has ended' : undefined}
-                            aria-label={`Edit ${e.title}`}
-                          >
-                            <Pencil size={16} strokeWidth={1.75} aria-hidden="true" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-red-700 hover:bg-red-50"
-                            onClick={() => handleDelete(e)}
-                            disabled={isFinished(e)}
-                            title={isFinished(e) ? 'This meeting has ended' : undefined}
-                            aria-label={`Delete ${e.title}`}
-                          >
-                            <Trash2 size={16} strokeWidth={1.75} aria-hidden="true" />
-                          </Button>
-                        </>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => openEdit(e)}
+                          disabled={isFinished(e)}
+                          title={isFinished(e) ? 'This meeting has ended' : undefined}
+                          aria-label={`Edit ${e.title}`}
+                        >
+                          <Pencil size={16} strokeWidth={1.75} aria-hidden="true" />
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -263,13 +264,6 @@ export default function AdminMeetings() {
           </div>
         </Card>
       </div>
-
-      {/* Attendance settings: the defaults for new attendance QR codes (SK Admin) */}
-      {user?.role === 'ADMIN' && (
-        <div className="mt-6">
-          <AttendanceSettings />
-        </div>
-      )}
 
       <Modal
         open={modalOpen}
@@ -294,8 +288,10 @@ export default function AdminMeetings() {
               label="Start *"
               type="datetime-local"
               value={form.startAt}
-              min={nowLocal}
+              min={editing ? undefined : nowLocal}
               onChange={(e) => update('startAt', e.target.value)}
+              disabled={Boolean(editing)}
+              readOnly={Boolean(editing)}
               required
             />
             <Input
@@ -311,6 +307,9 @@ export default function AdminMeetings() {
             value={form.meetingLink}
             onChange={(e) => update('meetingLink', e.target.value)}
           />
+          {editing && (
+            <p className="text-[13px] text-slate-600">Only the end time and the meeting link can be changed.</p>
+          )}
         </form>
       </Modal>
       <ConfirmDialog
@@ -321,6 +320,7 @@ export default function AdminMeetings() {
         onConfirm={save}
         onCancel={() => setConfirmSave(false)}
       />
+      {askDialog}
     </div>
   );
 }

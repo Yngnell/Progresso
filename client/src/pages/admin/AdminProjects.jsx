@@ -12,6 +12,7 @@ import { ProjectCard } from '../../components/ProjectCard';
 
 import PageHeader from '../../components/PageHeader';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
+import { useConfirm } from '../../components/ConfirmDialog';
 import ProjectProposalForm, { emptyItem, prDateOk } from '../../components/ProjectProposalForm';
 import ChairmanProjects from './ChairmanProjects';
 
@@ -46,6 +47,8 @@ function ProjectManagement() {
     statusOptions.some((o) => o.value === searchParams.get('status')) ? searchParams.get('status') : ''
   );
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [notice, setNotice] = useState(null); // { ok, text } after an action
+  const [ask, askDialog] = useConfirm();
 
   const { data, isLoading } = useQuery({
     queryKey: ['projects', 'admin'],
@@ -71,11 +74,21 @@ function ProjectManagement() {
       editing ? projectsApi.update(editing.id, payload) : projectsApi.create(payload),
     onSuccess: () => {
       invalidate();
+      setNotice({
+        ok: true,
+        text: editing ? 'The project was updated.' : 'Project Request sent to the Barangay Chairman for approval.',
+      });
       closeModal();
     },
     onError: (err) =>
       setError(err.response?.data?.message || 'Failed to save project'),
   });
+
+  // Editing: leaving the form throws the changes away, so ask first.
+  async function cancelForm() {
+    if (editing && !(await ask('Are you sure you want to cancel? Unsaved changes will be lost.'))) return;
+    closeModal();
+  }
 
   function openCreate() {
     setEditing(null);
@@ -136,7 +149,7 @@ function ProjectManagement() {
     }));
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     // The purpose of request is the project: first line = name, the rest = description.
@@ -150,6 +163,8 @@ function ProjectManagement() {
       setError('The date of PR cannot be in the past.');
       return;
     }
+
+    if (editing && !(await ask('Are you sure you want to save these changes?'))) return;
 
     // "Prepared by" is the SK Treasurer printed on the sheet.
     const treasurer = officials.find((o) => /treasurer/i.test(o.position || ''));
@@ -177,6 +192,12 @@ function ProjectManagement() {
           </Button>
         }
       />
+
+      {notice && (
+        <p className={`notice mt-4 ${notice.ok ? 'notice-ok' : 'notice-error'}`} role={notice.ok ? 'status' : 'alert'}>
+          {notice.text}
+        </p>
+      )}
 
       {/* Status filter */}
       <div className="mt-6 flex flex-wrap gap-2" role="group" aria-label="Filter projects by status">
@@ -269,17 +290,21 @@ function ProjectManagement() {
       </div>
 
       {deleteTarget && (
-        <DeletionRequestModal project={deleteTarget} onClose={() => setDeleteTarget(null)} />
+        <DeletionRequestModal
+          project={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onSent={(text) => setNotice({ ok: true, text })}
+        />
       )}
 
       <Modal
         open={modalOpen}
-        onClose={closeModal}
+        onClose={cancelForm}
         size="xl"
         title={editing ? 'Edit Project' : 'Project Request'}
         footer={
           <>
-            <Button variant="secondary" onClick={closeModal}>
+            <Button variant="secondary" onClick={cancelForm}>
               Cancel
             </Button>
             {/* type=submit + form id so the browser checks the required fields */}
@@ -308,6 +333,7 @@ function ProjectManagement() {
           />
         </form>
       </Modal>
+      {askDialog}
     </div>
   );
 }

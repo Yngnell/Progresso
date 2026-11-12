@@ -31,6 +31,7 @@ export default function AdminProjectDetail() {
   const isSkAdmin = user?.role === 'ADMIN';
   const qc = useQueryClient();
   const [error, setError] = useState('');
+  const [sentNote, setSentNote] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
@@ -164,7 +165,14 @@ export default function AdminProjectDetail() {
           {deletion.reviewRemarks && <p className="mt-1">{deletion.reviewRemarks}</p>}
         </div>
       )}
-      {deleteOpen && <DeletionRequestModal project={project} onClose={() => setDeleteOpen(false)} />}
+      {deleteOpen && (
+        <DeletionRequestModal project={project} onClose={() => setDeleteOpen(false)} onSent={setSentNote} />
+      )}
+      {sentNote && (
+        <p className="notice notice-ok mt-3" role="status">
+          {sentNote}
+        </p>
+      )}
 
       {error && <p className="mt-3 text-sm font-medium text-red-600" role="alert">{error}</p>}
 

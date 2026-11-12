@@ -56,6 +56,8 @@ const MEETING_TITLE = 'Meeting';
 // meetings can no longer be edited or deleted.
 const finished = (event, now = new Date()) => new Date(event.endAt || event.startAt) <= now;
 const FINISHED_MESSAGE = 'This meeting has already ended and can no longer be changed';
+// What an existing meeting may still change. Meetings are never deleted (their attendance stays).
+const EDITABLE_FIELDS = ['endAt', 'meetingLink'];
 
 // Normalize event body into Prisma-ready data. Start and end must not be in the past,
 // and the end must be after the start.
@@ -119,7 +121,16 @@ async function updateEvent(req, res, next) {
 
     if (finished(existing)) return res.status(400).json({ message: FINISHED_MESSAGE });
 
-    const { data, error } = parseEventBody(req.body, existing);
+    // Only the end time and the meeting link of a meeting can be changed.
+    const extra = Object.keys(req.body || {}).filter((k) => !EDITABLE_FIELDS.includes(k));
+    if (extra.length > 0) {
+      return res.status(400).json({ message: 'Only the end time and the meeting link of a meeting can be changed' });
+    }
+    const body = {};
+    EDITABLE_FIELDS.forEach((k) => {
+      if (req.body[k] !== undefined) body[k] = req.body[k];
+    });
+    const { data, error } = parseEventBody(body, existing);
     if (error) return res.status(400).json({ message: error });
 
     const event = await prisma.event.update({
@@ -134,16 +145,6 @@ async function updateEvent(req, res, next) {
 }
 
 // DELETE /api/events/:id - admin (cascades attendance).
-async function deleteEvent(req, res, next) {
-  try {
-    const existing = await prisma.event.findUnique({ where: { id: req.params.id } });
-    if (!existing) return res.status(404).json({ message: 'Event not found' });
-    if (finished(existing)) return res.status(400).json({ message: FINISHED_MESSAGE });
-    await prisma.event.delete({ where: { id: req.params.id } });
-    res.json({ message: 'Event deleted' });
-  } catch (err) {
-    next(err);
-  }
-}
 
-module.exports = { getEvents, getEvent, createEvent, updateEvent, deleteEvent };
+
+module.exports = { getEvents, getEvent, createEvent, updateEvent };

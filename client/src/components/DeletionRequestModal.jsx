@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '../api/projects';
 import { Button, Modal } from './ui';
+import { useConfirm } from './ConfirmDialog';
 
 export const MIN_REASON_LENGTH = 10;
 
 // Asks the SK Admin for a reason and files a deletion request. The project is
 // only removed after the Barangay Chairman approves it.
-export default function DeletionRequestModal({ project, onClose }) {
+export default function DeletionRequestModal({ project, onClose, onSent }) {
   const qc = useQueryClient();
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
+  const [ask, askDialog] = useConfirm();
 
   const mutation = useMutation({
     mutationFn: () => projectsApi.requestDeletion(project.id, reason.trim()),
@@ -18,22 +20,25 @@ export default function DeletionRequestModal({ project, onClose }) {
       qc.invalidateQueries({ queryKey: ['projects'] });
       qc.invalidateQueries({ queryKey: ['deletion-requests'] });
       qc.invalidateQueries({ queryKey: ['stats'] });
+      onSent?.('Deletion request sent to the Barangay Chairman.');
       onClose();
     },
     onError: (err) =>
       setError(err.response?.data?.message || 'Could not send the deletion request'),
   });
 
-  function submit() {
+  async function submit() {
     if (reason.trim().length < MIN_REASON_LENGTH) {
       setError(`Please explain the reason (at least ${MIN_REASON_LENGTH} characters).`);
       return;
     }
     setError('');
+    if (!(await ask('Are you sure you want to send this deletion request?'))) return;
     mutation.mutate();
   }
 
   return (
+    <>
     <Modal
       open={Boolean(project)}
       onClose={onClose}
@@ -71,5 +76,7 @@ export default function DeletionRequestModal({ project, onClose }) {
         </div>
       )}
     </Modal>
+    {askDialog}
+    </>
   );
 }

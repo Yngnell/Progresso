@@ -161,7 +161,6 @@ async function dashboardReport(req, res, next) {
       else if (s === 'CANCELLED') byStatus.Cancelled += 1;
     });
     const total = inRange.length;
-    const completionRate = total > 0 ? Math.round((byStatus.Completed / total) * 100) : null;
 
     const [events, officials] = await Promise.all([
       prisma.event.findMany({
@@ -180,7 +179,7 @@ async function dashboardReport(req, res, next) {
     res.json({
       range: { from: req.query.from || null, to: req.query.to || null },
       project,
-      projects: { total, byStatus, completionRate },
+      projects: { total, byStatus },
       events: events.map(({ attendance, ...e }) => e),
       attendance: { perEvent, perOfficial: perOfficial(rows), totals: totals(rows) },
     });

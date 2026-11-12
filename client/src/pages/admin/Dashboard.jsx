@@ -222,7 +222,7 @@ export default function Dashboard() {
       )}
 
       {/* Key numbers */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className={`grid gap-4 ${selected ? 'sm:grid-cols-2' : ''}`}>
         {selected ? (
           <KpiCard
             label="Stage"
@@ -243,7 +243,7 @@ export default function Dashboard() {
             note={`of ${s.totalProjects ?? 0} in total`}
           />
         )}
-        {selected ? (
+        {selected && (
           <KpiCard
             label="Liquidation"
             value={`${selected.liquidationCount || 0} file${selected.liquidationCount === 1 ? '' : 's'}`}
@@ -252,14 +252,6 @@ export default function Dashboard() {
                 ? `Checklist: ${selected.checklistDone} of ${selected.checklistTotal} done`
                 : 'No checklist items'
             }
-            tone="green"
-          />
-        ) : (
-          <KpiCard
-            label="Completion rate"
-            value={a.completionRate != null ? `${a.completionRate}%` : '—'}
-            note={`${s.completedProjects ?? 0} completed`}
-            meter={a.completionRate}
             tone="green"
           />
         )}

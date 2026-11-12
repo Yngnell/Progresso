@@ -4,6 +4,7 @@ import { ImageUp, Plus, RotateCcw, UserX, UserCheck } from 'lucide-react';
 import { settingsApi } from '../../api/settings';
 import { Badge, Button, Input, Modal } from '../ui';
 import { Notice, Section, checkImage, errorText } from './shared';
+import { useConfirm } from '../ConfirmDialog';
 
 // Settings → System (SK Admin only): SK information and logo (printed on the PDF exports)
 // and the SK officials list. The attendance QR defaults are in Meetings.
@@ -39,6 +40,7 @@ function SkInfoSection({ settings }) {
   const [msg, setMsg] = useState(null);
   const [logoBusy, setLogoBusy] = useState(false);
   const save = useSaveSettings(setMsg, 'SK information saved.');
+  const [ask, askDialog] = useConfirm();
 
   async function chooseLogo(e) {
     const file = e.target.files?.[0];
@@ -46,6 +48,7 @@ function SkInfoSection({ settings }) {
     if (!file) return;
     const problem = checkImage(file);
     if (problem) return setMsg({ ok: false, text: problem });
+    if (!(await ask('Are you sure you want to upload this logo? It replaces the logo on the PDF exports.'))) return;
     setLogoBusy(true);
     try {
       qc.setQueryData(['settings'], await settingsApi.uploadLogo(file));
@@ -58,10 +61,13 @@ function SkInfoSection({ settings }) {
   }
 
   async function resetLogo() {
+    if (!(await ask('Are you sure you want to remove the uploaded logo and use the SK seal again?'))) return;
     setLogoBusy(true);
     try {
       qc.setQueryData(['settings'], await settingsApi.removeLogo());
       setMsg({ ok: true, text: 'Back to the SK seal.' });
+    } catch (err) {
+      setMsg({ ok: false, text: errorText(err, 'The logo could not be removed.') });
     } finally {
       setLogoBusy(false);
     }
@@ -93,9 +99,10 @@ function SkInfoSection({ settings }) {
         </div>
         <form
           className="grid content-start gap-4 sm:grid-cols-2"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             setMsg(null);
+            if (!(await ask('Are you sure you want to save the SK information?'))) return;
             save.mutate({ barangayName: name.trim(), skTerm: term.trim() });
           }}
         >
@@ -114,6 +121,7 @@ function SkInfoSection({ settings }) {
           </div>
         </form>
       </div>
+      {askDialog}
     </Section>
   );
 }
@@ -129,6 +137,7 @@ function OfficialsSection() {
   const officials = data?.officials || [];
   const [editing, setEditing] = useState(null); // {} to add, or the official to change
   const [msg, setMsg] = useState(null);
+  const [ask, askDialog] = useConfirm();
 
   const refresh = (text) => {
     qc.invalidateQueries({ queryKey: ['settings', 'officials'] });
@@ -186,13 +195,17 @@ function OfficialsSection() {
                         size="sm"
                         variant="ghost"
                         disabled={save.isPending}
-                        onClick={() =>
+                        onClick={async () => {
+                          const q = o.isActive
+                            ? `Are you sure you want to set ${o.name} as inactive?`
+                            : `Are you sure you want to set ${o.name} as active again?`;
+                          if (!(await ask(q))) return;
                           save.mutate({
                             id: o.id,
                             body: { isActive: !o.isActive },
                             okText: o.isActive ? `${o.name} is now inactive.` : `${o.name} is active again.`,
-                          })
-                        }
+                          });
+                        }}
                       >
                         {o.isActive ? (
                           <UserX size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -213,14 +226,19 @@ function OfficialsSection() {
         official={editing}
         busy={save.isPending}
         onClose={() => setEditing(null)}
-        onSave={(body) =>
+        onSave={async (body) => {
+          const q = editing?.id
+            ? 'Are you sure you want to save the changes to this official?'
+            : 'Are you sure you want to add this official?';
+          if (!(await ask(q))) return;
           save.mutate({
             id: editing?.id,
             body,
             okText: editing?.id ? 'The official was updated.' : `${body.name} was added.`,
-          })
-        }
+          });
+        }}
       />
+      {askDialog}
     </Section>
   );
 }

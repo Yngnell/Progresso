@@ -68,13 +68,10 @@ async function getStats(req, res, next) {
       if (sessionAttendance.length < 8) sessionAttendance.push(row);
     });
 
-    const closed = (counts.COMPLETED || 0) + (counts.ONGOING || 0) + (counts.CANCELLED || 0);
-
     res.json({
       stats: {
         totalProjects,
         ongoingProjects: counts.ONGOING || 0,
-        completedProjects: counts.COMPLETED || 0,
         pendingApproval,
         pendingDeletions,
         totalViewers,
@@ -83,7 +80,6 @@ async function getStats(req, res, next) {
         byStatus: Object.entries(counts).map(([status, count]) => ({ status, count })),
         analytics: {
           activeProjects: (counts.ONGOING || 0) + (counts.PLANNING || 0),
-          completionRate: closed > 0 ? Math.round(((counts.COMPLETED || 0) / closed) * 100) : null,
           sessionAttendance: sessionAttendance.reverse(), // oldest first, so the chart reads left to right
         },
       },

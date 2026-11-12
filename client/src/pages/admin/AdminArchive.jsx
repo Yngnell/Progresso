@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import PageHeader from '../../components/PageHeader';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -6,6 +7,9 @@ import { useAuth } from '../../context/AuthContext';
 import { Button, Card, Badge, EmptyState } from '../../components/ui';
 import { ProjectCard } from '../../components/ProjectCard';
 import { PROJECT_STATUS, formatPeso, formatDate } from '../../utils/format';
+import ExportMenu from '../../components/ExportMenu';
+import { settingsApi } from '../../api/settings';
+import { exportArchiveExcel, exportArchivePdf } from '../../utils/reportExport';
 
 const TABS = [
   { id: 'completed', label: 'Completed' },
@@ -26,13 +30,43 @@ const EMPTY = {
 export default function AdminArchive() {
   const [params, setParams] = useSearchParams();
   const tab = TABS.some((t) => t.id === params.get('tab')) ? params.get('tab') : 'completed';
+  const { user } = useAuth();
+  const [notice, setNotice] = useState(null); // { ok, text } after an export
+
+  // The records of the open tab (the same query the list below uses), for the export.
+  const { data, isLoading } = useQuery({
+    queryKey: ['projects', 'archive', tab],
+    queryFn: () => projectsApi.list({ archive: tab }),
+  });
+  const shown = data?.projects || [];
+
+  async function onExport(kind) {
+    setNotice(null);
+    try {
+      const { settings } = await settingsApi.get();
+      const args = { tab, projects: shown, settings, user };
+      if (kind === 'pdf') await exportArchivePdf(args);
+      else await exportArchiveExcel(args);
+      const name = TABS.find((t) => t.id === tab).label;
+      setNotice({ ok: true, text: `${name} archives exported as ${kind === 'pdf' ? 'PDF' : 'Excel'}.` });
+    } catch (err) {
+      setNotice({ ok: false, text: 'The export could not be made. Try again.' });
+      throw err;
+    }
+  }
 
   return (
     <div>
       <PageHeader
         title="Archives"
         description="Completed, cancelled, on hold and deleted projects. They are view only and their records are kept."
+        actions={<ExportMenu onExport={onExport} disabled={isLoading} />}
       />
+      {notice && (
+        <p className={`notice mt-4 ${notice.ok ? 'notice-ok' : 'notice-error'}`} role={notice.ok ? 'status' : 'alert'}>
+          {notice.text}
+        </p>
+      )}
 
       <div className="mt-6 flex flex-wrap gap-2" role="tablist" aria-label="Archives">
         {TABS.map((t) => {
@@ -43,7 +77,10 @@ export default function AdminArchive() {
               type="button"
               role="tab"
               aria-selected={active}
-              onClick={() => setParams({ tab: t.id }, { replace: true })}
+              onClick={() => {
+                setNotice(null);
+                setParams({ tab: t.id }, { replace: true });
+              }}
               className={`rounded-full px-4 py-1.5 text-[15px] font-semibold transition-colors ${
                 active ? 'bg-pine text-white' : 'bg-panel text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100'
               }`}

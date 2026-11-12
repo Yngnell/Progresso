@@ -6,7 +6,6 @@ const {
   getEvent,
   createEvent,
   updateEvent,
-  deleteEvent,
 } = require('../controllers/eventController');
 const { protect, restrictTo } = require('../middleware/auth');
 
@@ -14,9 +13,9 @@ const { protect, restrictTo } = require('../middleware/auth');
 router.get('/', getEvents);
 router.get('/:id', getEvent);
 
-// Admin only
+// Admin only. Meetings are never deleted; an existing meeting may only change its end time
+// and meeting link.
 router.post('/', protect, restrictTo('ADMIN'), createEvent);
 router.put('/:id', protect, restrictTo('ADMIN'), updateEvent);
-router.delete('/:id', protect, restrictTo('ADMIN'), deleteEvent);
 
 module.exports = router;

@@ -4,6 +4,7 @@ import { Button } from '../ui';
 import PasswordInput from '../PasswordInput';
 import PasswordChecklist, { passwordOk } from '../PasswordChecklist';
 import VerifyChangeModal from './VerifyChangeModal';
+import { useConfirm } from '../ConfirmDialog';
 import { formatDateTime } from '../../utils/format';
 import { Notice, Section, errorText } from './shared';
 
@@ -17,10 +18,12 @@ export default function SecurityTab({ user }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [verifying, setVerifying] = useState(null); // { email } while the code dialog is open
+  const [ask, askDialog] = useConfirm();
 
   async function submit(e) {
     e.preventDefault();
     setMsg(null);
+    if (!(await ask('Are you sure you want to change your password?'))) return;
     setBusy(true);
     try {
       const res = await accountApi.requestPasswordChange(current, next, confirm);
@@ -82,6 +85,7 @@ export default function SecurityTab({ user }) {
             {busy ? 'Sending code…' : 'Send code'}
           </Button>
         </form>
+        {askDialog}
       </Section>
 
       <VerifyChangeModal
