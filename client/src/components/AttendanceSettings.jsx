@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { settingsApi } from '../api/settings';
-import { Button, Input } from './ui';
-import { Notice, Section, errorText } from './settings/shared';
+import { Button } from './ui';
+import { Notice, errorText } from './settings/shared';
 
-// Meetings → Attendance settings (SK Admin): the defaults for new attendance QR codes.
-// The values are the same saved settings as before; the time can still be changed for
-// each meeting when its QR is generated.
+// Meetings → Attendance settings (SK Admin): the defaults for new attendance QR codes,
+// as one compact row. The time can still be changed for each meeting when its QR is made.
 export default function AttendanceSettings() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ['settings'], queryFn: settingsApi.get });
@@ -30,15 +29,22 @@ export default function AttendanceSettings() {
   });
   const lengthTooShort = length !== '' && Number(length) < 10;
 
-  if (!settings) return <p className="text-sm text-slate-600">Loading…</p>;
+  if (!settings) return null;
   return (
-    <Section
-      title="Attendance settings"
-      description="Defaults for new attendance QR codes. You can still change the time for each meeting when you generate its QR."
-    >
-      {msg && <div className="mb-4"><Notice ok={msg.ok}>{msg.text}</Notice></div>}
+    <section className="card px-4 py-3 sm:px-5" aria-labelledby="attendance-settings-title">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 id="attendance-settings-title" className="font-display text-lg text-ink">
+          Attendance settings
+        </h2>
+        <p className="text-[13px] text-slate-600">Defaults for new attendance QR codes; each meeting can still change them.</p>
+      </div>
+      {msg && (
+        <div className="mt-2">
+          <Notice ok={msg.ok}>{msg.text}</Notice>
+        </div>
+      )}
       <form
-        className="grid gap-4 sm:grid-cols-2"
+        className="mt-2 grid gap-3 sm:grid-cols-[minmax(0,15rem)_minmax(0,15rem)_auto] sm:items-end sm:justify-start"
         onSubmit={(e) => {
           e.preventDefault();
           setMsg(null);
@@ -48,9 +54,10 @@ export default function AttendanceSettings() {
           });
         }}
       >
-        <div>
-          <Input
-            label="QR opens before the start"
+        <label className="block">
+          <span className="label">Opens before the start (min)</span>
+          <input
+            className="input"
             type="number"
             min={0}
             max={240}
@@ -58,28 +65,27 @@ export default function AttendanceSettings() {
             onChange={(e) => setBefore(e.target.value)}
             required
           />
-          <p className="mt-1 text-xs text-slate-600">Minutes. Default: 30.</p>
-        </div>
-        <div>
-          <Input
-            label="QR stays valid for"
+        </label>
+        <label className="block">
+          <span className="label">Stays valid for (min)</span>
+          <input
+            className="input"
             type="number"
             min={10}
             max={1440}
             placeholder="Until the meeting ends"
             value={length}
             onChange={(e) => setLength(e.target.value)}
+            aria-describedby="qr-length-hint"
           />
-          <p className={`mt-1 text-xs ${lengthTooShort ? 'font-semibold text-red-700' : 'text-slate-600'}`}>
-            Minutes, at least 10. Leave empty to keep it valid until the meeting ends.
-          </p>
-        </div>
-        <div className="sm:col-span-2">
-          <Button type="submit" variant="primary" disabled={save.isPending || lengthTooShort}>
-            {save.isPending ? 'Saving…' : 'Save attendance settings'}
-          </Button>
-        </div>
+        </label>
+        <Button type="submit" variant="primary" disabled={save.isPending || lengthTooShort}>
+          {save.isPending ? 'Saving…' : 'Save'}
+        </Button>
       </form>
-    </Section>
+      <p id="qr-length-hint" className={`mt-1.5 text-[13px] ${lengthTooShort ? 'font-medium text-clay-text' : 'text-slate-600'}`}>
+        Default: opens 30 minutes before. Valid for at least 10 minutes; leave empty to keep it valid until the meeting ends.
+      </p>
+    </section>
   );
 }

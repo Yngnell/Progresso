@@ -157,14 +157,6 @@ export default function AdminMeetings() {
       <PageHeader
         title="Meetings"
         description="Schedule SK meetings and record their attendance."
-        actions={
-          !readOnly && (
-            <Button variant="accent" onClick={() => openCreate(selectedDay)}>
-              <Plus size={18} strokeWidth={2} aria-hidden="true" />
-              Add Event
-            </Button>
-          )
-        }
       />
 
       {notice && (
@@ -220,6 +212,12 @@ export default function AdminMeetings() {
           <h2 className="section-title">
             {selectedDay ? `Events on ${selectedDay}` : 'Upcoming Events'}
           </h2>
+          {!readOnly && (
+            <Button variant="accent" className="w-full" onClick={() => openCreate(selectedDay)}>
+              <Plus size={18} strokeWidth={2} aria-hidden="true" />
+              Add Event
+            </Button>
+          )}
           <div className="mt-3 space-y-3">
             {(selectedDay ? selectedEvents : events.filter((e) => new Date(e.startAt) >= new Date()).slice(0, 6)).length === 0 ? (
               <p className="text-slate-600">No events to show.</p>
