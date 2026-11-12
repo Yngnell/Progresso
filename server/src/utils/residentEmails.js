@@ -11,7 +11,7 @@ const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
 const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ESCAPES[c]);
 
 // Alerts older than this are never emailed, so nobody gets a pile of old news.
-const EMAIL_WINDOW_MS = 48 * 60 * 60 * 1000;
+const EMAIL_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 // Philippine date and time, e.g. "Oct 22, 2026, 5:00 PM".
 function when(date) {
@@ -113,16 +113,24 @@ async function sendPendingViewerEmails() {
       orderBy: { createdAt: 'asc' },
       include: {
         project: {
-          select: { id: true, title: true, endDate: true, archivedAt: true, approvalState: true },
+          select: { id: true, title: true, status: true, endDate: true, archivedAt: true, holdArchivedAt: true, approvalState: true },
         },
         event: { select: { id: true, title: true, startAt: true, location: true } },
       },
     });
     if (pending.length === 0) return 0;
 
+    // Only what is still ahead: a meeting that has not started, a project still running.
+    const now = new Date();
+    const upcoming = pending.filter((n) =>
+      n.event
+        ? new Date(n.event.startAt) > now
+        : Boolean(n.project && n.project.status === 'ONGOING' && !n.project.holdArchivedAt && n.project.endDate && new Date(n.project.endDate) > now)
+    );
+
     let sent = 0;
     for (const user of await subscribers()) {
-      const items = pending
+      const items = upcoming
         .filter((n) => new Date(n.createdAt) >= new Date(user.updatesSince))
         .map(publicLine)
         .filter(Boolean);
