@@ -167,6 +167,8 @@ model Project {
   photos         Photo[]
   liquidationFiles LiquidationFile[]
   checklistItems   ChecklistItem[]
+  items            ProjectItem[]
+  quotations       ProjectQuotation[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -349,7 +351,41 @@ model LiquidationFile {
   mimeType       String
   uploadedById   String?
   uploadedByName String?
+  // What the receipt says: read by Claude when it is uploaded, or typed by the SK Admin.
+  amount         Decimal? @db.Decimal(12, 2)
+  receiptDate    DateTime?
+  storeName      String?
+  readStatus     String?  // READ (read automatically) | FAILED (could not be read) | MANUAL (typed or corrected)
   createdAt      DateTime @default(now())
+
+  @@index([projectId])
+}
+
+// The things a project buys, listed on the Project Request. They fill the Purchase Request,
+// the Request for Quotation, the Abstract of Canvass and the Purchase Order.
+model ProjectItem {
+  id           String  @id @default(uuid())
+  projectId    String
+  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  description  String
+  unit         String?
+  quantity     Int     @default(1)
+  estUnitCost  Decimal @default(0) @db.Decimal(12, 2)
+  displayOrder Int     @default(0)
+
+  @@index([projectId])
+}
+
+// One supplier's quotation (canvass) for a project's items. prices: { [itemId]: unit price }.
+// The lowest quotation that prices every item wins the Abstract of Canvass.
+model ProjectQuotation {
+  id              String   @id @default(uuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  supplierName    String
+  supplierAddress String?
+  prices          Json     @default("{}")
+  createdAt       DateTime @default(now())
 
   @@index([projectId])
 }

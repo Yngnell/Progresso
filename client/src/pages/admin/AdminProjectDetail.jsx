@@ -11,7 +11,8 @@ import PhotoGallery from '../../components/PhotoGallery';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
 import ProjectReviewPanel from '../../components/ProjectReviewPanel';
 import ConfirmDialog from '../../components/ConfirmDialog';
-import { formatPeso, formatDate, formatDateTime, toDateTimeLocal } from '../../utils/format';
+import { CanvassCard, FormsCard, ItemsCard } from '../../components/ProjectProcurement';
+import { formatPeso, formatPeso2, formatDate, formatDateTime, toDateTimeLocal } from '../../utils/format';
 import { isAdmin, isManager, isWorker } from '../../utils/roles';
 
 const cardTitle = 'section-title';
@@ -37,11 +38,16 @@ export default function AdminProjectDetail() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['projects', id],
     queryFn: () => projectsApi.get(id),
+    // While receipts are being read, check again every few seconds for their amounts.
+    refetchInterval: (query) =>
+      (query.state.data?.project?.liquidationFiles || []).some((f) => f.readStatus === 'PENDING') ? 3000 : false,
   });
   const project = data?.project;
 
   // Every step returns the updated project; refresh the lists and the Dashboard too.
-  const refresh = (res) => {
+  // message: { note } for an optional success line shown at the top.
+  const refresh = (res, message) => {
+    setSentNote(message?.note || '');
     if (res?.project) qc.setQueryData(['projects', id], (old) => ({ ...old, project: { ...res.project, photos: old?.project?.photos } }));
     qc.invalidateQueries({ queryKey: ['projects'] });
     qc.invalidateQueries({ queryKey: ['stats'] });
@@ -188,7 +194,7 @@ export default function AdminProjectDetail() {
       )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           {/* Details */}
           <Card className="p-6">
             <h2 className={cardTitle}>Details</h2>
@@ -274,6 +280,18 @@ export default function AdminProjectDetail() {
             </Card>
           )}
 
+          {/* The buying side: items, then the suppliers' quotations once approved */}
+          {(project.items || []).length > 0 && <ItemsCard project={project} />}
+          {(project.items || []).length > 0 &&
+            (['PLANNING', 'ONGOING'].includes(project.status) || (project.quotations || []).length > 0) && (
+              <CanvassCard
+                project={project}
+                canEdit={isSkAdmin && !viewOnly && ['PLANNING', 'ONGOING'].includes(project.status)}
+                onDone={refresh}
+                onFail={onFail}
+              />
+            )}
+
           {/* Liquidation and checklist: from Ongoing on (view only once closed) */}
           {(['ONGOING', 'ON_HOLD', 'COMPLETED'].includes(project.status) || (project.liquidationFiles || []).length > 0) && (
             <Liquidation
@@ -310,7 +328,7 @@ export default function AdminProjectDetail() {
           </Card>
         </div>
 
-        {/* Right column: budget + team */}
+        {/* Right column: budget, forms + team */}
         <div className="space-y-6">
           <Card className="p-6">
             <h2 className={cardTitle}>Budget</h2>
@@ -318,7 +336,21 @@ export default function AdminProjectDetail() {
               <span className="text-slate-500">Total budget</span>
               <span className="font-semibold text-slate-800">{formatPeso(project.budget)}</span>
             </div>
+            {project.amountSpent > 0 && (
+              <>
+                <div className="mt-2 flex justify-between text-sm">
+                  <span className="text-slate-500">Spent (receipts)</span>
+                  <span className="font-semibold text-slate-800">{formatPeso2(project.amountSpent)}</span>
+                </div>
+                <div className="mt-2 flex justify-between text-sm">
+                  <span className="text-slate-500">{project.amountToRefund >= 0 ? 'To refund' : 'Over the budget'}</span>
+                  <span className="font-semibold text-slate-800">{formatPeso2(Math.abs(project.amountToRefund))}</span>
+                </div>
+              </>
+            )}
           </Card>
+
+          {!deleted && <FormsCard project={project} />}
 
           <Card className="p-6">
             <h2 className={cardTitle}>Team</h2>
@@ -624,6 +656,7 @@ function Liquidation({ project, canEdit, onDone, onFail }) {
     onSuccess: onDone,
     onError: onFail('Could not delete the file'),
   });
+  const [editing, setEditing] = useState(null); // the receipt whose amount is being typed
   async function view(fileId) {
     try {
       await projectsApi.openLiquidation(project.id, fileId);
@@ -637,6 +670,9 @@ function Liquidation({ project, canEdit, onDone, onFail }) {
       <p className="mt-1 text-sm text-slate-600">
         Receipts as JPG, PNG or PDF (up to 5 MB each). At least one file is required before the project can be
         marked as completed.
+        {project.receiptReading
+          ? ' Each receipt is read automatically by Claude (Anthropic) to find its total; check it and fix it if needed.'
+          : ' Type the amount of each receipt to work out the total spent and the refund.'}
       </p>
       {canEdit && (
         <label className="btn btn-accent mt-4 cursor-pointer px-4 py-2 text-[15px] focus-within:ring-2 focus-within:ring-brand-500">
@@ -670,6 +706,11 @@ function Liquidation({ project, canEdit, onDone, onFail }) {
               <button type="button" className="text-sm font-semibold text-brand-700 hover:text-brand-800" onClick={() => view(f.id)}>
                 View
               </button>
+              {canEdit && f.readStatus !== 'PENDING' && (
+                <button type="button" className="text-sm font-semibold text-brand-700 hover:text-brand-800" onClick={() => setEditing(f)}>
+                  {f.amount == null ? 'Enter amount' : 'Edit amount'}
+                </button>
+              )}
               {canEdit && (
                 <button
                   type="button"
@@ -682,11 +723,110 @@ function Liquidation({ project, canEdit, onDone, onFail }) {
                   Delete
                 </button>
               )}
+              <ReceiptLine file={f} />
             </li>
           ))}
         </ul>
       )}
+      {files.length > 0 && (
+        <dl className="mt-4 grid gap-3 border-t border-line pt-4 text-sm sm:grid-cols-3">
+          <div>
+            <dt className="text-slate-600">Budget</dt>
+            <dd className="font-display text-lg text-slate-900">{formatPeso2(project.budget)}</dd>
+          </div>
+          <div>
+            <dt className="text-slate-600">Total spent</dt>
+            <dd className="font-display text-lg text-slate-900">{formatPeso2(project.amountSpent)}</dd>
+          </div>
+          <div>
+            <dt className="text-slate-600">{project.amountToRefund >= 0 ? 'Amount to refund' : 'Over the budget'}</dt>
+            <dd className="font-display text-lg text-slate-900">{formatPeso2(Math.abs(project.amountToRefund))}</dd>
+          </div>
+          {project.receiptsWithoutAmount > 0 && (
+            <p className="text-amber-800 sm:col-span-3">
+              {project.receiptsWithoutAmount} receipt{project.receiptsWithoutAmount === 1 ? ' has' : 's have'} no amount yet, so the totals are not final.
+            </p>
+          )}
+        </dl>
+      )}
+      {editing && (
+        <ReceiptAmountModal
+          project={project}
+          file={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(res) => {
+            setEditing(null);
+            onDone(res, { note: 'The receipt amount was saved.' });
+          }}
+        />
+      )}
     </Card>
+  );
+}
+
+// What a receipt says (read automatically or typed), on its own line under the file name.
+function ReceiptLine({ file }) {
+  const base = 'w-full pl-7 text-sm';
+  if (file.readStatus === 'PENDING') return <p className={`${base} text-slate-500`} role="status">Reading the receipt…</p>;
+  if (file.amount == null) {
+    return (
+      <p className={`${base} text-amber-800`}>
+        {file.readStatus === 'FAILED' ? "Couldn't read this receipt. Enter its amount." : 'No amount yet.'}
+      </p>
+    );
+  }
+  return (
+    <p className={`${base} text-slate-700`}>
+      <span className="font-semibold text-slate-900">{formatPeso2(file.amount)}</span>
+      {file.receiptDate ? ` · ${formatDate(file.receiptDate)}` : ''}
+      {file.storeName ? ` · ${file.storeName}` : ''}
+      <span className="text-slate-500">{file.readStatus === 'READ' ? ' · read automatically' : ' · typed'}</span>
+    </p>
+  );
+}
+
+// Type or correct a receipt's amount, date and store.
+function ReceiptAmountModal({ project, file, onClose, onSaved }) {
+  const [amount, setAmount] = useState(file.amount != null ? String(Number(file.amount)) : '');
+  const [date, setDate] = useState(file.receiptDate ? toDateTimeLocal(file.receiptDate).slice(0, 10) : '');
+  const [store, setStore] = useState(file.storeName || '');
+  const [problem, setProblem] = useState('');
+  const save = useMutation({
+    mutationFn: () =>
+      projectsApi.updateLiquidation(project.id, file.id, { amount: Number(amount), receiptDate: date || null, storeName: store }),
+    onSuccess: onSaved,
+    onError: (err) => setProblem(errorText(err, 'Could not save the amount')),
+  });
+  return (
+    <ConfirmDialog
+      open
+      title={`Receipt: ${file.originalName}`}
+      confirmLabel={save.isPending ? 'Saving…' : 'Save'}
+      busy={save.isPending}
+      onCancel={onClose}
+      onConfirm={() => {
+        if (amount === '' || Number(amount) < 0 || Number.isNaN(Number(amount))) return setProblem('Enter the amount (0 or more).');
+        setProblem('');
+        save.mutate();
+      }}
+      message={
+        <span className="grid gap-3">
+          <label className="block">
+            <span className="label">Total amount (₱) *</span>
+            <input className="input" type="number" min={0} step="0.01" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
+          </label>
+          <label className="block">
+            <span className="label">Receipt date</span>
+            <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </label>
+          <label className="block">
+            <span className="label">Store or supplier</span>
+            <input className="input" value={store} onChange={(e) => setStore(e.target.value)} />
+          </label>
+          {problem && <span className="text-sm font-medium text-red-600" role="alert">{problem}</span>}
+        </span>
+      }
+    />
   );
 }
 

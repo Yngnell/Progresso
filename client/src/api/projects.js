@@ -22,6 +22,14 @@ export const projectsApi = {
   },
   deleteLiquidation: (id, fileId) =>
     api.delete(`/projects/${id}/liquidation/${fileId}`).then((r) => r.data),
+  // SK Admin, Ongoing: type or correct a receipt's { amount, receiptDate, storeName }
+  updateLiquidation: (id, fileId, data) =>
+    api.put(`/projects/${id}/liquidation/${fileId}`, data).then((r) => r.data),
+  // SK Admin, Planning or Ongoing: supplier quotations (canvass)
+  // { supplierName, supplierAddress, prices: { [itemId]: unitPrice } }
+  addQuotation: (id, data) => api.post(`/projects/${id}/quotations`, data).then((r) => r.data),
+  updateQuotation: (id, qid, data) => api.put(`/projects/${id}/quotations/${qid}`, data).then((r) => r.data),
+  deleteQuotation: (id, qid) => api.delete(`/projects/${id}/quotations/${qid}`).then((r) => r.data),
   // The files need the login token, so they are fetched and opened from a blob URL.
   openLiquidation: async (id, fileId) => {
     const tab = window.open('', '_blank'); // opened first so the browser allows the pop-up

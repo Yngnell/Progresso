@@ -10,7 +10,11 @@ const {
   setSchedule,
   addLiquidation,
   getLiquidationFile,
+  updateLiquidationFile,
   deleteLiquidationFile,
+  addQuotation,
+  updateQuotation,
+  deleteQuotation,
   addChecklistItem,
   updateChecklistItem,
   deleteChecklistItem,
@@ -49,7 +53,12 @@ router.put('/:id/review', protect, restrictTo('CHAIRMAN'), reviewProject);
 // between: the SK Admin account only.
 router.put('/:id/schedule', protect, requireSkAdmin, setSchedule);
 router.post('/:id/liquidation', protect, requireSkAdmin, liquidationUpload, addLiquidation);
+router.put('/:id/liquidation/:fileId', protect, requireSkAdmin, updateLiquidationFile);
 router.delete('/:id/liquidation/:fileId', protect, requireSkAdmin, deleteLiquidationFile);
+// Supplier quotations (canvass), Planning and Ongoing: the SK Admin account only.
+router.post('/:id/quotations', protect, requireSkAdmin, addQuotation);
+router.put('/:id/quotations/:qid', protect, requireSkAdmin, updateQuotation);
+router.delete('/:id/quotations/:qid', protect, requireSkAdmin, deleteQuotation);
 router.post('/:id/checklist', protect, requireSkAdmin, addChecklistItem);
 router.put('/:id/checklist/:itemId', protect, requireSkAdmin, updateChecklistItem);
 router.delete('/:id/checklist/:itemId', protect, requireSkAdmin, deleteChecklistItem);

@@ -31,6 +31,8 @@ function prNumber(item, index) {
 }
 
 export const emptyItem = { prNo: '', prDate: '', requestedBy: '', amount: '' };
+// One thing to buy: it fills the Purchase Request, Request for Quotation, canvass and PO.
+export const emptyBuyItem = { description: '', unit: '', quantity: '', estUnitCost: '' };
 
 // Today as YYYY-MM-DD (local time): the earliest date of PR that can be picked.
 export function todayLocal() {
@@ -68,6 +70,72 @@ function SideButton({ label, onClick, children, tone = 'brand' }) {
   );
 }
 
+// "Items to buy": description, unit, quantity and estimated unit cost per row, with the
+// line totals and a note when their total differs from the PR total (the budget).
+function BuyItems({ items, prTotal, update, add, remove }) {
+  const lineTotal = (i) => Number(i.quantity || 0) * Number(i.estUnitCost || 0);
+  const total = items.reduce((sum, i) => sum + lineTotal(i), 0);
+  const filled = items.some((i) => i.description || i.estUnitCost);
+  const cellIn = 'w-full bg-transparent px-2 py-2 text-sm text-black outline-none focus:bg-brand-50/70';
+  return (
+    <div className="mt-6">
+      <p className="text-sm font-bold uppercase text-black">Items to buy</p>
+      <p className="mt-0.5 text-xs text-slate-500">
+        Optional. Typed once, they fill the Purchase Request, Request for Quotation, Abstract of Canvass and Purchase Order.
+      </p>
+      <div className="mt-2 pr-14">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr>
+              <th className={`${headCell} w-10`}>No.</th>
+              <th className={headCell}>Item description</th>
+              <th className={`${headCell} w-20`}>Unit</th>
+              <th className={`${headCell} w-16`}>Qty</th>
+              <th className={`${headCell} w-28`}>Unit cost</th>
+              <th className={`${headCell} w-28`}>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item, i) => (
+              <tr key={i}>
+                <td className={`${cell} text-center text-sm font-bold text-black`}>{i + 1}</td>
+                <td className={cell}>
+                  <input className={cellIn} value={item.description} aria-label={`Item ${i + 1} description`} placeholder="e.g. Basketball (official size)" onChange={(e) => update(i, 'description', e.target.value)} />
+                </td>
+                <td className={cell}>
+                  <input className={cellIn} value={item.unit} aria-label={`Item ${i + 1} unit`} placeholder="pc" onChange={(e) => update(i, 'unit', e.target.value)} />
+                </td>
+                <td className={cell}>
+                  <input className={`${cellIn} text-right`} type="number" min={1} step={1} value={item.quantity} aria-label={`Item ${i + 1} quantity`} onChange={(e) => update(i, 'quantity', e.target.value)} />
+                </td>
+                <td className={cell}>
+                  <input className={`${cellIn} text-right`} type="number" min={0} step="0.01" value={item.estUnitCost} aria-label={`Item ${i + 1} unit cost`} onChange={(e) => update(i, 'estUnitCost', e.target.value)} />
+                </td>
+                <td className={`${cell} relative px-2 text-right text-sm font-semibold text-black`}>
+                  {peso(lineTotal(item))}
+                  <div className="absolute left-full top-1/2 ml-3 flex -translate-y-1/2 flex-col gap-1">
+                    <SideButton label="Add an item below" onClick={() => add(i)}>+</SideButton>
+                    <SideButton label="Remove this item" tone="red" onClick={() => remove(i)}>×</SideButton>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            <tr>
+              <td className={`${cell} px-2 py-2 text-right text-sm font-bold text-black`} colSpan={5}>Total</td>
+              <td className={`${cell} px-2 py-2 text-right text-sm font-bold text-black`}>{peso(total)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      {filled && Math.abs(total - prTotal) >= 0.01 && (
+        <p className="mt-1 text-xs font-medium text-amber-800">
+          The items total (₱{peso(total)}) is not the same as the PR total (₱{peso(prTotal)}). The budget is the PR total.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // The Add/Edit Project form, laid out exactly like the SK's "Monthly Itemized List
 // of Purchase Request (PR)" sheet: letterhead, bordered table whose rows the admin
 // adds with the + button, PREPARED BY / NOTED BY, then the purpose of the request and
@@ -80,6 +148,9 @@ export default function ProjectProposalForm({
   addItem,
   removeItem,
   officials,
+  updateBuyItem,
+  addBuyItem,
+  removeBuyItem,
 }) {
   const treasurer = officials.find((o) => /treasurer/i.test(o.position || ''));
   const chairperson = officials.find((o) => /chairperson/i.test(o.position || ''));
@@ -237,6 +308,15 @@ export default function ProjectProposalForm({
           </div>
         </div>
       </div>
+
+      {/* The things to buy: typed once, they fill the PR, RFQ, Abstract of Canvass and PO */}
+      <BuyItems
+        items={form.buyItems || []}
+        prTotal={total}
+        update={updateBuyItem}
+        add={addBuyItem}
+        remove={removeBuyItem}
+      />
 
       {/* Purpose of request: becomes the project's name and description */}
       <div className="mt-6">
