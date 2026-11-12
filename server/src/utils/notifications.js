@@ -152,7 +152,7 @@ function buildDigest(alerts) {
         </div>`
         )
         .join('')}
-      <p style="color:#94a3b8;font-size:12px">You get these emails because you turned on email alerts in the system.</p>
+      <p style="color:#94a3b8;font-size:12px">These alerts are sent to the email of your SK Monitoring account.</p>
     </div>`;
 
   return { subject, text, html };
@@ -163,9 +163,10 @@ function buildDigest(alerts) {
 const EMAIL_WINDOW_MS = 48 * 60 * 60 * 1000;
 let emailing = false;
 
-// Emails every new alert, as one digest per person, to everyone who set an alert
-// email address. An alert is marked as emailed only after it was sent; if the mail
-// server fails it is retried on the next check. Does nothing until mail is set up.
+// Emails every new alert, as one digest, to the registered email of every active SK Admin
+// and Barangay Chairman account (no separate alert address to set up). An alert is marked
+// as emailed only after it was sent; if the mail server fails it is retried on the next
+// check. Does nothing until mail is set up.
 async function sendPendingEmails() {
   if (emailing || !isMailConfigured()) return 0;
   emailing = true;
@@ -181,16 +182,11 @@ async function sendPendingEmails() {
     if (pending.length === 0) return 0;
 
     const recipients = await prisma.user.findMany({
-      where: {
-        isActive: true,
-        role: { in: ['ADMIN', 'CHAIRMAN'] },
-        notifyEmail: { not: null },
-        notifyEmailVerifiedAt: { not: null }, // only addresses that confirmed their code
-      },
-      select: { notifyEmail: true },
+      where: { isActive: true, role: { in: ['ADMIN', 'CHAIRMAN'] } },
+      select: { email: true },
     });
-    const addresses = [...new Set(recipients.map((u) => u.notifyEmail).filter(Boolean))];
-    if (addresses.length === 0) return 0; // nobody opted in yet: keep them for later
+    const addresses = [...new Set(recipients.map((u) => (u.email || '').trim().toLowerCase()).filter(Boolean))];
+    if (addresses.length === 0) return 0; // no accounts to send to: keep them for later
 
     const { subject, text, html } = buildDigest(pending);
     for (const to of addresses) {

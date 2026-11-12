@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
   CalendarClock,
-  CircleCheck,
   Flag,
   Mail,
   Target,
@@ -12,7 +11,6 @@ import {
 } from 'lucide-react';
 import { notificationsApi } from '../api/notifications';
 import { useAuth } from '../context/AuthContext';
-import VerifyCodeForm from './VerifyCodeForm';
 
 // Drawn icon and tint per alert type (replaces the old emoji).
 const TYPE_STYLE = {
@@ -25,120 +23,6 @@ const TYPE_STYLE = {
   EVENT_1D: { Icon: CalendarClock, tone: 'bg-brand-50', color: 'text-brand-700' },
   EVENT_1H: { Icon: CalendarClock, tone: 'bg-brand-100', color: 'text-brand-800' },
 };
-
-// "Email alerts" box at the bottom of the dropdown: save a Gmail address and the same
-// alerts are emailed there. A blank address turns email off.
-function EmailAlerts() {
-  const qc = useQueryClient();
-  const [email, setEmail] = useState(null); // null = show the saved value
-  const [message, setMessage] = useState(null); // { ok, text }
-
-  const { data } = useQuery({
-    queryKey: ['notifications', 'email-settings'],
-    queryFn: notificationsApi.emailSettings,
-  });
-  const saved = data?.email || '';
-  const value = email ?? saved;
-  const verified = Boolean(data?.verified);
-  // After saving a new address the 6-digit code box shows until it is confirmed.
-  const needsCode = Boolean(saved) && !verified && Boolean(data?.mailConfigured);
-
-  const saveMutation = useMutation({
-    mutationFn: () => notificationsApi.saveEmail(value.trim()),
-    onSuccess: (res) => {
-      setEmail(null);
-      setMessage({
-        ok: !res.warning,
-        text: res.warning
-          ? res.warning
-          : !res.email
-            ? 'Email alerts are off.'
-            : res.verified
-              ? `Alerts will be emailed to ${res.email}.`
-              : res.codeSent
-                ? 'We emailed you a 6-digit code. Enter it below to confirm this address.'
-                : 'Enter the code we sent earlier, or ask for a new one.',
-      });
-      qc.invalidateQueries({ queryKey: ['notifications', 'email-settings'] });
-    },
-    onError: (err) =>
-      setMessage({ ok: false, text: err.response?.data?.message || 'Could not save the address' }),
-  });
-
-  const testMutation = useMutation({
-    mutationFn: notificationsApi.sendTestEmail,
-    onSuccess: (res) => setMessage({ ok: true, text: res.message }),
-    onError: (err) =>
-      setMessage({ ok: false, text: err.response?.data?.message || 'The test email failed' }),
-  });
-
-  return (
-    <div className="border-t border-slate-100 px-4 py-3">
-      <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
-        <Mail size={16} strokeWidth={1.75} aria-hidden="true" />
-        Also email my alerts
-      </p>
-      <div className="mt-2 flex gap-2">
-        <input
-          type="email"
-          className="input flex-1 py-1.5 text-sm"
-          placeholder="yourname@gmail.com"
-          aria-label="Email address for alerts"
-          value={value}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <button
-          type="button"
-          className="btn btn-primary px-3 py-1.5 text-sm"
-          disabled={saveMutation.isPending || value.trim() === saved}
-          onClick={() => saveMutation.mutate()}
-        >
-          Save
-        </button>
-      </div>
-      {saved && verified && (
-        <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-green-700">
-          <CircleCheck size={16} strokeWidth={1.75} aria-hidden="true" />
-          Verified. Project and meeting alerts go to this address.
-        </p>
-      )}
-      {needsCode && (
-        <div className="mt-3 rounded-lg bg-slate-50 p-3">
-          <VerifyCodeForm
-            compact
-            email={saved}
-            onVerify={async (code) => {
-              await notificationsApi.verifyEmail(code);
-              setMessage({ ok: true, text: 'Email verified. Alerts will be emailed to you.' });
-              qc.invalidateQueries({ queryKey: ['notifications', 'email-settings'] });
-            }}
-            onResend={() => notificationsApi.resendCode()}
-          />
-        </div>
-      )}
-      {saved && verified && (
-        <button
-          type="button"
-          className="mt-2 text-sm font-semibold text-brand-700 hover:text-brand-800"
-          disabled={testMutation.isPending}
-          onClick={() => testMutation.mutate()}
-        >
-          {testMutation.isPending ? 'Sending…' : 'Send a test email'}
-        </button>
-      )}
-      {data && !data.mailConfigured && (
-        <p className="mt-2 text-xs text-amber-800">
-          Email sending is not set up on the server yet, so alerts stay in the app for now.
-        </p>
-      )}
-      {message && (
-        <p className={`mt-2 text-xs ${message.ok ? 'text-green-700' : 'text-red-700'}`}>
-          {message.text}
-        </p>
-      )}
-    </div>
-  );
-}
 
 function timeAgo(iso) {
   const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -269,7 +153,15 @@ export default function NotificationBell() {
                 })
               )}
             </div>
-            <EmailAlerts />
+            {/* Alerts are emailed automatically to the account's registered email */}
+            {user?.email && (
+              <p className="flex items-start gap-2 border-t border-dashed border-line px-4 py-3 text-[13px] text-slate-600">
+                <Mail size={16} strokeWidth={1.75} className="mt-0.5 shrink-0 text-pine" aria-hidden="true" />
+                <span>
+                  Alerts are also emailed to <span className="font-medium text-ink">{user.email}</span>.
+                </span>
+              </p>
+            )}
           </div>
         </>
       )}

@@ -59,14 +59,14 @@ async function main() {
   await ensureOfficials();
 
   await ensureUser({
-    email: process.env.ADMIN_EMAIL || 'admin@sk.gov.ph',
+    email: process.env.ADMIN_EMAIL || 'admin.sksalinas1@gmail.com',
     password: process.env.ADMIN_PASSWORD || 'admin123',
     name: process.env.ADMIN_NAME || 'SK Administrator',
     role: 'ADMIN',
   });
 
   await ensureUser({
-    email: process.env.CHAIRMAN_EMAIL || 'chairman@sk.gov.ph',
+    email: process.env.CHAIRMAN_EMAIL || 'chairman.sksalinas1@gmail.com',
     password: process.env.CHAIRMAN_PASSWORD || 'chairman123',
     name: process.env.CHAIRMAN_NAME || 'Barangay Chairman',
     role: 'CHAIRMAN',
