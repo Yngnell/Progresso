@@ -27,12 +27,6 @@ export function formatPeso(amount) {
   return '₱' + n.toLocaleString('en-PH', { maximumFractionDigits: 2 });
 }
 
-// Peso with exactly two decimals (canvass, receipts, liquidation).
-export function formatPeso2(amount) {
-  const n = Number(amount || 0);
-  return '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
 // Format an ISO date string to a readable date.
 export function formatDate(dateStr) {
   if (!dateStr) return '—';

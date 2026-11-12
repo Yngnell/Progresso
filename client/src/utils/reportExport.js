@@ -127,8 +127,7 @@ function table(doc, autoTable, y, head, body, opts = {}) {
   autoTable(doc, {
     startY: y,
     head: [head.map(clean)],
-    // A cell is text, or { content, colSpan, styles } for a styled cell (e.g. a total row).
-    body: body.map((row) => row.map((c) => (c && typeof c === 'object' ? { ...c, content: clean(c.content) } : clean(c)))),
+    body: body.map((row) => row.map(clean)),
     margin: { left: M, right: M },
     theme: 'grid',
     styles: { font: 'helvetica', fontSize: 9, cellPadding: 1.8, textColor: [34, 45, 64], lineColor: [216, 224, 238] },
@@ -587,6 +586,3 @@ export async function exportArchiveExcel({ tab, projects, settings, user }) {
   });
   await saveBook(wb, `archives-${tab}-${fileStamp()}.xlsx`);
 }
-
-// Shared with the project forms (utils/projectForms.js).
-export { clean, fileStamp, saveBlob, loadLogo, pdfKit, letterhead, sectionTitle, table, pageNumbers, peso, M as PDF_MARGIN };

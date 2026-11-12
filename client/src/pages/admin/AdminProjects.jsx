@@ -13,7 +13,7 @@ import { ProjectCard } from '../../components/ProjectCard';
 import PageHeader from '../../components/PageHeader';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
 import { useConfirm } from '../../components/ConfirmDialog';
-import ProjectProposalForm, { emptyItem, emptyBuyItem, prDateOk } from '../../components/ProjectProposalForm';
+import ProjectProposalForm, { emptyItem, prDateOk } from '../../components/ProjectProposalForm';
 import ChairmanProjects from './ChairmanProjects';
 
 // Active stages only: Completed and Cancelled projects are in Archives.
@@ -26,7 +26,6 @@ const statusOptions = ['PROPOSED', 'PLANNING', 'ONGOING', 'ON_HOLD'].map((value)
 const blankForm = () => ({
   purpose: '', // first line = project name, the rest = description
   items: [{ ...emptyItem }],
-  buyItems: [{ ...emptyBuyItem }], // the things to buy (they fill the PR, RFQ, canvass and PO)
 });
 
 // Projects: the Barangay Chairman gets the simple view-only list; the SK Admin manages them.
@@ -112,16 +111,6 @@ function ProjectManagement() {
       // Name on the first line and the description below it, so saving keeps both.
       purpose: project.description ? `${project.title}\n${project.description}` : project.title || '',
       items: rows.length > 0 ? rows : [{ ...emptyItem }],
-      buyItems:
-        (project.items || []).length > 0
-          ? project.items.map((i) => ({
-              id: i.id,
-              description: i.description,
-              unit: i.unit || '',
-              quantity: String(i.quantity),
-              estUnitCost: String(Number(i.estUnitCost)),
-            }))
-          : [{ ...emptyBuyItem }],
     });
     setError('');
     setModalOpen(true);
@@ -186,7 +175,6 @@ function ProjectManagement() {
       title,
       description: rest.join('\n').trim(),
       requestItems: form.items,
-      items: form.buyItems,
       proposedByName: treasurer ? treasurer.name : '',
       proposedByPosition: treasurer ? treasurer.position : '',
     });
@@ -342,24 +330,6 @@ function ProjectManagement() {
             addItem={addItem}
             removeItem={removeItem}
             officials={officials}
-            updateBuyItem={(index, field, value) =>
-              setForm((f) => ({
-                ...f,
-                buyItems: f.buyItems.map((item, i) => (i === index ? { ...item, [field]: value } : item)),
-              }))
-            }
-            addBuyItem={(index) =>
-              setForm((f) => ({
-                ...f,
-                buyItems: [...f.buyItems.slice(0, index + 1), { ...emptyBuyItem }, ...f.buyItems.slice(index + 1)],
-              }))
-            }
-            removeBuyItem={(index) =>
-              setForm((f) => ({
-                ...f,
-                buyItems: f.buyItems.length > 1 ? f.buyItems.filter((_, i) => i !== index) : [{ ...emptyBuyItem }],
-              }))
-            }
           />
         </form>
       </Modal>

@@ -1,7 +1,5 @@
-const crypto = require('crypto');
 const prisma = require('../prisma');
 const { parsePhDate } = require('../utils/phTime');
-const { readReceipt, toReceiptFields, isReaderConfigured } = require('../utils/receiptReader');
 const { receiptPath, removeReceiptFile } = require('../middleware/upload');
 const { photosForProject } = require('./photoController');
 const { isStaff } = require('../utils/roles');
@@ -34,55 +32,10 @@ const includeOpts = {
   requestItems: { orderBy: { displayOrder: 'asc' } },
   liquidationFiles: {
     orderBy: { createdAt: 'asc' },
-    select: {
-      id: true,
-      originalName: true,
-      mimeType: true,
-      uploadedByName: true,
-      createdAt: true,
-      amount: true,
-      receiptDate: true,
-      storeName: true,
-      readStatus: true,
-    },
+    select: { id: true, originalName: true, mimeType: true, uploadedByName: true, createdAt: true },
   },
   checklistItems: { orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }] },
-  items: { orderBy: { displayOrder: 'asc' } },
-  quotations: { orderBy: { createdAt: 'asc' } },
 };
-
-const round2 = (n) => Math.round(n * 100) / 100;
-
-// The canvass: each quotation's total for the project's items, and the winner: the lowest
-// quotation that prices every item (the Abstract of Canvass and the Purchase Order use it).
-function canvassInfo(project) {
-  const items = project.items || [];
-  const quotations = (project.quotations || []).map((q) => {
-    const prices = q.prices || {};
-    const priced = items.filter((i) => prices[i.id] !== undefined && prices[i.id] !== null && prices[i.id] !== '');
-    const total = round2(priced.reduce((sum, i) => sum + Number(prices[i.id]) * i.quantity, 0));
-    return { ...q, total, complete: items.length > 0 && priced.length === items.length };
-  });
-  const complete = quotations.filter((q) => q.complete);
-  const winner = complete.length ? complete.reduce((best, q) => (q.total < best.total ? q : best)) : null;
-  return {
-    quotations,
-    itemsTotal: round2(items.reduce((sum, i) => sum + Number(i.estUnitCost) * i.quantity, 0)),
-    winningQuotationId: winner ? winner.id : null,
-  };
-}
-
-// Receipt amounts: what was spent so far and what goes back (budget - spent).
-function liquidationTotals(project) {
-  const files = project.liquidationFiles || [];
-  const spent = round2(files.reduce((sum, f) => sum + (f.amount == null ? 0 : Number(f.amount)), 0));
-  return {
-    amountSpent: spent,
-    amountToRefund: round2(Number(project.budget || 0) - spent),
-    receiptsWithoutAmount: files.filter((f) => f.amount == null).length,
-    receiptReading: isReaderConfigured(),
-  };
-}
 
 // What still stands between an Ongoing project and "Project Completed".
 function completionInfo(project) {
@@ -101,12 +54,7 @@ function completionInfo(project) {
   };
 }
 
-const withInfo = (project) => ({
-  ...project,
-  ...completionInfo(project),
-  ...canvassInfo(project),
-  ...liquidationTotals(project),
-});
+const withInfo = (project) => ({ ...project, ...completionInfo(project) });
 
 // The SK side (admin, chairman, officials) sees everything; the public never sees
 // proposals or rejected projects, and never the liquidation files.
@@ -115,7 +63,7 @@ function canSeeProposed(user) {
 }
 
 function stripInternal(project) {
-  const { deletionRequests, liquidationFiles, quotations, winningQuotationId, amountSpent, amountToRefund, receiptsWithoutAmount, receiptReading, ...rest } = project;
+  const { deletionRequests, liquidationFiles, ...rest } = project;
   return rest;
 }
 
@@ -224,37 +172,6 @@ function cleanRequestItems(raw, keepDates = new Set()) {
   return items;
 }
 
-// The items to buy (description, unit, quantity, estimated unit cost). Blank rows are dropped.
-// Returns null when the body sent no items (so an update leaves the saved ones alone).
-// Rows that came from the database keep their id, so the quotations' prices stay attached.
-function cleanItems(raw) {
-  if (!Array.isArray(raw)) return null;
-  const items = [];
-  for (const row of raw) {
-    const description = String(row?.description ?? '').trim().slice(0, 300);
-    const unit = String(row?.unit ?? '').trim().slice(0, 40);
-    const quantity = Number(row?.quantity || 0);
-    const estUnitCost = Number(row?.estUnitCost || 0);
-    if (!description && !unit && !quantity && !estUnitCost) continue;
-    if (!description) throw Object.assign(new Error('Each item needs a description'), { status: 400 });
-    if (!Number.isInteger(quantity) || quantity < 1) {
-      throw Object.assign(new Error('Each item quantity must be a whole number of at least 1'), { status: 400 });
-    }
-    if (!Number.isFinite(estUnitCost) || estUnitCost < 0) {
-      throw Object.assign(new Error('Each unit cost must be a number that is not negative'), { status: 400 });
-    }
-    items.push({
-      id: typeof row?.id === 'string' && row.id ? row.id : null,
-      description,
-      unit: unit || null,
-      quantity,
-      estUnitCost: round2(estUnitCost),
-      displayOrder: items.length,
-    });
-  }
-  return items;
-}
-
 // Normalize the Project Request form into Prisma-ready data + team ids. The status and
 // the schedule are not accepted here: they only change through the flow's own steps.
 function parseProjectBody(body, keepDates) {
@@ -278,7 +195,7 @@ function parseProjectBody(body, keepDates) {
     if (total > 0) data.budget = total;
   }
 
-  return { data, officialIds, requestItems, items: cleanItems(body.items) };
+  return { data, officialIds, requestItems };
 }
 
 // Loads a project for a change and refuses archived or closed ones.
@@ -313,12 +230,9 @@ async function createProject(req, res, next) {
     if (!req.body.title) {
       return res.status(400).json({ message: 'Title is required' });
     }
-    const { data, officialIds, requestItems, items } = parseProjectBody(req.body);
+    const { data, officialIds, requestItems } = parseProjectBody(req.body);
     if (requestItems && requestItems.length > 0) {
       data.requestItems = { create: requestItems };
-    }
-    if (items && items.length > 0) {
-      data.items = { create: items.map(({ id, ...item }) => item) };
     }
     data.status = 'PROPOSED';
     data.approvalState = 'PENDING';
@@ -346,21 +260,10 @@ async function updateProject(req, res, next) {
       select: { prDate: true },
     });
     const keepDates = new Set(saved.map((i) => i.prDate.toISOString().slice(0, 10)));
-    const { data, officialIds, requestItems, items } = parseProjectBody(req.body, keepDates);
+    const { data, officialIds, requestItems } = parseProjectBody(req.body, keepDates);
     if (requestItems) {
       // The sheet is saved as a whole: replace all rows with the ones sent.
       data.requestItems = { deleteMany: {}, create: requestItems };
-    }
-    if (items) {
-      // Items keep their ids (the quotations' prices point at them); removed ones are deleted.
-      const saved = await prisma.projectItem.findMany({ where: { projectId: req.params.id }, select: { id: true } });
-      const savedIds = new Set(saved.map((i) => i.id));
-      const kept = items.filter((i) => i.id && savedIds.has(i.id));
-      data.items = {
-        deleteMany: { id: { notIn: kept.map((i) => i.id) } },
-        update: kept.map(({ id, ...item }) => ({ where: { id }, data: item })),
-        create: items.filter((i) => !(i.id && savedIds.has(i.id))).map(({ id, ...item }) => item),
-      };
     }
     if (Array.isArray(officialIds)) {
       // "set" replaces the whole team with the provided ids.
@@ -435,108 +338,9 @@ async function setSchedule(req, res, next) {
   }
 }
 
-// ---------- Supplier quotations (canvass), Planning and Ongoing ----------
-
-const CANVASS_STAGES = ['PLANNING', 'ONGOING'];
-
-// Reads { supplierName, supplierAddress?, prices: { itemId: unitPrice } } against the project's items.
-async function parseQuotation(projectId, body) {
-  const supplierName = String(body?.supplierName || '').trim().slice(0, 150);
-  if (!supplierName) throw Object.assign(new Error("Enter the supplier's name"), { status: 400 });
-  const items = await prisma.projectItem.findMany({ where: { projectId }, select: { id: true } });
-  if (items.length === 0) {
-    throw Object.assign(new Error('Add the items to buy (Edit the project) before entering quotations'), { status: 400 });
-  }
-  const prices = {};
-  const sent = body?.prices && typeof body.prices === 'object' ? body.prices : {};
-  for (const { id } of items) {
-    const raw = sent[id];
-    if (raw === undefined || raw === null || raw === '') continue;
-    const price = Number(raw);
-    if (!Number.isFinite(price) || price < 0) {
-      throw Object.assign(new Error('Each price must be a number that is not negative'), { status: 400 });
-    }
-    prices[id] = round2(price);
-  }
-  return {
-    supplierName,
-    supplierAddress: String(body?.supplierAddress || '').trim().slice(0, 200) || null,
-    prices,
-  };
-}
-
-async function loadForCanvass(id) {
-  const r = await loadOpen(id);
-  if (r.error) return r;
-  if (!CANVASS_STAGES.includes(r.project.status)) {
-    return { error: [400, 'Quotations are entered once the project is approved (Planning or Ongoing)'] };
-  }
-  return r;
-}
-
-// POST /api/projects/:id/quotations — SK Admin.
-async function addQuotation(req, res, next) {
-  try {
-    const r = await loadForCanvass(req.params.id);
-    if (r.error) return fail(res, r.error);
-    const data = await parseQuotation(req.params.id, req.body);
-    await prisma.projectQuotation.create({ data: { ...data, projectId: req.params.id } });
-    res.status(201).json({ project: await projectWithInfo(req.params.id) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// PUT /api/projects/:id/quotations/:qid — SK Admin.
-async function updateQuotation(req, res, next) {
-  try {
-    const r = await loadForCanvass(req.params.id);
-    if (r.error) return fail(res, r.error);
-    const q = await prisma.projectQuotation.findUnique({ where: { id: req.params.qid } });
-    if (!q || q.projectId !== req.params.id) return res.status(404).json({ message: 'Quotation not found' });
-    const data = await parseQuotation(req.params.id, req.body);
-    await prisma.projectQuotation.update({ where: { id: q.id }, data });
-    res.json({ project: await projectWithInfo(req.params.id) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// DELETE /api/projects/:id/quotations/:qid — SK Admin.
-async function deleteQuotation(req, res, next) {
-  try {
-    const r = await loadForCanvass(req.params.id);
-    if (r.error) return fail(res, r.error);
-    const q = await prisma.projectQuotation.findUnique({ where: { id: req.params.qid } });
-    if (!q || q.projectId !== req.params.id) return res.status(404).json({ message: 'Quotation not found' });
-    await prisma.projectQuotation.delete({ where: { id: q.id } });
-    res.json({ project: await projectWithInfo(req.params.id) });
-  } catch (err) {
-    next(err);
-  }
-}
-
 // ---------- Receipt liquidation (Ongoing) ----------
 
-// Reads new receipts one at a time in the background and saves what each says. A receipt that
-// cannot be read is marked FAILED for the SK Admin to type; nothing here fails the upload.
-async function readReceiptsLater(files) {
-  for (const f of files) {
-    let fields;
-    try {
-      fields = toReceiptFields(await readReceipt(receiptPath(f.fileName), f.mimeType));
-    } catch (err) {
-      console.error('Receipt reading failed:', err.message);
-      fields = { readStatus: 'FAILED' };
-    }
-    // Skip it if the file was deleted, or the SK Admin typed the amount, while it was being read.
-    await prisma.liquidationFile.updateMany({ where: { id: f.id, readStatus: 'PENDING' }, data: fields }).catch(() => {});
-  }
-}
-
 // POST /api/projects/:id/liquidation — SK Admin. multipart "files" (JPG, PNG or PDF, many).
-// When receipt reading is set up, each receipt is read by Claude after the upload (PENDING
-// until then); otherwise the SK Admin types the amounts.
 async function addLiquidation(req, res, next) {
   const files = req.files || [];
   const discard = () => files.forEach((f) => removeReceiptFile(f.filename));
@@ -547,19 +351,16 @@ async function addLiquidation(req, res, next) {
       return fail(res, r.error);
     }
     if (files.length === 0) return res.status(400).json({ message: 'Choose at least one file to upload' });
-    const reading = isReaderConfigured();
-    const rows = files.map((f) => ({
-      id: crypto.randomUUID(),
-      projectId: req.params.id,
-      fileName: f.filename,
-      originalName: f.originalname,
-      mimeType: f.mimetype,
-      uploadedById: req.user.id,
-      uploadedByName: req.user.name,
-      readStatus: reading ? 'PENDING' : null,
-    }));
-    await prisma.liquidationFile.createMany({ data: rows });
-    if (reading) readReceiptsLater(rows).catch((err) => console.error('Receipt reading failed:', err.message));
+    await prisma.liquidationFile.createMany({
+      data: files.map((f) => ({
+        projectId: req.params.id,
+        fileName: f.filename,
+        originalName: f.originalname,
+        mimeType: f.mimetype,
+        uploadedById: req.user.id,
+        uploadedByName: req.user.name,
+      })),
+    });
     const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: includeOpts });
     res.status(201).json({ project: withInfo(project) });
   } catch (err) {
@@ -580,41 +381,6 @@ async function getLiquidationFile(req, res, next) {
     res.sendFile(receiptPath(file.fileName), (err) => {
       if (err && !res.headersSent) res.status(404).json({ message: 'The file is missing' });
     });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// PUT /api/projects/:id/liquidation/:fileId — SK Admin, while Ongoing. { amount, receiptDate?, storeName? }
-// Types or corrects what a receipt says.
-async function updateLiquidationFile(req, res, next) {
-  try {
-    const r = await loadAtStage(req.params.id, 'ONGOING', 'Changing a receipt');
-    if (r.error) return fail(res, r.error);
-    const file = await prisma.liquidationFile.findUnique({ where: { id: req.params.fileId } });
-    if (!file || file.projectId !== req.params.id) {
-      return res.status(404).json({ message: 'File not found' });
-    }
-    const amount = Number(req.body?.amount);
-    if (req.body?.amount === '' || req.body?.amount == null || !Number.isFinite(amount) || amount < 0) {
-      return res.status(400).json({ message: 'Enter the receipt amount as a number that is not negative' });
-    }
-    let receiptDate = null;
-    if (req.body?.receiptDate) {
-      receiptDate = new Date(`${String(req.body.receiptDate).slice(0, 10)}T00:00:00+08:00`);
-      if (Number.isNaN(receiptDate.getTime())) return res.status(400).json({ message: 'Enter a valid receipt date' });
-    }
-    await prisma.liquidationFile.update({
-      where: { id: file.id },
-      data: {
-        amount: round2(amount),
-        receiptDate,
-        storeName: String(req.body?.storeName || '').trim().slice(0, 120) || null,
-        readStatus: 'MANUAL',
-      },
-    });
-    const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: includeOpts });
-    res.json({ project: withInfo(project) });
   } catch (err) {
     next(err);
   }
@@ -923,11 +689,7 @@ module.exports = {
   setSchedule,
   addLiquidation,
   getLiquidationFile,
-  updateLiquidationFile,
   deleteLiquidationFile,
-  addQuotation,
-  updateQuotation,
-  deleteQuotation,
   addChecklistItem,
   updateChecklistItem,
   deleteChecklistItem,
