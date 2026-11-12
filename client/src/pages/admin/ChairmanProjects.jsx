@@ -40,11 +40,11 @@ export default function ChairmanProjects() {
               onClick={() => setTab(opt.value)}
               aria-pressed={active}
               className={`rounded-full px-4 py-1.5 text-[15px] font-semibold transition-colors ${
-                active ? 'bg-brand-900 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100'
+                active ? 'bg-pine text-white' : 'bg-panel text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100'
               }`}
             >
               {opt.label}
-              <span className="ml-1.5 font-display text-base opacity-80">{count}</span>
+              <span className="ml-1.5 tabular font-normal opacity-80">{count}</span>
             </button>
           );
         })}
@@ -77,7 +77,7 @@ function ProjectRow({ project }) {
     <li className="flex flex-col gap-4 px-5 py-4 md:flex-row md:items-center">
       <div className="min-w-0 flex-1">
         <StatusRibbon status={project.status} />
-        <p className="mt-1.5 truncate text-lg font-bold text-slate-900">{project.title}</p>
+        <p className="mt-1.5 truncate font-display text-lg text-ink">{project.title}</p>
         <p className="text-sm text-slate-600">
           {project.startDate && project.endDate
             ? `${formatDateTime(project.startDate)} – ${formatDateTime(project.endDate)}`
@@ -109,7 +109,7 @@ function ProjectRow({ project }) {
 
       <Link
         to={`/admin/projects/${project.id}`}
-        className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-800"
+        className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-pine hover:underline"
       >
         View details <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" />
       </Link>

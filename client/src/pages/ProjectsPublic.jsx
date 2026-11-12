@@ -25,7 +25,7 @@ export default function ProjectsPublic() {
   const count = (key) => (key ? projects.filter((p) => p.status === key).length : projects.length);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
+    <div className="mx-auto max-w-content px-4 py-10 sm:px-8">
       <PageHeader
         title="SK Projects"
         description="Follow the programs and projects run by your Sangguniang Kabataan, from planning to completion."
@@ -41,12 +41,12 @@ export default function ProjectsPublic() {
               aria-pressed={filter === f.key}
               className={`rounded-full px-4 py-1.5 text-[15px] font-semibold transition-colors ${
                 filter === f.key
-                  ? 'bg-brand-900 text-white'
-                  : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100'
+                  ? 'bg-pine text-white'
+                  : 'bg-panel text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100'
               }`}
             >
               {f.label}
-              <span className="ml-1.5 font-display text-base opacity-80">{count(f.key)}</span>
+              <span className="ml-1.5 tabular font-normal opacity-80">{count(f.key)}</span>
             </button>
           ))}
         </div>

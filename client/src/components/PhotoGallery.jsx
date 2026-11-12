@@ -158,13 +158,13 @@ function UploadBox({ target, onDone }) {
       )}
 
       {items.length > 0 && (
-        <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
+        <div className="mt-4 rounded-card border border-dashed border-slate-300 bg-slate-50 p-4">
           <p className="text-sm font-semibold text-slate-800">
             {items.length} picture{items.length === 1 ? '' : 's'} ready to upload
           </p>
           <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((it, i) => (
-              <li key={it.key} className="flex gap-3 rounded-lg bg-white p-2 ring-1 ring-slate-200">
+              <li key={it.key} className="flex gap-3 rounded-lg bg-panel p-2 ring-1 ring-slate-200">
                 <div className="relative shrink-0">
                   <img src={it.url} alt="" className="h-20 w-24 rounded-md object-cover" />
                   <button

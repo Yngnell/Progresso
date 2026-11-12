@@ -29,7 +29,7 @@ export function ProjectCard({ project, footer, to, notice }) {
         {to ? (
           <Link
             to={to}
-            className="group -m-2 block rounded-xl p-2 transition-colors hover:bg-slate-50 focus-visible:bg-slate-50"
+            className="group -m-2 block rounded-card p-2 transition-colors hover:bg-slate-50 focus-visible:bg-slate-50"
             aria-label={`Open ${project.title}`}
           >
             {header}
@@ -63,7 +63,7 @@ export function ProjectCard({ project, footer, to, notice }) {
       <dl className="mt-4 border-t border-slate-100 px-5 py-4">
         <div>
           <dt className="text-sm text-slate-600">Budget</dt>
-          <dd className="font-display text-xl font-bold text-slate-900">
+          <dd className="font-display text-xl text-slate-900">
             {formatPeso(project.budget)}
           </dd>
         </div>

@@ -13,7 +13,7 @@ export default function OfficialsPublic() {
   const officials = data?.officials || [];
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
+    <div className="mx-auto max-w-content px-4 py-10 sm:px-8">
       <PageHeader
         title="Barangay Officials"
         description="Meet the Sangguniang Kabataan serving our community."

@@ -1,39 +1,39 @@
 import { PROJECT_STATUS } from '../utils/format';
 
 // ---------------------------------------------------------------------------
-// Project marks taken from the SK Salinas 1 seal:
-//   StatusRibbon: a project's status drawn as the seal's swallowtail banner.
+// Project marks:
+//   StatusRibbon: a project's status as a small pill with a coloured dot.
 //   StageSteps:   where a project is in the flow
 //                 Proposed -> Planning -> Ongoing -> Completed (On Hold pauses at Ongoing).
 // ---------------------------------------------------------------------------
 
 export const STAGES = ['PROPOSED', 'PLANNING', 'ONGOING', 'COMPLETED'];
 
-const RIBBON_TONE = {
-  PROPOSED: 'bg-slate-600 text-white',
-  PLANNING: 'bg-brand-600 text-white',
-  ONGOING: 'bg-accent-500 text-ink',
-  COMPLETED: 'bg-green-600 text-white',
-  CANCELLED: 'bg-red-600 text-white',
-  ON_HOLD: 'bg-slate-400 text-ink',
+// sage = done, mustard = waiting, clay = rejected, pine = under way, neutral = paused
+const STATUS_TONE = {
+  PROPOSED: { pill: 'bg-mustard-wash text-mustard-text', dot: 'bg-mustard' },
+  PLANNING: { pill: 'bg-pine-light text-pine', dot: 'bg-pine' },
+  ONGOING: { pill: 'bg-pine-light text-pine', dot: 'bg-pine' },
+  COMPLETED: { pill: 'bg-sage-wash text-sage-text', dot: 'bg-sage' },
+  CANCELLED: { pill: 'bg-clay-wash text-clay-text', dot: 'bg-clay' },
+  ON_HOLD: { pill: 'bg-slate-100 text-slate-700', dot: 'bg-slate-400' },
 };
 
-// Swallowtail banner for a project's status, like the red ribbon on the seal.
+// The status of a project as a pill: dot + word.
 export function StatusRibbon({ status, label, className = '' }) {
   const text = label || PROJECT_STATUS[status]?.label || status;
+  const tone = STATUS_TONE[status] || STATUS_TONE.PROPOSED;
   return (
     <span
-      className={`seal-type inline-flex items-center whitespace-nowrap px-4 py-0.5 text-[13px] leading-5 ${
-        RIBBON_TONE[status] || RIBBON_TONE.PROPOSED
-      } ${className}`}
-      style={{ clipPath: 'polygon(0 0, 100% 0, calc(100% - 7px) 50%, 100% 100%, 0 100%, 7px 50%)' }}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[13px] font-medium leading-5 ${tone.pill} ${className}`}
     >
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${tone.dot}`} aria-hidden="true" />
       {text}
     </span>
   );
 }
 
-// The four stages as a row of steps: done (green), current (gold) and still to come.
+// The four stages as a row of steps: done (sage), current (pine) and still to come.
 // A cancelled project stopped at Proposed; an On Hold one is paused at Ongoing.
 // showLabels={false} gives the compact bar.
 export function StageSteps({ status, showLabels = true, className = '' }) {
@@ -51,15 +51,15 @@ export function StageSteps({ status, showLabels = true, className = '' }) {
         const done = !cancelled && (i < current || status === 'COMPLETED');
         const here = i === current && status !== 'COMPLETED';
         const dot = cancelled && i === 0
-          ? 'bg-red-600 ring-red-600'
+          ? 'bg-clay ring-clay'
           : done
-            ? 'bg-green-600 ring-green-600'
+            ? 'bg-sage ring-sage'
             : here
               ? onHold
-                ? 'bg-slate-400 ring-ink'
-                : 'bg-accent-500 ring-ink'
-              : 'bg-white ring-slate-300';
-        const line = !cancelled && i < current ? 'bg-green-600' : 'bg-slate-200';
+                ? 'bg-mustard ring-mustard'
+                : 'bg-pine ring-pine'
+              : 'bg-panel ring-slate-300';
+        const line = !cancelled && i < current ? 'bg-sage' : 'bg-line';
         return (
           <li key={s} className="flex flex-1 flex-col items-center last:flex-none">
             <div className="flex w-full items-center">

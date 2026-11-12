@@ -39,18 +39,18 @@ export default function EventQrCheckin() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-900 px-4 py-6 text-white sm:px-8">
+    <div className="min-h-screen px-4 py-6 text-ink sm:px-8">
       <div className="flex items-center justify-between gap-3">
         <Link
           to={`/admin/meetings/${id}`}
-          className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-200 hover:text-white"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-pine hover:underline"
         >
           <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" /> Back to the event
         </Link>
         <button
           type="button"
           onClick={goFullScreen}
-          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-brand-100 hover:bg-white/10"
+          className="btn btn-secondary px-3 text-sm"
         >
           <Expand size={16} strokeWidth={1.75} aria-hidden="true" /> Fill the screen
         </button>
@@ -65,20 +65,20 @@ export default function EventQrCheckin() {
           No QR code yet. Go back to the event and choose Generate Attendance QR.
         </p>
       ) : (
-        <div className="mx-auto mt-6 grid max-w-6xl items-start gap-8 lg:grid-cols-[auto_1fr]">
+        <div className="mx-auto mt-6 grid max-w-content items-start gap-8 lg:grid-cols-[auto_1fr]">
           <div className="flex flex-col items-center">
-            <div className={`rounded-2xl bg-white p-5 shadow-cardHover ${status.key === 'open' ? '' : 'opacity-40'}`}>
+            <div className={`rounded-card border border-line bg-panel p-5 ${status.key === 'open' ? '' : 'opacity-40'}`}>
               <QRCodeSVG value={checkInLink(id, qr.token)} size={380} level="M" marginSize={1} aria-label="Attendance QR code" />
             </div>
-            <p className="mt-4 text-center text-lg text-brand-100">Scan with your phone camera to record your attendance.</p>
+            <p className="mt-4 text-center text-lg text-slate-700">Scan with your phone camera to record your attendance.</p>
             {status.key === 'open' && (
-              <p className="mt-1 text-center text-brand-100">
+              <p className="mt-1 text-center text-slate-700">
                 Closes at {formatTime(qr.validUntil)} ·{' '}
-                <span className="font-display text-2xl font-bold text-accent-400">{minutesLeft} min</span> left
+                <span className="font-display text-2xl text-clay-text">{minutesLeft} min</span> left
               </p>
             )}
             {status.key !== 'open' && (
-              <p className="mt-3 max-w-sm rounded-lg bg-accent-500 px-3 py-2 text-center text-sm font-semibold text-ink">
+              <p className="notice notice-warn mt-3 max-w-sm text-center text-sm font-medium">
                 {status.key === 'off'
                   ? 'This QR code is deactivated.'
                   : status.key === 'soon'
@@ -89,26 +89,21 @@ export default function EventQrCheckin() {
           </div>
 
           <div>
-            <p className="text-sm font-semibold uppercase tracking-wider text-brand-200">Attendance for</p>
-            <h1 className="mt-1 font-display text-5xl font-bold uppercase leading-none tracking-wide text-white">
-              {event.title}
-            </h1>
-            <p className="mt-2 text-lg text-brand-100">
+            <h1 className="page-title !text-[40px]">Attendance: {event.title}</h1>
+            <p className="mt-3 text-lg text-slate-700">
               {formatDateTime(event.startAt)}
               {event.location ? ` · ${event.location}` : ''}
             </p>
 
-            <h2 className="mt-8 font-display text-3xl font-bold uppercase tracking-wide text-white">
-              Recorded: {records.length}
-            </h2>
+            <h2 className="section-title mt-8 !text-[26px]">Recorded: {records.length}</h2>
             {records.length === 0 ? (
-              <p className="mt-3 text-brand-100">Nobody yet. Names appear here as officials mark themselves present.</p>
+              <p className="mt-3 text-slate-600">Nobody yet. Names appear here as officials mark themselves present.</p>
             ) : (
               <ul className="mt-3 grid gap-2 sm:grid-cols-2">
                 {[...records].reverse().map((r) => (
-                  <li key={r.id} className="flex items-center justify-between gap-3 rounded-lg bg-white/10 px-3 py-2">
-                    <span className="truncate font-semibold">{r.participant}</span>
-                    <span className="shrink-0 text-sm text-brand-100">
+                  <li key={r.id} className="card flex items-center justify-between gap-3 px-3 py-2">
+                    <span className="truncate font-medium">{r.participant}</span>
+                    <span className="shrink-0 text-sm text-slate-600">
                       {ATTENDANCE_STATUS[r.status]?.label || r.status}
                       {r.timeIn ? ` · ${formatTime(r.timeIn)}` : ''}
                     </span>

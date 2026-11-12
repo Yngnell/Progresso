@@ -193,12 +193,12 @@ function ProjectManagement() {
               aria-pressed={active}
               className={`rounded-full px-4 py-1.5 text-[15px] font-semibold transition-colors ${
                 active
-                  ? 'bg-brand-900 text-white'
-                  : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100'
+                  ? 'bg-pine text-white'
+                  : 'bg-panel text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100'
               }`}
             >
               {opt.label}
-              <span className="ml-1.5 font-display text-base opacity-80">{count}</span>
+              <span className="ml-1.5 tabular font-normal opacity-80">{count}</span>
             </button>
           );
         })}

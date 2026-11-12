@@ -59,7 +59,7 @@ export default function AdminEventDetail() {
       <div className="mt-4 flex flex-wrap items-start gap-4">
         <DateTile date={event.startAt} className="h-16 w-16" />
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-4xl font-bold uppercase leading-none tracking-wide text-slate-900">
+          <h1 className="page-title">
             {event.title}
           </h1>
           <p className="mt-2 flex items-center gap-2 text-slate-700">
@@ -71,18 +71,18 @@ export default function AdminEventDetail() {
       </div>
 
       {/* Summary: Present and Absent */}
-      <dl className="mt-6 grid max-w-md grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200">
+      <dl className="mt-6 grid max-w-md grid-cols-2 gap-px overflow-hidden rounded-card border border-slate-200 bg-slate-200">
         {Object.entries(ATTENDANCE_STATUS).map(([key, v]) => (
-          <div key={key} className="bg-white p-4">
-            <dt className="text-sm font-semibold text-slate-600">{v.label}</dt>
-            <dd className="font-display text-4xl font-bold text-slate-900">{counts[key] || 0}</dd>
+          <div key={key} className="bg-panel p-4">
+            <dt className="section-label">{v.label}</dt>
+            <dd className="font-display text-4xl text-slate-900">{counts[key] || 0}</dd>
           </div>
         ))}
       </dl>
 
       <div className="mt-6">
         <Card className="p-5">
-          <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">
+          <h2 className="section-title">
             Attendance ({records.length})
           </h2>
           <p className="mt-1 text-sm text-slate-600">
@@ -97,24 +97,24 @@ export default function AdminEventDetail() {
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[420px] text-sm">
-                  <thead className="text-left text-xs uppercase text-slate-500">
+                <table className="table-notebook table-stack">
+                  <thead>
                     <tr>
                       <th className="py-2">Participant</th>
                       <th className="py-2">Status</th>
                       <th className="py-2">Time Checked In</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {records.map((r) => (
                       <tr key={r.id}>
-                        <td className="py-2 text-slate-700">{r.participant}</td>
-                        <td className="py-2">
+                        <td data-label="Participant" className="py-2 text-slate-700">{r.participant}</td>
+                        <td data-label="Status" className="py-2">
                           <Badge tone={ATTENDANCE_STATUS[r.status]?.tone}>
                             {ATTENDANCE_STATUS[r.status]?.label || r.status}
                           </Badge>
                         </td>
-                        <td className="py-2 text-slate-600">
+                        <td data-label="Time checked in" className="py-2 text-slate-600">
                           {r.status === 'PRESENT' && r.timeIn ? formatTime(r.timeIn) : ''}
                         </td>
                       </tr>

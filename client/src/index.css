@@ -1,34 +1,44 @@
+@import './theme.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   html {
-    font-family: 'Barlow', ui-sans-serif, system-ui, sans-serif;
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    line-height: var(--leading);
     /* The browser's own parts take the palette too */
-    accent-color: #1c66cc;
-    scrollbar-color: #bac6db transparent;
+    accent-color: var(--pine);
+    caret-color: var(--pine);
+    scrollbar-color: #cfc4af transparent;
     scrollbar-width: thin;
   }
   body {
-    @apply bg-slate-50 text-slate-800 antialiased;
+    @apply text-ink antialiased;
+    background-color: var(--paper);
+    /* Notebook paper: a faint dot grid */
+    background-image: radial-gradient(var(--dot) 1px, transparent 1.2px);
+    background-size: var(--dot-gap) var(--dot-gap);
+    background-attachment: fixed;
   }
   ::selection {
-    background: #bbd5fa;
-    color: #0b1f4a;
+    background: var(--pine-light);
+    color: var(--pine);
   }
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
   ::-webkit-scrollbar-thumb {
-    background: #bac6db;
+    background: #cfc4af;
     border-radius: 999px;
     border: 3px solid transparent;
     background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #627290;
+    background: #a39a8b;
     background-clip: content-box;
     border: 3px solid transparent;
   }
@@ -39,48 +49,268 @@
   }
   /* One keyboard focus ring everywhere */
   :focus-visible {
-    outline: 2px solid #2f7fe6;
+    outline: 2px solid var(--pine);
     outline-offset: 2px;
+  }
+  a {
+    text-underline-offset: 3px;
   }
   h1,
   h2,
   h3 {
     text-wrap: balance;
-    @apply text-slate-900;
+    @apply text-ink;
+  }
+  /* Young Serif has one weight: never fake a bold */
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-synthesis: none;
+    letter-spacing: 0;
+  }
+  /* Nothing smaller than 13px */
+  .text-xs {
+    font-size: var(--text-min) !important;
+    line-height: 1.45 !important;
   }
 }
 
 @layer components {
+  /* ---- Buttons: 40px tall, 6px corners ---- */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 font-medium transition-colors duration-150 disabled:cursor-not-allowed;
+    min-height: var(--control-height);
+    border-radius: var(--radius-control);
+    line-height: 1.25;
+  }
+  /* Disabled: a plain paper button, so a waiting action never reads as "done" */
+  .btn:disabled {
+    background: var(--paper) !important;
+    color: var(--ink-soft) !important;
+    border: 1px solid var(--line) !important;
   }
   .btn-primary {
-    @apply bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800;
+    background: var(--pine);
+    color: #fff;
   }
-  /* Gold action: ink text, because white on gold is unreadable */
+  .btn-primary:hover:not(:disabled) {
+    background: var(--pine-dark);
+  }
+  /* Kept for the existing markup: the "accent" action is now the pine primary */
   .btn-accent {
-    @apply bg-accent-500 text-ink hover:bg-accent-400 active:bg-accent-600;
+    background: var(--pine);
+    color: #fff;
+  }
+  .btn-accent:hover:not(:disabled) {
+    background: var(--pine-dark);
   }
   .btn-secondary {
-    @apply border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50 active:bg-slate-100;
+    background: transparent;
+    color: var(--pine);
+    border: 1px solid var(--pine);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--pine-light);
   }
   .btn-danger {
-    @apply bg-red-600 text-white hover:bg-red-700 active:bg-red-800;
+    background: var(--clay-fill);
+    color: #fff;
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: #8a4024;
   }
   .btn-ghost {
-    @apply text-slate-600 hover:bg-slate-100 active:bg-slate-200;
+    color: var(--ink-soft);
   }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--pine-light);
+    color: var(--pine);
+  }
+
+  /* ---- Cards: panel, 1px line, 8px corners, no float ---- */
   .card {
-    @apply rounded-xl border border-slate-200 bg-white shadow-card;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
   }
+  /* A card's header: the planner's dashed rule underneath */
+  .card-head {
+    border-bottom: 1px dashed var(--line);
+  }
+  /* A card that opens with its title gets the same dashed rule under it */
+  .card > .section-title:first-child {
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    border-bottom: 1px dashed var(--line);
+  }
+
+  /* ---- Fields ---- */
   .input {
-    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200;
+    @apply w-full px-3 py-2 text-[15px] text-ink transition-colors placeholder:text-slate-500 focus:outline-none;
+    min-height: var(--control-height);
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+  }
+  .input:focus {
+    border-color: var(--pine);
+    box-shadow: 0 0 0 3px var(--pine-light);
+  }
+  .input:disabled {
+    background: var(--paper);
+    color: var(--ink-soft);
   }
   .label {
-    @apply mb-1 block text-sm font-semibold text-slate-700;
+    @apply mb-1 block text-sm font-medium;
+    color: var(--ink);
   }
-  /* The seal's lettering: condensed, heavy, capitals */
+
+  /* ---- Headings ---- */
+  /* Page title: serif 28px with a short clay rule under it */
+  .page-title {
+    font-family: var(--font-display);
+    font-size: var(--text-page-title);
+    line-height: 1.2;
+    color: var(--ink);
+  }
+  .page-title::after {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 3px;
+    margin-top: 10px;
+    border-radius: 2px;
+    background: var(--clay);
+  }
+  /* Section title: serif 20px */
+  .section-title {
+    font-family: var(--font-display);
+    font-size: var(--text-section-title);
+    line-height: 1.3;
+    color: var(--ink);
+  }
+  /* Planner-tab label that groups related content */
+  .section-label {
+    font-size: var(--text-min);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--ink-soft);
+  }
+  /* Kept for the existing nameplate markup */
   .seal-type {
-    @apply font-display font-bold uppercase tracking-wide;
+    font-family: var(--font-display);
+  }
+
+  /* ---- Tables: paper header, hairline rows, pine-light hover ---- */
+  .table-notebook {
+    @apply w-full text-[15px];
+    border-collapse: collapse;
+  }
+  :where(.table-notebook) thead th {
+    @apply px-4 py-2.5 text-[13px] font-medium uppercase;
+    /* zero-specificity rule: a column's own text-right still wins */
+    text-align: left;
+    letter-spacing: 0.06em;
+    background: var(--paper);
+    color: var(--ink-soft);
+    border-bottom: 1px solid var(--line);
+  }
+  :where(.table-notebook) tbody td {
+    @apply px-4 py-3 align-top;
+    border-bottom: 1px solid var(--line);
+  }
+  :where(.table-notebook) tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  :where(.table-notebook) tbody tr:hover td {
+    background: var(--pine-light);
+  }
+
+  /* ---- Notices: success sage, error clay ---- */
+  .notice {
+    @apply rounded-control px-4 py-3 text-[15px];
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+  }
+  .notice-ok {
+    background: var(--sage-wash);
+    border-color: #c9d7c6;
+    color: var(--sage-text);
+  }
+  .notice-error {
+    background: var(--clay-wash);
+    border-color: #edc0ad;
+    color: var(--clay-text);
+  }
+  .notice-warn {
+    background: var(--mustard-wash);
+    border-color: #f3dca6;
+    color: var(--mustard-text);
+  }
+}
+
+@layer utilities {
+  /* Below 600px: tables become stacked cards (cells carry data-label) */
+  @media (max-width: 599px) {
+    .table-stack thead {
+      display: none;
+    }
+    .table-stack,
+    .table-stack tbody,
+    .table-stack tr,
+    .table-stack td {
+      display: block;
+      width: 100%;
+    }
+    .table-stack tr {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-card);
+      padding: 8px 0;
+      margin-bottom: 12px;
+    }
+    .table-stack tbody td {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      text-align: right !important;
+      border-bottom: 0;
+      padding: 6px 16px;
+    }
+    .table-stack td[data-label]::before {
+      content: attr(data-label);
+      font-size: var(--text-min);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--ink-soft);
+      text-align: left;
+    }
+    .table-stack tbody tr:hover td {
+      background: transparent;
+    }
+    .table-stack tfoot,
+    .table-stack tfoot tr {
+      display: block;
+    }
+    .table-stack tfoot td {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 16px;
+      font-weight: 500;
+    }
+    .table-stack tfoot td[data-label=''] {
+      display: none;
+    }
+    /* Buttons in page actions and forms take the full width */
+    .actions-stack > *,
+    .actions-stack .btn,
+    form .btn[type='submit'] {
+      width: 100%;
+    }
   }
 }

@@ -25,7 +25,7 @@ export default function MeetingQrList() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="font-display text-4xl font-bold uppercase tracking-wide text-slate-900">Attendance QR</h1>
+      <h1 className="page-title">Attendance QR</h1>
       <p className="mt-1 text-slate-600">
         Each meeting has its own QR code. Show it on a laptop or projector, or print it; officials scan it with their phone
         and choose their name to record their attendance.

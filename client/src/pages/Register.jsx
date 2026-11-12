@@ -120,14 +120,14 @@ export default function Register() {
           required
         />
         {/* Consent is a choice, so the box starts unticked */}
-        <label className="flex cursor-pointer items-start justify-end gap-2.5 text-right text-[15px] text-slate-700">
-          <span>I would like to receive news, events and project updates by email.</span>
+        <label className="flex cursor-pointer items-start gap-2.5 text-left text-[15px] text-slate-700">
           <input
             type="checkbox"
             className="mt-1 h-4 w-4 shrink-0 accent-brand-600"
             checked={form.receiveUpdates}
             onChange={(e) => setForm({ ...form, receiveUpdates: e.target.checked })}
           />
+          <span>I would like to receive news, events and project updates by email.</span>
         </label>
         <Button
           type="submit"

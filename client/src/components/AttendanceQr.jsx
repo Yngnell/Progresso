@@ -176,7 +176,7 @@ h1{font-size:28px;margin:0 0 6px}p{margin:4px 0;font-size:16px}img{width:420px;h
         </div>
       ) : (
         <div className="mt-4 grid gap-6 md:grid-cols-[auto_1fr]">
-          <div ref={canvasWrap} className={`mx-auto rounded-xl bg-white p-3 ring-1 ring-slate-200 ${qr.active ? '' : 'opacity-40'}`}>
+          <div ref={canvasWrap} className={`mx-auto rounded-card bg-panel p-3 ring-1 ring-slate-200 ${qr.active ? '' : 'opacity-40'}`}>
             <QRCodeCanvas value={checkInLink(eventId, qr.token)} size={232} level="M" marginSize={2} aria-label="Attendance QR code" />
           </div>
           <div className="min-w-0 space-y-4">

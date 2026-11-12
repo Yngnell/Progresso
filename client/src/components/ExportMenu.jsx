@@ -41,10 +41,10 @@ export default function ExportMenu({ onExport, disabled = false, label = 'Export
   ];
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative w-full sm:w-auto">
       <button
         type="button"
-        className="btn btn-primary px-4 py-2 text-[15px]"
+        className="btn btn-primary w-full px-4 py-2 text-[15px] sm:w-auto"
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled || busy !== null}
@@ -57,7 +57,7 @@ export default function ExportMenu({ onExport, disabled = false, label = 'Export
       {open && (
         <ul
           role="menu"
-          className="absolute right-0 z-30 mt-1 min-w-[14rem] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-cardHover"
+          className="absolute right-0 z-30 mt-1 min-w-[14rem] overflow-hidden rounded-card border border-slate-200 bg-panel py-1 shadow-cardHover"
         >
           {items.map(({ kind, label, note, Icon }) => (
             <li key={kind} role="none">

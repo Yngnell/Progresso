@@ -47,7 +47,7 @@ export default function ProjectDetailPublic() {
       <div className="mt-5">
         <div className="min-w-0">
           <StatusRibbon status={project.status} />
-          <h1 className="mt-3 font-display text-4xl font-bold uppercase leading-none tracking-wide text-slate-900 sm:text-5xl">
+          <h1 className="mt-3 page-title">
             {project.title}
           </h1>
           {project.category && <p className="mt-1 text-slate-600">{project.category}</p>}
@@ -70,7 +70,7 @@ export default function ProjectDetailPublic() {
 
       {project.photos?.length > 0 && (
         <Card className="mt-6 p-6">
-          <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Photos</h2>
+          <h2 className="section-title">Photos</h2>
           <div className="mt-4">
             <PhotoGallery photos={project.photos} />
           </div>
@@ -79,7 +79,7 @@ export default function ProjectDetailPublic() {
 
       {(project.officials || []).length > 0 && (
         <Card className="mt-6 p-6">
-          <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">
+          <h2 className="section-title">
             Project team
           </h2>
           <ul className="mt-4 flex flex-wrap gap-2">

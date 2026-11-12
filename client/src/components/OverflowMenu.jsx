@@ -39,7 +39,7 @@ export default function OverflowMenu({ items, label = 'More actions', className 
       {open && (
         <ul
           role="menu"
-          className="absolute right-0 z-30 mt-1 min-w-[12rem] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-cardHover"
+          className="absolute right-0 z-30 mt-1 min-w-[12rem] overflow-hidden rounded-card border border-slate-200 bg-panel py-1 shadow-cardHover"
         >
           {visible.map((item) => (
             <li key={item.label} role="none">

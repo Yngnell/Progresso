@@ -45,7 +45,7 @@ export default function AdminArchive() {
               aria-selected={active}
               onClick={() => setParams({ tab: t.id }, { replace: true })}
               className={`rounded-full px-4 py-1.5 text-[15px] font-semibold transition-colors ${
-                active ? 'bg-brand-900 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100'
+                active ? 'bg-pine text-white' : 'bg-panel text-slate-700 ring-1 ring-slate-300 hover:bg-slate-100'
               }`}
             >
               {t.label}
@@ -143,7 +143,7 @@ function DeletedList() {
             </p>
 
             <div className="mt-3 text-sm">
-              <p className="text-slate-400">Budget</p>
+              <p className="text-slate-600">Budget</p>
               <p className="font-medium text-slate-700">{formatPeso(p.budget)}</p>
             </div>
 

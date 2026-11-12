@@ -179,7 +179,7 @@ export default function AdminMeetings() {
               <ChevronLeft size={20} strokeWidth={1.75} aria-hidden="true" />
               <span className="hidden sm:inline">Prev</span>
             </button>
-            <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">
+            <h2 className="section-title">
               {MONTHS[month]} {year}
             </h2>
             <button
@@ -203,7 +203,7 @@ export default function AdminMeetings() {
 
         {/* Selected day / upcoming list */}
         <Card className="p-5">
-          <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">
+          <h2 className="section-title">
             {selectedDay ? `Events on ${selectedDay}` : 'Upcoming Events'}
           </h2>
           <div className="mt-3 space-y-3">
@@ -212,7 +212,7 @@ export default function AdminMeetings() {
             ) : (
               (selectedDay ? selectedEvents : events.filter((e) => new Date(e.startAt) >= new Date()).slice(0, 6)).map((e) => {
                 return (
-                  <div key={e.id} className="rounded-xl border border-slate-200 p-3">
+                  <div key={e.id} className="rounded-card border border-slate-200 p-3">
                     <div className="flex items-start gap-3">
                       <DateTile date={e.startAt} className="h-12 w-12" />
                       <div className="min-w-0">

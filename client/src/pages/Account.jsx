@@ -16,7 +16,7 @@ export default function Account() {
         <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" />
         Back to the website
       </Link>
-      <h1 className="mt-4 font-display text-4xl font-bold uppercase tracking-wide text-slate-900">Settings</h1>
+      <h1 className="mt-4 page-title">Settings</h1>
       <div className="mt-6">
         <SettingsTabs />
       </div>

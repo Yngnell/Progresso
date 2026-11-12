@@ -14,7 +14,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import { formatPeso, formatDate, formatDateTime, toDateTimeLocal } from '../../utils/format';
 import { isAdmin, isManager, isWorker } from '../../utils/roles';
 
-const cardTitle = 'font-display text-2xl font-bold uppercase tracking-wide text-slate-900';
+const cardTitle = 'section-title';
 const errorText = (err, fallback) => err?.response?.data?.message || fallback;
 
 // One project and its stage in the flow:
@@ -128,10 +128,10 @@ export default function AdminProjectDetail() {
         </p>
       )}
 
-      <div className="mt-4 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+      <div className="mt-4 flex items-start justify-between gap-5">
         <div className="min-w-0 flex-1">
           <StatusRibbon status={project.status} />
-          <h1 className="mt-2 font-display text-4xl font-bold uppercase leading-none tracking-wide text-slate-900">
+          <h1 className="mt-2 page-title">
             {project.title}
           </h1>
           {project.category && <p className="mt-1 text-slate-600">{project.category}</p>}
@@ -231,8 +231,8 @@ export default function AdminProjectDetail() {
             <Card className="p-6">
               <h2 className={cardTitle}>Purchase requests</h2>
               <p className="mt-1 text-sm text-slate-600">The project budget is the total of these requests.</p>
-              <table className="mt-3 w-full text-sm">
-                <thead className="text-left text-sm text-slate-600">
+              <table className="table-notebook table-stack mt-3">
+                <thead>
                   <tr>
                     <th className="py-2">No.</th>
                     <th className="py-2">PR no.</th>
@@ -241,23 +241,23 @@ export default function AdminProjectDetail() {
                     <th className="py-2 text-right">Estimated amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody>
                   {project.requestItems.map((r, i) => (
                     <tr key={r.id}>
-                      <td className="py-2 text-slate-500">{i + 1}</td>
-                      <td className="py-2 text-slate-700">{r.prNo || '—'}</td>
-                      <td className="py-2 text-slate-500">{formatDate(r.prDate)}</td>
-                      <td className="py-2 uppercase text-slate-700">{r.requestedBy || '—'}</td>
-                      <td className="py-2 text-right font-medium text-slate-700">{formatPeso(r.amount)}</td>
+                      <td data-label="No." className="py-2 text-slate-500">{i + 1}</td>
+                      <td data-label="PR no." className="py-2 text-slate-700">{r.prNo || '—'}</td>
+                      <td data-label="Date of PR" className="py-2 text-slate-500">{formatDate(r.prDate)}</td>
+                      <td data-label="Requested by" className="py-2 uppercase text-slate-700">{r.requestedBy || '—'}</td>
+                      <td data-label="Estimated amount" className="py-2 text-right font-medium text-slate-700">{formatPeso(r.amount)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t border-slate-200">
-                    <td className="py-2 font-semibold text-slate-700" colSpan={4}>
+                  <tr className="border-t border-line">
+                    <td data-label="" className="py-2 font-semibold text-slate-700" colSpan={4}>
                       Total
                     </td>
-                    <td className="py-2 text-right font-semibold text-slate-800">
+                    <td data-label="Total" className="py-2 text-right font-semibold text-slate-800">
                       {formatPeso(project.requestItems.reduce((s, r) => s + Number(r.amount || 0), 0))}
                     </td>
                   </tr>
@@ -499,7 +499,7 @@ function CompletePanel({ project, isSkAdmin, onDone, onFail }) {
           </p>
         </div>
         {isSkAdmin && (
-          <div className="flex flex-wrap gap-2">
+          <div className="actions-stack flex w-full flex-wrap gap-2 sm:w-auto">
           <Button
             variant="secondary"
             disabled={hold.isPending}
@@ -572,7 +572,7 @@ function HoldPanel({ project, isSkAdmin, onDone, onFail }) {
           </p>
         </div>
         {isSkAdmin && (
-          <div className="flex flex-wrap gap-2">
+          <div className="actions-stack flex w-full flex-wrap gap-2 sm:w-auto">
             <Button
               variant="secondary"
               disabled={busy}

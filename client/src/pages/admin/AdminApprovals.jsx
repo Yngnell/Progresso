@@ -7,7 +7,7 @@ import PageHeader from '../../components/PageHeader';
 import ProjectReviewPanel from '../../components/ProjectReviewPanel';
 import { formatDate, formatPeso } from '../../utils/format';
 
-const cardTitle = 'font-display text-2xl font-bold uppercase tracking-wide text-slate-900';
+const cardTitle = 'section-title';
 
 // Approvals (Barangay Chairman): the Project Requests waiting for a decision (Proposed).
 // Approve moves a request to Planning; Reject cancels it (Archives > Cancelled).
@@ -90,8 +90,8 @@ function RequestCard({ project, onDone, onFail }) {
           <p className="mt-1 text-sm text-slate-600">No purchase requests listed.</p>
         ) : (
           <div className="mt-1 overflow-x-auto">
-            <table className="w-full min-w-[32rem] text-sm">
-              <thead className="text-left text-sm text-slate-600">
+            <table className="table-notebook table-stack">
+              <thead>
                 <tr>
                   <th className="py-2">No.</th>
                   <th className="py-2">PR no.</th>
@@ -100,23 +100,23 @@ function RequestCard({ project, onDone, onFail }) {
                   <th className="py-2 text-right">Estimated amount</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {items.map((r, i) => (
                   <tr key={r.id}>
-                    <td className="py-2 text-slate-500">{i + 1}</td>
-                    <td className="py-2 text-slate-700">{r.prNo || '—'}</td>
-                    <td className="py-2 text-slate-500">{formatDate(r.prDate)}</td>
-                    <td className="py-2 uppercase text-slate-700">{r.requestedBy || '—'}</td>
-                    <td className="py-2 text-right font-medium text-slate-700">{formatPeso(r.amount)}</td>
+                    <td data-label="No." className="py-2 text-slate-500">{i + 1}</td>
+                    <td data-label="PR no." className="py-2 text-slate-700">{r.prNo || '—'}</td>
+                    <td data-label="Date of PR" className="py-2 text-slate-500">{formatDate(r.prDate)}</td>
+                    <td data-label="Requested by" className="py-2 uppercase text-slate-700">{r.requestedBy || '—'}</td>
+                    <td data-label="Estimated amount" className="py-2 text-right font-medium text-slate-700">{formatPeso(r.amount)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t border-slate-200">
-                  <td className="py-2 font-semibold text-slate-700" colSpan={4}>
+                <tr className="border-t border-line">
+                  <td data-label="" className="py-2 font-semibold text-slate-700" colSpan={4}>
                     Total
                   </td>
-                  <td className="py-2 text-right font-semibold text-slate-800">
+                  <td data-label="Total" className="py-2 text-right font-semibold text-slate-800">
                     {formatPeso(items.reduce((s, r) => s + Number(r.amount || 0), 0))}
                   </td>
                 </tr>

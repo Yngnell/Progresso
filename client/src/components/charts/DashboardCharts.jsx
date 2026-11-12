@@ -56,7 +56,8 @@ export function AttendanceBars({ data = [] }) {
           <Legend
             iconType="square"
             iconSize={10}
-            wrapperStyle={{ fontSize: 13, fontFamily: 'Barlow, sans-serif', color: CHART.slate }}
+            wrapperStyle={{ fontSize: 13, fontFamily: 'Lexend, sans-serif', color: '#6B655C' }}
+            formatter={(v) => <span style={{ color: '#6B655C' }}>{v}</span>}
           />
           <Bar dataKey="present" name="Present" stackId="a" fill={CHART.azure} />
           <Bar dataKey="absent" name="Absent" stackId="a" fill={CHART.red} radius={[4, 4, 0, 0]} />
@@ -95,13 +96,13 @@ export function StatusDonut({ data = [], colors, labels }) {
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="font-display text-4xl font-bold leading-none text-slate-900">
+          <span className="font-display text-4xl leading-none text-slate-900">
             {total}
           </span>
           <span className="text-sm text-slate-600">{total === 1 ? 'project' : 'projects'}</span>
         </div>
       </div>
-      <ul className="grid w-full grid-cols-2 gap-x-4 gap-y-1.5">
+      <ul className="mx-auto grid w-full max-w-xs grid-cols-1 gap-y-1.5">
         {data.map((d) => (
           <li key={d.status} className="flex items-center gap-2 text-slate-700">
             <span
@@ -110,7 +111,7 @@ export function StatusDonut({ data = [], colors, labels }) {
               aria-hidden="true"
             />
             <span className="truncate text-sm font-medium">{labels[d.status]}</span>
-            <span className="ml-auto font-display text-lg font-bold leading-none text-slate-900">
+            <span className="ml-auto font-display text-lg leading-none text-slate-900">
               {d.count}
             </span>
           </li>

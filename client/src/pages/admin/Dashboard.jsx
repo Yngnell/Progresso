@@ -11,7 +11,7 @@ import { projectsApi } from '../../api/projects';
 import { eventsApi } from '../../api/events';
 import { useAuth } from '../../context/AuthContext';
 import { isAdmin } from '../../utils/roles';
-import { Button, Card } from '../../components/ui';
+import { Badge, Button, Card } from '../../components/ui';
 import { PROJECT_STATUS, formatPeso, formatDateTime } from '../../utils/format';
 import { STAGES, StageSteps, StatusRibbon } from '../../components/Roundel';
 import DateTile from '../../components/DateTile';
@@ -25,12 +25,12 @@ import { CHART } from '../../components/charts/palette';
 
 // Same colours as the status ribbons, so the donut and the ribbons read as one system.
 const STATUS_COLOR = {
-  PROPOSED: CHART.slate,
-  PLANNING: CHART.azure,
-  ONGOING: CHART.gold,
+  PROPOSED: CHART.gold,
+  PLANNING: '#6A967A',
+  ONGOING: CHART.azure,
   COMPLETED: CHART.green,
   CANCELLED: CHART.red,
-  ON_HOLD: CHART.navy,
+  ON_HOLD: CHART.slate,
 };
 const STATUS_ORDER = ['PROPOSED', 'PLANNING', 'ONGOING', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
 const STATUS_LABEL = Object.fromEntries(STATUS_ORDER.map((k) => [k, PROJECT_STATUS[k].label]));
@@ -51,8 +51,8 @@ function needsAttention(projects) {
 function Panel({ title, action, children, className = '', pdfChart = false }) {
   return (
     <Card className={`p-5 sm:p-6 ${className}`} data-pdf-chart={pdfChart ? '' : undefined}>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">
+      <div className="card-head -mx-5 mb-4 flex items-center justify-between gap-3 px-5 pb-3 sm:-mx-6 sm:px-6">
+        <h2 className="section-title">
           {title}
         </h2>
         {action}
@@ -66,7 +66,7 @@ function PanelLink({ to, children }) {
   return (
     <Link
       to={to}
-      className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-800"
+      className="inline-flex items-center gap-1 text-sm font-medium text-pine hover:underline"
     >
       {children} <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" />
     </Link>
@@ -94,10 +94,10 @@ function DashboardExport({ user, projects, projectId, onProject }) {
   }
 
   return (
-    <div className="flex flex-wrap items-end gap-2">
-      <label>
+    <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
+      <label className="w-full sm:w-auto">
         <span className="label">Sort by Project</span>
-        <select className="input w-56" value={projectId} onChange={(e) => onProject(e.target.value)}>
+        <select className="input w-full sm:w-56" value={projectId} onChange={(e) => onProject(e.target.value)}>
           <option value="">All Projects</option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
@@ -106,13 +106,13 @@ function DashboardExport({ user, projects, projectId, onProject }) {
           ))}
         </select>
       </label>
-      <label>
+      <label className="min-w-0 flex-1 sm:flex-none">
         <span className="label">From</span>
-        <input type="date" className="input w-40" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+        <input type="date" className="input w-full sm:w-40" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
       </label>
-      <label>
+      <label className="min-w-0 flex-1 sm:flex-none">
         <span className="label">To</span>
-        <input type="date" className="input w-40" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+        <input type="date" className="input w-full sm:w-40" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
       </label>
       <ExportMenu label="Export Analytics" onExport={onExport} disabled={Boolean(badRange)} />
       {badRange && <p className="w-full text-sm font-medium text-red-700">"From" must be on or before "To".</p>}
@@ -170,12 +170,12 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
         <div>
-          <h1 className="font-display text-4xl font-bold uppercase tracking-wide text-slate-900">
+          <h1 className="page-title">
             Dashboard
           </h1>
-          <p className="mt-0.5 text-slate-600">
+          <p className="mt-3 text-slate-600">
             {selected ? (
               <>
                 Showing <span className="font-semibold text-slate-900">{selected.title}</span> only.
@@ -185,7 +185,7 @@ export default function Dashboard() {
             )}
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="actions-stack flex w-full flex-wrap items-end gap-3 sm:w-auto">
           <DashboardExport user={user} projects={allProjects} projectId={projectId} onProject={setProjectId} />
           {isChairman && (
           <Link to="/admin/approvals">
@@ -202,7 +202,7 @@ export default function Dashboard() {
       {isChairman && awaiting > 0 && (
         <Link
           to={s.pendingApproval > 0 ? '/admin/approvals' : '/admin/projects'}
-          className="flex items-center justify-between gap-4 rounded-xl border border-accent-300 bg-accent-100 px-5 py-4 text-accent-900 transition-colors hover:bg-accent-200"
+          className="flex items-center justify-between gap-4 rounded-card border border-accent-300 bg-accent-100 px-5 py-4 text-accent-900 transition-colors hover:bg-accent-200"
         >
           <span className="font-semibold">
             {[
@@ -295,10 +295,10 @@ export default function Dashboard() {
                 <li key={p.id}>
                   <Link
                     to={`/admin/projects/${p.id}`}
-                    className="-mx-2 flex items-center gap-4 rounded-lg px-2 py-3 transition-colors hover:bg-slate-50"
+                    className="-mx-2 flex items-center gap-4 rounded-control px-2 py-3 transition-colors hover:bg-pine-light"
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-base font-bold text-slate-900">
+                      <span className="block truncate text-base font-medium text-ink">
                         {p.title}
                       </span>
                       <span className="block text-sm text-slate-600">
@@ -306,7 +306,11 @@ export default function Dashboard() {
                         {formatDateTime(p.endDate)}
                       </span>
                     </span>
-                    <StatusRibbon status={p.status} className="hidden sm:inline-flex" />
+                    {p.endDate && new Date(p.endDate) <= new Date() ? (
+                      <Badge tone="red" className="hidden sm:inline-flex">Overdue</Badge>
+                    ) : (
+                      <StatusRibbon status={p.status} className="hidden sm:inline-flex" />
+                    )}
                     <ArrowRight
                       size={18}
                       strokeWidth={1.75}
@@ -369,17 +373,17 @@ export default function Dashboard() {
           <>
             {/* Wide screens: a table with the figures lined up */}
             <div className="hidden overflow-x-auto md:block">
-              <table className="w-full text-left">
+              <table className="table-notebook">
                 <thead>
-                  <tr className="border-b border-slate-200 text-sm text-slate-600">
-                    <th className="py-2 pr-4 font-semibold">Project</th>
-                    <th className="w-56 py-2 pr-4 font-semibold">Stage</th>
-                    <th className="py-2 text-right font-semibold">Budget</th>
+                  <tr>
+                    <th className="py-2 pr-4 font-medium">Project</th>
+                    <th className="w-56 py-2 pr-4 font-medium">Stage</th>
+                    <th className="py-2 text-right font-medium">Budget</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody>
                   {recent.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50">
+                    <tr key={p.id}>
                       <td className="py-3 pr-4">
                         <Link
                           to={`/admin/projects/${p.id}`}
@@ -390,7 +394,7 @@ export default function Dashboard() {
                         <StatusRibbon status={p.status} className="mt-1" />
                       </td>
                       <td className="py-3 pr-4">
-                        <StageSteps status={p.status} />
+                        <StageSteps status={p.status} showLabels={false} />
                       </td>
                       <td className="py-3 text-right font-semibold text-slate-900">
                         {formatPeso(p.budget)}

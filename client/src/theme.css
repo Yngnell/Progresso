@@ -1,0 +1,61 @@
+/* ---------------------------------------------------------------------------
+   Theme: "calm paper notebook".
+   Every colour, font, size and spacing value of the interface comes from here.
+   Tailwind reads these variables (tailwind.config.js), and index.css builds the
+   shared components from them. To change the mood, swap the palette block:
+   e.g. --pine: #1E5F63 (teal) and --clay: #D9694A (coral) keep the same layout.
+   --------------------------------------------------------------------------- */
+:root {
+  /* Palette */
+  --paper: #f6f1e7; /* page background, warm off-white */
+  --panel: #fffdf8; /* cards, panels, sidebar */
+  --ink: #23211e; /* main text */
+  --ink-soft: #6b655c; /* secondary text, labels */
+  --line: #e2d9c8; /* borders and dividers */
+  --pine: #1f4d3a; /* primary buttons, active menu, links */
+  --pine-dark: #193f30; /* pressed / hover on pine */
+  --pine-light: #e3ece5; /* hover and selected backgrounds */
+  --clay: #c8643b; /* accent: important actions, alerts, title underline */
+  --mustard: #e0a93b; /* pending, warning */
+  --sage: #7f9a7a; /* success, completed */
+
+  /* Text-safe shades of the accents (WCAG AA on --panel and --paper).
+     The pure accents above are for fills, dots and rules; these are for words. */
+  --clay-text: #a9502c;
+  --clay-fill: #a9502c; /* behind white text (danger button) */
+  --mustard-text: #8a5f12;
+  --sage-text: #4f664c;
+  --pine-text: #1f4d3a;
+
+  /* Tinted surfaces for notices and badges */
+  --clay-wash: #f8e8df;
+  --mustard-wash: #f9eed3;
+  --sage-wash: #e6ede3;
+
+  /* Type */
+  --font-display: 'Young Serif', Georgia, 'Times New Roman', serif;
+  --font-body: 'Lexend', ui-sans-serif, system-ui, sans-serif;
+  --text-base: 16px;
+  --leading: 1.6;
+  --text-page-title: 28px;
+  --text-section-title: 20px;
+  --text-min: 13px;
+
+  /* Spacing scale (8px steps) */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-6: 48px;
+
+  /* Shapes */
+  --radius-card: 8px;
+  --radius-control: 6px;
+  --control-height: 40px;
+  --sidebar-width: 240px;
+  --content-max: 1200px;
+
+  /* Notebook paper: the dot grid on the page background */
+  --dot: rgba(35, 33, 30, 0.07);
+  --dot-gap: 22px;
+}

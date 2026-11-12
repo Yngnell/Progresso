@@ -126,15 +126,15 @@ export default function AdminAttendance() {
 
       {/* Summary */}
       {totals && (
-        <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-3">
+        <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-card border border-slate-200 bg-slate-200 sm:grid-cols-3">
           {[
             ['Present', totals.present],
             ['Absent', totals.absent],
             ['Attendance rate', totals.rate != null ? `${totals.rate}%` : '—'],
           ].map(([label, value]) => (
-            <div key={label} className="bg-white p-4">
-              <dt className="text-sm font-semibold text-slate-600">{label}</dt>
-              <dd className="font-display text-4xl font-bold text-slate-900">{value}</dd>
+            <div key={label} className="bg-panel p-4">
+              <dt className="section-label">{label}</dt>
+              <dd className="font-display text-4xl text-slate-900">{value}</dd>
             </div>
           ))}
         </dl>
@@ -159,31 +159,31 @@ export default function AdminAttendance() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead className="border-b border-slate-200 text-slate-600">
+            <table className="table-notebook table-stack">
+              <thead>
                 <tr>
                   {['Official Name', 'Position', 'Event Name', 'Event Date', 'Status', 'Time Checked In'].map((h) => (
-                    <th key={h} className="px-4 py-3 font-semibold">
+                    <th key={h} className="px-4 py-3 font-medium">
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {rows.map((r, i) => (
                   <tr key={`${r.eventId}-${r.officialId || r.officialName}-${i}`}>
-                    <td className="px-4 py-2.5 font-medium text-slate-900">{r.officialName}</td>
-                    <td className="px-4 py-2.5 text-slate-700">{r.position || '—'}</td>
-                    <td className="px-4 py-2.5">
+                    <td data-label="Official" className="px-4 py-2.5 font-medium text-slate-900">{r.officialName}</td>
+                    <td data-label="Position" className="px-4 py-2.5 text-slate-700">{r.position || '—'}</td>
+                    <td data-label="Event" className="px-4 py-2.5">
                       <Link to={`/admin/meetings/${r.eventId}`} className="font-medium text-brand-700 hover:text-brand-800">
                         {r.eventName}
                       </Link>
                     </td>
-                    <td className="px-4 py-2.5 tabular text-slate-700">{formatDate(r.eventDate)}</td>
-                    <td className="px-4 py-2.5">
+                    <td data-label="Event date" className="px-4 py-2.5 tabular text-slate-700">{formatDate(r.eventDate)}</td>
+                    <td data-label="Status" className="px-4 py-2.5">
                       <Badge tone={ATTENDANCE_STATUS[r.status]?.tone}>{ATTENDANCE_STATUS[r.status]?.label || r.status}</Badge>
                     </td>
-                    <td className="px-4 py-2.5 tabular text-slate-700">{r.status === 'PRESENT' && r.timeIn ? formatTime(r.timeIn) : ''}</td>
+                    <td data-label="Time checked in" className="px-4 py-2.5 tabular text-slate-700">{r.status === 'PRESENT' && r.timeIn ? formatTime(r.timeIn) : ''}</td>
                   </tr>
                 ))}
               </tbody>
@@ -195,26 +195,26 @@ export default function AdminAttendance() {
       {/* Rate per official */}
       {data?.summary?.perOfficial?.length > 0 && (
         <Card className="mt-6 p-5">
-          <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-slate-900">Attendance per official</h2>
+          <h2 className="section-title">Attendance per official</h2>
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[560px] text-left text-sm">
-              <thead className="border-b border-slate-200 text-slate-600">
+            <table className="table-notebook table-stack">
+              <thead>
                 <tr>
-                  <th className="py-2 pr-3 font-semibold">Official</th>
-                  <th className="py-2 pr-3 font-semibold">Position</th>
-                  <th className="py-2 pr-3 text-right font-semibold">Present</th>
-                  <th className="py-2 pr-3 text-right font-semibold">Absent</th>
-                  <th className="py-2 text-right font-semibold">Rate</th>
+                  <th className="py-2 pr-3 font-medium">Official</th>
+                  <th className="py-2 pr-3 font-medium">Position</th>
+                  <th className="py-2 pr-3 text-right font-medium">Present</th>
+                  <th className="py-2 pr-3 text-right font-medium">Absent</th>
+                  <th className="py-2 text-right font-medium">Rate</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 tabular">
+              <tbody className="tabular">
                 {data.summary.perOfficial.map((o) => (
                   <tr key={o.name}>
-                    <td className="py-2 pr-3 font-medium text-slate-900">{o.name}</td>
-                    <td className="py-2 pr-3 text-slate-700">{o.position || '—'}</td>
-                    <td className="py-2 pr-3 text-right">{o.present}</td>
-                    <td className="py-2 pr-3 text-right">{o.absent}</td>
-                    <td className="py-2 text-right font-semibold">{o.rate != null ? `${o.rate}%` : '—'}</td>
+                    <td data-label="Official" className="py-2 pr-3 font-medium text-slate-900">{o.name}</td>
+                    <td data-label="Position" className="py-2 pr-3 text-slate-700">{o.position || '—'}</td>
+                    <td data-label="Present" className="py-2 pr-3 text-right">{o.present}</td>
+                    <td data-label="Absent" className="py-2 pr-3 text-right">{o.absent}</td>
+                    <td data-label="Rate" className="py-2 text-right font-medium">{o.rate != null ? `${o.rate}%` : '—'}</td>
                   </tr>
                 ))}
               </tbody>

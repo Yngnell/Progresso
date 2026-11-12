@@ -40,8 +40,8 @@ export default function MonthCalendar({
         {WEEKDAYS.map((w, i) => (
           <div
             key={w}
-            className={`py-1 font-display text-sm font-bold uppercase tracking-wide ${
-              i === 0 ? 'text-red-700' : 'text-slate-600'
+            className={`section-label py-1 ${
+              ''
             }`}
           >
             {w}
@@ -67,16 +67,16 @@ export default function MonthCalendar({
               aria-label={`${MONTHS[month]} ${d}${dayEvents.length ? `, ${dayEvents.length} events` : ''}`}
               className={`flex h-14 flex-col items-start rounded-lg border p-1 text-left transition-colors sm:h-24 sm:p-1.5 ${
                 isSelected
-                  ? 'border-brand-500 bg-brand-50'
-                  : 'border-slate-200 bg-white hover:bg-slate-50'
+                  ? 'border-pine bg-pine-light'
+                  : 'border-line bg-panel hover:bg-pine-light/50'
               }`}
             >
               <span
-                className={`flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-1 font-display text-lg font-bold leading-none ${
+                className={`flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-1 font-display text-base leading-none ${
                   isToday
-                    ? 'bg-accent-500 text-ink ring-2 ring-ink'
+                    ? 'bg-pine text-white'
                     : isSunday
-                      ? 'text-red-700'
+                      ? 'text-slate-600'
                       : 'text-slate-800'
                 }`}
               >
@@ -95,11 +95,11 @@ export default function MonthCalendar({
                 {dayEvents.slice(0, 2).map((e) => (
                   <span
                     key={e.id}
-                    className="flex w-full items-center gap-1 truncate rounded bg-brand-100 px-1 py-px text-xs font-semibold text-brand-800"
+                    className="flex w-full items-start gap-1 rounded bg-pine-light px-1 py-px text-xs font-medium text-pine"
                     title={e.title}
                   >
                     <EventTypeIcon type={e.type} size={12} />
-                    <span className="truncate">{e.title}</span>
+                    <span className="line-clamp-2 break-words">{e.title}</span>
                   </span>
                 ))}
                 {dayEvents.length > 2 && (

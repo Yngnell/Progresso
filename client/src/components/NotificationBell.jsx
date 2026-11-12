@@ -188,7 +188,7 @@ export default function NotificationBell() {
       >
         <Bell size={22} strokeWidth={1.75} aria-hidden="true" />
         {unread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white ring-2 ring-white">
+          <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1 text-[13px] font-medium leading-none text-white ring-2 ring-paper">
             {unread > 99 ? '99+' : unread}
           </span>
         )}
@@ -202,9 +202,9 @@ export default function NotificationBell() {
             aria-label="Close notifications"
             onClick={() => setOpen(false)}
           />
-          <div className="fixed inset-x-3 top-[76px] z-40 rounded-xl border border-slate-200 bg-white shadow-cardHover sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96">
+          <div className="fixed inset-x-3 top-[76px] z-40 rounded-card border border-slate-200 bg-panel shadow-cardHover sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <p className="font-display text-xl font-bold uppercase tracking-wide text-slate-900">
+              <p className="section-title">
                 Notifications
               </p>
               {unread > 0 && (

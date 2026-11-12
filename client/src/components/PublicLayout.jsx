@@ -12,21 +12,21 @@ const publicLinks = [
 ];
 
 // The seal and the SK's name, used in the header and the footer.
-function Nameplate({ light = false }) {
+function Nameplate() {
   return (
     <span className="flex items-center gap-3">
       <img
         src="/logo.jpg"
         alt="Sangguniang Kabataan Salinas 1 seal"
-        className="h-11 w-11 rounded-full bg-white object-cover"
+        className="h-10 w-10 rounded-full border border-line bg-white object-cover"
       />
       <span className="leading-tight">
         <span
-          className={`seal-type block text-xl ${light ? 'text-white' : 'text-slate-900'}`}
+          className="block font-display text-lg text-ink"
         >
           SK Salinas 1
         </span>
-        <span className={`block text-xs font-medium ${light ? 'text-brand-200' : 'text-slate-500'}`}>
+        <span className="block text-[13px] text-slate-600">
           Project Monitoring
         </span>
       </span>
@@ -45,10 +45,10 @@ export default function PublicLayout() {
   const closeMenu = () => setMenuOpen(false);
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="flex min-h-screen flex-col">
       {/* Top navbar */}
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-[68px] max-w-6xl items-center justify-between gap-4 px-4">
+      <header className="sticky top-0 z-40 border-b border-line bg-panel">
+        <div className="mx-auto flex h-16 max-w-content items-center justify-between gap-4 px-4 sm:px-8">
           <Link to="/" onClick={closeMenu} aria-label="SK Salinas 1 home">
             <Nameplate />
           </Link>
@@ -60,10 +60,10 @@ export default function PublicLayout() {
                 to={l.to}
                 end={l.end}
                 className={({ isActive }) =>
-                  `flex items-center border-b-[3px] px-3 text-[15px] font-semibold transition-colors ${
+                  `flex items-center border-b-[3px] px-3 text-[15px] transition-colors ${
                     isActive
-                      ? 'border-brand-600 text-brand-700'
-                      : 'border-transparent text-slate-600 hover:text-slate-900'
+                      ? 'border-pine font-medium text-pine'
+                      : 'border-transparent text-slate-700 hover:text-pine'
                   }`
                 }
               >
@@ -79,7 +79,7 @@ export default function PublicLayout() {
                   {isStaff ? (
                     <Link
                       to="/admin"
-                      className="rounded-lg px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"
+                      className="rounded-control px-3 py-2 text-sm font-medium text-pine hover:bg-pine-light"
                     >
                       Dashboard
                     </Link>
@@ -88,14 +88,14 @@ export default function PublicLayout() {
                       {user.canShowQr && (
                         <Link
                           to="/attendance-qr"
-                          className="rounded-lg px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"
+                          className="rounded-control px-3 py-2 text-sm font-medium text-pine hover:bg-pine-light"
                         >
                           Attendance QR
                         </Link>
                       )}
                       <Link
                         to="/account"
-                        className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                        className="rounded-control px-3 py-2 text-sm font-medium text-slate-700 hover:bg-pine-light"
                       >
                         Hi, {firstName}
                       </Link>
@@ -123,7 +123,7 @@ export default function PublicLayout() {
 
             <button
               type="button"
-              className="rounded-lg p-2 text-slate-700 hover:bg-slate-100 md:hidden"
+              className="rounded-control p-2 text-slate-700 hover:bg-pine-light hover:text-pine md:hidden"
               onClick={() => setMenuOpen((o) => !o)}
               aria-expanded={menuOpen}
               aria-label={menuOpen ? 'Close menu' : 'Open menu'}
@@ -135,8 +135,8 @@ export default function PublicLayout() {
 
         {/* Phone menu */}
         {menuOpen && (
-          <div className="border-t border-slate-200 bg-white md:hidden">
-            <nav className="mx-auto flex max-w-6xl flex-col px-4 py-2" aria-label="Main">
+          <div className="border-t border-line bg-panel md:hidden">
+            <nav className="mx-auto flex max-w-content flex-col px-4 py-2" aria-label="Main">
               {publicLinks.map((l) => (
                 <NavLink
                   key={l.to}
@@ -144,8 +144,8 @@ export default function PublicLayout() {
                   end={l.end}
                   onClick={closeMenu}
                   className={({ isActive }) =>
-                    `rounded-lg px-3 py-3 text-base font-semibold ${
-                      isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-700'
+                    `rounded-control px-3 py-3 text-base ${
+                      isActive ? 'bg-pine-light font-medium text-pine' : 'text-slate-700'
                     }`
                   }
                 >
@@ -156,12 +156,12 @@ export default function PublicLayout() {
                 <NavLink
                   to="/attendance-qr"
                   onClick={closeMenu}
-                  className="rounded-lg px-3 py-3 text-base font-semibold text-brand-700"
+                  className="rounded-control px-3 py-3 text-base font-medium text-pine"
                 >
                   Attendance QR
                 </NavLink>
               )}
-              <div className="mt-2 flex gap-2 border-t border-slate-100 py-3">
+              <div className="mt-2 flex gap-2 border-t border-dashed border-line py-3">
                 {user ? (
                   <>
                     {isStaff ? (
@@ -171,7 +171,7 @@ export default function PublicLayout() {
                         </Button>
                       </Link>
                     ) : (
-                      <Link to="/account" onClick={closeMenu} className="flex flex-1 items-center text-base font-semibold text-slate-700">
+                      <Link to="/account" onClick={closeMenu} className="flex flex-1 items-center text-base font-medium text-slate-700">
                         Hi, {firstName}
                       </Link>
                     )}
@@ -205,16 +205,16 @@ export default function PublicLayout() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-brand-900">
-        <div className="mx-auto max-w-6xl px-4 py-10">
+      <footer className="border-t border-line bg-panel">
+        <div className="mx-auto max-w-content px-4 py-10 sm:px-8">
           <div className="flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-center">
-            <Nameplate light />
-            <div className="text-sm text-brand-200">
-              <p className="font-semibold text-white">Barangay SK Project Monitoring System</p>
+            <Nameplate />
+            <div className="text-sm text-slate-600">
+              <p className="font-medium text-ink">Barangay SK Project Monitoring System</p>
               <p className="mt-1">Sangguniang Kabataan — transparency for our community.</p>
             </div>
           </div>
-          <p className="mt-8 border-t border-white/15 pt-5 text-xs text-brand-300">
+          <p className="mt-8 border-t border-dashed border-line pt-5 text-[13px] text-slate-600">
             © {new Date().getFullYear()} Sangguniang Kabataan, Barangay Salinas 1, City of Bacoor.
             All rights reserved.
           </p>

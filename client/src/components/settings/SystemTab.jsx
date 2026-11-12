@@ -160,24 +160,24 @@ function OfficialsSection() {
         <p className="text-sm text-slate-600">Loading…</p>
       ) : (
         <div className="-mx-5 overflow-x-auto sm:mx-0">
-          <table className="w-full min-w-[520px] text-left text-sm">
+          <table className="table-notebook table-stack">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-600">
+              <tr>
                 <th className="px-5 py-2 font-semibold sm:px-3">Name</th>
-                <th className="px-3 py-2 font-semibold">Position</th>
-                <th className="px-3 py-2 font-semibold">Status</th>
-                <th className="px-3 py-2 text-right font-semibold">Actions</th>
+                <th className="px-3 py-2 font-medium">Position</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 text-right font-medium">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {officials.map((o) => (
                 <tr key={o.id} className={o.isActive ? '' : 'bg-slate-50 text-slate-500'}>
-                  <td className="px-5 py-3 font-semibold text-slate-900 sm:px-3">{o.name}</td>
-                  <td className="px-3 py-3">{o.position}</td>
-                  <td className="px-3 py-3">
+                  <td data-label="Name" className="px-5 py-3 font-semibold text-slate-900 sm:px-3">{o.name}</td>
+                  <td data-label="Position" className="px-3 py-3">{o.position}</td>
+                  <td data-label="Status" className="px-3 py-3">
                     <Badge tone={o.isActive ? 'green' : 'slate'}>{o.isActive ? 'Active' : 'Inactive'}</Badge>
                   </td>
-                  <td className="px-3 py-3">
+                  <td data-label="Actions" className="px-3 py-3">
                     <div className="flex justify-end gap-2">
                       <Button size="sm" variant="secondary" onClick={() => setEditing(o)}>
                         Edit

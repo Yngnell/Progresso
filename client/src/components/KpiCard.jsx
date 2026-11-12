@@ -1,10 +1,10 @@
 import { Card } from './ui';
 
 const METER = {
-  azure: 'bg-brand-500',
-  green: 'bg-green-600',
-  gold: 'bg-accent-500',
-  red: 'bg-red-600',
+  azure: 'bg-pine',
+  green: 'bg-sage',
+  gold: 'bg-mustard',
+  red: 'bg-clay',
 };
 
 // One key number: label, big figure, a short supporting line and an optional 0-100 meter.
@@ -12,8 +12,8 @@ export default function KpiCard({ label, value, note, meter, tone = 'azure' }) {
   const pct = meter == null ? null : Math.max(0, Math.min(100, meter));
   return (
     <Card className="p-5">
-      <p className="text-sm font-semibold uppercase tracking-wide text-slate-600">{label}</p>
-      <p className="mt-2 font-display text-5xl font-bold leading-none text-slate-900">{value}</p>
+      <p className="section-label">{label}</p>
+      <p className="mt-3 font-display text-[40px] leading-none text-ink">{value}</p>
       {pct != null && (
         <div
           className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-100"

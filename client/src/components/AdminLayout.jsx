@@ -48,32 +48,31 @@ const groups = [
 ];
 
 
-// The seal and the SK's name at the top of the rail.
+// The seal and the SK's name at the top of the sidebar.
 function Nameplate() {
   return (
-    <Link to="/admin" className="flex items-center gap-3" aria-label="Dashboard">
+    <Link to="/admin" className="flex items-center gap-3 rounded-control" aria-label="Dashboard">
       <img
         src="/logo.jpg"
         alt="Sangguniang Kabataan Salinas 1 seal"
-        className="h-11 w-11 rounded-full bg-white object-cover"
+        className="h-10 w-10 rounded-full border border-line bg-white object-cover"
       />
       <span className="leading-tight">
-        <span className="seal-type block text-xl text-white">SK Salinas 1</span>
-        <span className="block text-xs font-medium text-brand-200">Project Monitoring</span>
+        <span className="block font-display text-lg text-ink">SK Salinas 1</span>
+        <span className="block text-[13px] text-slate-600">Project Monitoring</span>
       </span>
     </Link>
   );
 }
 
-// The menu itself, shared by the desktop rail and the phone drawer.
+// The menu itself, shared by the desktop sidebar and the phone drawer. Each group is a
+// planner tab label; the active page gets a pine-light row with a pine bar on its left edge.
 function Menu_({ links, counts, onNavigate }) {
   return (
     <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5" aria-label="Admin">
       {links.map((group) => (
         <div key={group.label}>
-          <p className="px-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-brand-300">
-            {group.label}
-          </p>
+          <p className="section-label px-3 pb-2">{group.label}</p>
           <ul className="space-y-0.5">
             {group.links.map((l) => (
               <li key={l.to}>
@@ -82,17 +81,17 @@ function Menu_({ links, counts, onNavigate }) {
                   end={l.end}
                   onClick={onNavigate}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-semibold transition-colors ${
+                    `relative flex items-center gap-3 rounded-control px-3 py-2 text-[15px] transition-colors ${
                       isActive
-                        ? 'bg-white text-brand-900'
-                        : 'text-brand-100 hover:bg-white/10 hover:text-white'
+                        ? 'bg-pine-light font-medium text-pine before:absolute before:inset-y-1 before:left-0 before:w-[3px] before:rounded-full before:bg-pine'
+                        : 'text-slate-700 hover:bg-pine-light/60 hover:text-pine'
                     }`
                   }
                 >
-                  <l.Icon size={19} strokeWidth={1.75} aria-hidden="true" />
+                  <l.Icon size={18} strokeWidth={1.75} aria-hidden="true" />
                   <span className="flex-1">{l.label}</span>
                   {l.badge && counts[l.badge] > 0 && (
-                    <span className="rounded-full bg-accent-500 px-2 py-0.5 text-xs font-bold text-ink">
+                    <span className="rounded-full bg-clay px-2 py-px text-[13px] font-medium leading-5 text-white">
                       {counts[l.badge]}
                     </span>
                   )}
@@ -104,6 +103,18 @@ function Menu_({ links, counts, onNavigate }) {
       ))}
     </nav>
   );
+}
+
+// The name of the page in the top bar: the menu entry the address belongs to.
+function currentTitle(links, pathname) {
+  let best = null;
+  links.forEach((g) =>
+    g.links.forEach((l) => {
+      const hit = l.end ? pathname === l.to : pathname === l.to || pathname.startsWith(`${l.to}/`);
+      if (hit && (!best || l.to.length > best.to.length)) best = l;
+    })
+  );
+  return best ? best.label : 'Dashboard';
 }
 
 export default function AdminLayout() {
@@ -143,39 +154,41 @@ export default function AdminLayout() {
     month: 'long',
     day: 'numeric',
   });
+  const title = currentTitle(links, location.pathname);
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:font-semibold focus:text-brand-700"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-control focus:bg-panel focus:px-4 focus:py-2 focus:font-medium focus:text-pine"
       >
         Skip to content
       </a>
 
-      {/* Desktop rail */}
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col bg-brand-900 lg:flex">
-        <div className="flex h-[68px] items-center px-5">
+      {/* Desktop sidebar (240px) */}
+      <aside className="sticky top-0 hidden h-screen w-sidebar shrink-0 flex-col border-r border-line bg-panel nav:flex">
+        <div className="card-head flex h-16 items-center px-5">
           <Nameplate />
         </div>
         <Menu_ links={links} counts={counts} />
+        <p className="border-t border-line px-5 py-3 text-[13px] text-slate-600">{today}</p>
       </aside>
 
       {/* Phone drawer */}
       {drawerOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-50 nav:hidden">
           <button
             type="button"
             className="absolute inset-0 bg-ink/50"
             aria-label="Close menu"
             onClick={() => setDrawerOpen(false)}
           />
-          <aside className="relative flex h-full w-72 max-w-[85vw] flex-col bg-brand-900 shadow-cardHover">
-            <div className="flex h-[68px] items-center justify-between px-5">
+          <aside className="relative flex h-full w-72 max-w-[85vw] flex-col border-r border-line bg-panel">
+            <div className="card-head flex h-16 items-center justify-between px-5">
               <Nameplate />
               <button
                 type="button"
-                className="rounded-lg p-2 text-brand-100 hover:bg-white/10"
+                className="rounded-control p-2 text-slate-700 hover:bg-pine-light hover:text-pine"
                 onClick={() => setDrawerOpen(false)}
                 aria-label="Close menu"
               >
@@ -189,41 +202,41 @@ export default function AdminLayout() {
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-[68px] items-center gap-3 border-b border-slate-200 bg-white px-4 sm:px-6">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-line bg-paper px-4 sm:px-8">
           <button
             type="button"
-            className="-ml-1 rounded-lg p-2 text-slate-700 hover:bg-slate-100 lg:hidden"
+            className="-ml-1 rounded-control p-2 text-slate-700 hover:bg-pine-light hover:text-pine nav:hidden"
             onClick={() => setDrawerOpen(true)}
             aria-label="Open menu"
           >
-            <Menu size={24} strokeWidth={1.75} />
+            <Menu size={22} strokeWidth={1.75} />
           </button>
-          <p className="text-[15px] font-medium text-slate-600">{today}</p>
+          <p className="truncate font-display text-xl text-ink">{title}</p>
 
           <div className="ml-auto flex items-center gap-1 sm:gap-3">
             <NotificationBell />
             <Link
               to="/admin/settings"
-              className="hidden rounded-lg px-2 py-1 text-left leading-tight hover:bg-slate-100 sm:block"
+              className="hidden rounded-control px-2 py-1 text-right leading-tight hover:bg-pine-light sm:block"
               title="Settings"
             >
-              <span className="block text-sm font-semibold text-slate-900">{user?.displayName || user?.name}</span>
-              <span className="block text-xs text-slate-600">{roleLabel(user)}</span>
+              <span className="block text-sm font-medium text-ink">{user?.displayName || user?.name}</span>
+              <span className="block text-[13px] text-slate-600">{roleLabel(user)}</span>
             </Link>
             <button
               type="button"
               // The admin confirms first; the other accounts log out at once.
               onClick={() => (isAdmin(user) ? setConfirmLogout(true) : logout())}
-              className="inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              className="inline-flex items-center gap-2 rounded-control px-2.5 py-2 text-sm font-medium text-slate-700 hover:bg-pine-light hover:text-pine"
               aria-label="Log out"
             >
-              <LogOut size={19} strokeWidth={1.75} aria-hidden="true" />
+              <LogOut size={18} strokeWidth={1.75} aria-hidden="true" />
               <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
         </header>
 
-        <main id="main" className="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6 lg:p-8">
+        <main id="main" className="mx-auto w-full max-w-content flex-1 px-4 py-6 sm:p-8">
           <Outlet />
         </main>
         <ConfirmDialog
