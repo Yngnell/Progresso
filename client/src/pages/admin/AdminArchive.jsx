@@ -10,6 +10,7 @@ import { PROJECT_STATUS, formatPeso, formatDate } from '../../utils/format';
 import ExportMenu from '../../components/ExportMenu';
 import { settingsApi } from '../../api/settings';
 import { exportArchiveExcel, exportArchivePdf } from '../../utils/reportExport';
+import { useConfirm } from '../../components/ConfirmDialog';
 
 const TABS = [
   { id: 'completed', label: 'Completed' },
@@ -137,24 +138,42 @@ function DeletedList() {
   });
   const projects = data?.projects || [];
 
+  const [ask, askDialog] = useConfirm();
+  const [notice, setNotice] = useState(null); // { ok, text }
   const restoreMutation = useMutation({
-    mutationFn: (id) => projectsApi.restore(id),
-    onSuccess: () => {
+    mutationFn: (project) => projectsApi.restore(project.id),
+    onSuccess: (_res, project) => {
       qc.invalidateQueries({ queryKey: ['projects'] });
       qc.invalidateQueries({ queryKey: ['stats'] });
+      setNotice({ ok: true, text: `"${project.title}" was restored. It is back in the Projects list.` });
     },
+    onError: (err) => setNotice({ ok: false, text: err?.response?.data?.message || 'Could not restore the project' }),
   });
 
-  function restore(project) {
-    if (window.confirm(`Restore "${project.title}"? It will return to the Projects list.`)) {
-      restoreMutation.mutate(project.id);
+  // Asks first, in the same dialog the SK Admin's actions use.
+  async function restore(project) {
+    if (await ask(`Are you sure you want to restore "${project.title}"? It will return to the Projects list.`)) {
+      restoreMutation.mutate(project);
     }
   }
 
+  const noticeLine = notice && (
+    <p className={`notice ${notice.ok ? 'notice-ok' : 'notice-error'}`} role={notice.ok ? 'status' : 'alert'}>
+      {notice.text}
+    </p>
+  );
   if (isLoading) return <p className="text-sm text-slate-500">Loading…</p>;
-  if (projects.length === 0) return <EmptyState title={EMPTY.deleted[0]} description={EMPTY.deleted[1]} />;
+  if (projects.length === 0)
+    return (
+      <div className="space-y-4">
+        {noticeLine}
+        <EmptyState title={EMPTY.deleted[0]} description={EMPTY.deleted[1]} />
+      </div>
+    );
   return (
     <div className="space-y-4">
+      {noticeLine}
+      {askDialog}
       {projects.map((p) => {
         const status = PROJECT_STATUS[p.status] || { label: p.status, tone: 'slate' };
         const request = p.deletionRequests?.[0];

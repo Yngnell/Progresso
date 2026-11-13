@@ -10,7 +10,7 @@ import { Button, Card } from '../../components/ui';
 import PhotoGallery from '../../components/PhotoGallery';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
 import ProjectReviewPanel from '../../components/ProjectReviewPanel';
-import ConfirmDialog from '../../components/ConfirmDialog';
+import ConfirmDialog, { useConfirm } from '../../components/ConfirmDialog';
 import { formatPeso, formatPeso2, formatDate, formatDateTime, toDateTimeLocal } from '../../utils/format';
 import { isAdmin, isManager, isWorker } from '../../utils/roles';
 
@@ -33,6 +33,7 @@ export default function AdminProjectDetail() {
   const [error, setError] = useState('');
   const [sentNote, setSentNote] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [ask, askDialog] = useConfirm();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['projects', id],
@@ -57,7 +58,7 @@ export default function AdminProjectDetail() {
 
   const restoreMutation = useMutation({
     mutationFn: () => projectsApi.restore(id),
-    onSuccess: refresh,
+    onSuccess: (res) => refresh(res, { note: 'The project was restored. It is back in the Projects list.' }),
     onError: onFail('Could not restore the project'),
   });
   const withdrawMutation = useMutation({
@@ -119,8 +120,10 @@ export default function AdminProjectDetail() {
               variant="primary"
               className="mt-2"
               disabled={restoreMutation.isPending}
-              onClick={() => {
-                if (window.confirm(`Restore "${project.title}"?`)) restoreMutation.mutate();
+              onClick={async () => {
+                if (await ask(`Are you sure you want to restore "${project.title}"? It returns to the Projects list.`)) {
+                  restoreMutation.mutate();
+                }
               }}
             >
               Restore project
@@ -170,6 +173,7 @@ export default function AdminProjectDetail() {
           {deletion.reviewRemarks && <p className="mt-1">{deletion.reviewRemarks}</p>}
         </div>
       )}
+      {askDialog}
       {deleteOpen && (
         <DeletionRequestModal project={project} onClose={() => setDeleteOpen(false)} onSent={setSentNote} />
       )}
@@ -947,14 +951,26 @@ function Checklist({ project, canEdit, onDone, onFail }) {
 function DeletionPending({ deletion, canWithdraw, withdrawing, onWithdraw, isChairman, onDecided }) {
   const [remarks, setRemarks] = useState('');
   const [problem, setProblem] = useState('');
+  const [ask, askDialog] = useConfirm();
   const decide = useMutation({
     mutationFn: (decision) => projectsApi.reviewDeletion(deletion.id, { decision, remarks: remarks.trim() }),
-    onSuccess: () => onDecided(),
+    onSuccess: (_res, decision) =>
+      onDecided(null, {
+        note:
+          decision === 'APPROVE'
+            ? 'The deletion was approved. The project is now in Archives under Deleted.'
+            : 'The deletion request was rejected. The project stays in Projects.',
+      }),
     onError: (err) => setProblem(errorText(err, 'Could not save the decision')),
   });
-  function choose(decision) {
+  // Asks first, in the same dialog the SK Admin's actions use.
+  async function choose(decision) {
     if (decision === 'REJECT' && !remarks.trim()) return setProblem('Please write remarks before rejecting.');
-    if (decision === 'APPROVE' && !window.confirm('Approve this deletion? The project moves to Archives under Deleted; nothing is erased.')) return;
+    const question =
+      decision === 'APPROVE'
+        ? 'Are you sure you want to approve this deletion? The project moves to Archives under Deleted; nothing is erased.'
+        : 'Are you sure you want to reject this deletion request? The project stays in Projects.';
+    if (!(await ask(question))) return;
     setProblem('');
     decide.mutate(decision);
   }
@@ -996,6 +1012,7 @@ function DeletionPending({ deletion, canWithdraw, withdrawing, onWithdraw, isCha
           </div>
         </div>
       )}
+      {askDialog}
     </div>
   );
 }

@@ -13,19 +13,19 @@ const cardTitle = 'section-title';
 // Approve moves a request to Planning; Reject cancels it (Archives > Cancelled).
 export default function AdminApprovals() {
   const qc = useQueryClient();
-  const [error, setError] = useState('');
+  const [notice, setNotice] = useState(null); // { ok, text }
   const { data, isLoading } = useQuery({
     queryKey: ['projects', 'proposals'],
     queryFn: () => projectsApi.list({ status: 'PROPOSED' }),
   });
   const requests = data?.projects || [];
 
-  const onDone = () => {
+  const onDone = (_res, message) => {
     qc.invalidateQueries({ queryKey: ['projects'] });
     qc.invalidateQueries({ queryKey: ['stats'] });
-    setError('');
+    setNotice(message?.note ? { ok: true, text: message.note } : null);
   };
-  const onFail = (fallback) => (err) => setError(err?.response?.data?.message || fallback);
+  const onFail = (fallback) => (err) => setNotice({ ok: false, text: err?.response?.data?.message || fallback });
 
   return (
     <div>
@@ -33,9 +33,9 @@ export default function AdminApprovals() {
         title="Approvals"
         description="Project Requests waiting for your decision. Approve moves a request to Planning; Reject cancels it."
       />
-      {error && (
-        <p className="mt-4 text-sm font-medium text-red-600" role="alert">
-          {error}
+      {notice && (
+        <p className={`notice mt-4 ${notice.ok ? 'notice-ok' : 'notice-error'}`} role={notice.ok ? 'status' : 'alert'}>
+          {notice.text}
         </p>
       )}
 

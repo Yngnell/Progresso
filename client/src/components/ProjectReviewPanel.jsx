@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { CircleCheck, X } from 'lucide-react';
 import { projectsApi } from '../api/projects';
+import { useConfirm } from './ConfirmDialog';
 import { Button, Card } from './ui';
 
 // Proposed: the Barangay Chairman approves (-> Planning) or rejects (-> Cancelled).
@@ -9,17 +10,26 @@ import { Button, Card } from './ui';
 // Approvals page (inline: a section under a divider).
 export default function ProjectReviewPanel({ project, onDone, onFail, inline = false }) {
   const [remarks, setRemarks] = useState('');
+  const [ask, askDialog] = useConfirm();
   const review = useMutation({
     mutationFn: (decision) => projectsApi.review(project.id, { decision, remarks: remarks.trim() }),
-    onSuccess: onDone,
+    // onDone(res, { note }): the page shows the note as a success message.
+    onSuccess: (res, decision) =>
+      onDone(res, {
+        note:
+          decision === 'APPROVE'
+            ? `"${project.title}" was approved. It moved to Planning.`
+            : `"${project.title}" was rejected. It moved to Archives under Cancelled.`,
+      }),
     onError: onFail('Could not save your decision'),
   });
-  function decide(decision) {
+  // Asks first, in the same dialog the SK Admin's actions use.
+  async function decide(decision) {
     const question =
       decision === 'APPROVE'
-        ? `Approve "${project.title}"? It moves to Planning.`
-        : `Reject "${project.title}"? It is cancelled and moves to Archives under Cancelled.`;
-    if (window.confirm(question)) review.mutate(decision);
+        ? `Are you sure you want to approve "${project.title}"? It moves to Planning.`
+        : `Are you sure you want to reject "${project.title}"? It is cancelled and moves to Archives under Cancelled.`;
+    if (await ask(question)) review.mutate(decision);
   }
   const remarksId = `review-remarks-${project.id}`;
   const Wrapper = inline ? 'div' : Card;
@@ -46,6 +56,7 @@ export default function ProjectReviewPanel({ project, onDone, onFail, inline = f
           Reject
         </Button>
       </div>
+      {askDialog}
     </Wrapper>
   );
 }

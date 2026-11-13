@@ -17,7 +17,7 @@ import { useAuth } from '../context/AuthContext';
 import { projectsApi } from '../api/projects';
 import NotificationBell from './NotificationBell';
 import ConfirmDialog from './ConfirmDialog';
-import { accessRole, isAdmin, roleLabel } from '../utils/roles';
+import { accessRole, roleLabel } from '../utils/roles';
 
 // `roles` limits a link to those roles; omit it to show the link to everyone
 // who can open the admin panel.
@@ -226,7 +226,7 @@ export default function AdminLayout() {
             <button
               type="button"
               // The admin confirms first; the other accounts log out at once.
-              onClick={() => (isAdmin(user) ? setConfirmLogout(true) : logout())}
+              onClick={() => setConfirmLogout(true)}
               className="inline-flex items-center gap-2 rounded-control px-2.5 py-2 text-sm font-medium text-slate-700 hover:bg-pine-light hover:text-pine"
               aria-label="Log out"
             >
