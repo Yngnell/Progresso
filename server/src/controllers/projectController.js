@@ -51,13 +51,14 @@ const includeOpts = {
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
-// Receipt amounts: what was spent so far and what goes back (budget - spent).
+// Receipt amounts: what was spent so far and the Remaining Budget (budget - spent).
 function liquidationTotals(project) {
   const files = project.liquidationFiles || [];
   const spent = round2(files.reduce((sum, f) => sum + (f.amount == null ? 0 : Number(f.amount)), 0));
   return {
     amountSpent: spent,
-    amountToRefund: round2(Number(project.budget || 0) - spent),
+    // Remaining Budget: the project budget minus all its receipts.
+    remainingBudget: round2(Number(project.budget || 0) - spent),
     receiptsWithoutAmount: files.filter((f) => f.amount == null).length,
     receiptReading: isReaderConfigured(),
   };
@@ -89,7 +90,7 @@ function canSeeProposed(user) {
 }
 
 function stripInternal(project) {
-  const { deletionRequests, liquidationFiles, amountSpent, amountToRefund, receiptsWithoutAmount, receiptReading, ...rest } = project;
+  const { deletionRequests, liquidationFiles, amountSpent, remainingBudget, receiptsWithoutAmount, receiptReading, ...rest } = project;
   return rest;
 }
 

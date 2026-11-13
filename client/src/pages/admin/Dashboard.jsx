@@ -12,7 +12,7 @@ import { eventsApi } from '../../api/events';
 import { useAuth } from '../../context/AuthContext';
 import { isAdmin } from '../../utils/roles';
 import { Badge, Button, Card } from '../../components/ui';
-import { PROJECT_STATUS, formatPeso, formatDateTime } from '../../utils/format';
+import { PROJECT_STATUS, formatPeso, formatPeso2, formatDateTime } from '../../utils/format';
 import { STAGES, StageSteps, StatusRibbon } from '../../components/Roundel';
 import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
@@ -222,7 +222,7 @@ export default function Dashboard() {
       )}
 
       {/* Key numbers */}
-      <div className={`grid gap-4 ${selected ? 'sm:grid-cols-2' : ''}`}>
+      <div className={`grid gap-4 sm:grid-cols-2 ${selected ? 'lg:grid-cols-3' : ''}`}>
         {selected ? (
           <KpiCard
             label="Stage"
@@ -255,6 +255,18 @@ export default function Dashboard() {
             tone="green"
           />
         )}
+        {/* Overall Budget: all project budgets minus every saved receipt (for one project,
+            its Remaining Budget). Recomputed by the server on every load. */}
+        <KpiCard
+          label={selected ? 'Remaining Budget' : 'Overall Budget'}
+          value={s.budget ? formatPeso2(s.budget.remaining) : '—'}
+          note={
+            s.budget
+              ? `${formatPeso2(s.budget.totalBudget)} budget − ${formatPeso2(s.budget.totalSpent)} in receipts`
+              : undefined
+          }
+          tone="gold"
+        />
       </div>
 
       {/* Charts */}

@@ -1,4 +1,5 @@
 const prisma = require('../prisma');
+const { overallBudget } = require('../utils/budget');
 
 // GET /api/stats — dashboard summary numbers, status breakdown and the analytics behind
 // the dashboard charts. ?projectId= narrows everything to one project ("Sort by Project"):
@@ -16,6 +17,7 @@ async function getStats(req, res, next) {
       upcomingEvents,
       projects,
       pendingDeletions,
+      budget,
       heldEvents,
     ] = await Promise.all([
       prisma.user.count({ where: { role: 'VIEWER' } }),
@@ -31,6 +33,8 @@ async function getStats(req, res, next) {
         },
       }),
       prisma.deletionRequest.count({ where: { status: 'PENDING' } }),
+      // Overall Budget (or, with projectId, that project's Remaining Budget)
+      overallBudget(projectId),
       // Sessions that already took place, with their attendance records
       prisma.event.findMany({
         where: { startAt: { lte: now }, ...onlyLinked },
@@ -74,6 +78,7 @@ async function getStats(req, res, next) {
         ongoingProjects: counts.ONGOING || 0,
         pendingApproval,
         pendingDeletions,
+        budget, // { totalBudget, totalSpent, remaining }
         totalViewers,
         totalOfficials,
         upcomingEvents,

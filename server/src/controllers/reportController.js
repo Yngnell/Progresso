@@ -1,6 +1,7 @@
 const prisma = require('../prisma');
 const { completionInfo } = require('./projectController');
 const { markAbsentees } = require('../utils/absentees');
+const { overallBudget } = require('../utils/budget');
 
 // Data behind the PDF and Excel exports (Dashboard and Attendance). Dates in the filters
 // are calendar days in Philippine time (YYYY-MM-DD).
@@ -109,7 +110,7 @@ const EVENT_SELECT = {
 async function projectSummary(projectId) {
   const p = await prisma.project.findUnique({
     where: { id: projectId },
-    include: { liquidationFiles: { select: { id: true } }, checklistItems: { select: { done: true } } },
+    include: { liquidationFiles: { select: { id: true, amount: true } }, checklistItems: { select: { done: true } } },
   });
   if (!p) return null;
   const info = completionInfo(p);
@@ -119,6 +120,9 @@ async function projectSummary(projectId) {
     category: p.category,
     status: p.status,
     budget: Number(p.budget || 0),
+    totalSpent: Math.round(p.liquidationFiles.reduce((s, f) => s + Number(f.amount || 0), 0) * 100) / 100,
+    remainingBudget:
+      Math.round((Number(p.budget || 0) - p.liquidationFiles.reduce((s, f) => s + Number(f.amount || 0), 0)) * 100) / 100,
     liquidationCount: info.liquidationCount,
     checklistDone: info.checklistDone,
     checklistTotal: info.checklistTotal,
@@ -180,6 +184,8 @@ async function dashboardReport(req, res, next) {
       range: { from: req.query.from || null, to: req.query.to || null },
       project,
       projects: { total, byStatus },
+      // Overall Budget (or the chosen project's Remaining Budget), as on the Dashboard
+      budget: await overallBudget(projectId),
       events: events.map(({ attendance, ...e }) => e),
       attendance: { perEvent, perOfficial: perOfficial(rows), totals: totals(rows) },
     });

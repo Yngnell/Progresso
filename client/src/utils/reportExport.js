@@ -201,6 +201,18 @@ function projectRows(p) {
     ['Schedule', timeline],
     ['Location', p.location || '-'],
     ['Budget', peso(p.budget)],
+    ['Total receipts', peso(p.totalSpent)],
+    ['Remaining Budget', peso(p.remainingBudget)],
+  ];
+}
+
+// Overall Budget (or the chosen project's Remaining Budget), as on the Dashboard.
+function budgetRows(report) {
+  const b = report.budget || { totalBudget: 0, totalSpent: 0, remaining: 0 };
+  return [
+    ['Total budget', peso(b.totalBudget)],
+    ['Total receipts', peso(b.totalSpent)],
+    [report.project ? 'Remaining Budget' : 'Overall Budget', peso(b.remaining)],
   ];
 }
 
@@ -226,6 +238,11 @@ export async function exportDashboardPdf({ report, settings, user, chartNodes = 
       columnStyles: { 0: { cellWidth: 40, fontStyle: 'bold' } },
     });
   }
+
+  y = sectionTitle(doc, report.project ? 'Remaining Budget' : 'Overall Budget', y);
+  y = table(doc, autoTable, y, ['Item', 'Amount'], budgetRows(report), {
+    columnStyles: { 0: { fontStyle: 'bold' }, 1: { halign: 'right', cellWidth: 50 } },
+  });
 
   const p = report.projects;
   y = sectionTitle(doc, 'Projects per status', y);
@@ -366,6 +383,12 @@ export async function exportDashboardExcel({ report, settings, user }) {
       widths: [18, 48],
     });
   }
+  addSheet(wb, report.project ? 'Remaining Budget' : 'Overall Budget', {
+    ...base,
+    head: ['Item', 'Amount'],
+    rows: budgetRows(report),
+    widths: [24, 22],
+  });
   const p = report.projects;
   addSheet(wb, 'Projects by Status', {
     ...base,

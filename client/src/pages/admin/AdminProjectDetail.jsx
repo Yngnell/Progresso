@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '../../api/projects';
@@ -43,6 +43,12 @@ export default function AdminProjectDetail() {
       (query.state.data?.project?.liquidationFiles || []).some((f) => f.readStatus === 'PENDING') ? 3000 : false,
   });
   const project = data?.project;
+  // A receipt read in the background changes the spent total: keep the Dashboard's
+  // Overall Budget in step with it.
+  const spentNow = project?.amountSpent;
+  useEffect(() => {
+    if (spentNow !== undefined) qc.invalidateQueries({ queryKey: ['stats'] });
+  }, [spentNow, qc]);
 
   // Every step returns the updated project; refresh the lists and the Dashboard too.
   // message: { note } for an optional success line shown at the top.
@@ -334,8 +340,10 @@ export default function AdminProjectDetail() {
                   <span className="font-semibold text-slate-800">{formatPeso2(project.amountSpent)}</span>
                 </div>
                 <div className="mt-2 flex justify-between text-sm">
-                  <span className="text-slate-500">{project.amountToRefund >= 0 ? 'To refund' : 'Over the budget'}</span>
-                  <span className="font-semibold text-slate-800">{formatPeso2(Math.abs(project.amountToRefund))}</span>
+                  <span className="text-slate-500">Remaining Budget</span>
+                  <span className={`font-semibold ${project.remainingBudget < 0 ? 'text-red-700' : 'text-slate-800'}`}>
+                    {formatPeso2(project.remainingBudget)}
+                  </span>
                 </div>
               </>
             )}
@@ -661,7 +669,7 @@ function Liquidation({ project, canEdit, onDone, onFail }) {
         marked as completed.
         {project.receiptReading
           ? ' Each receipt is read automatically by Claude (Anthropic) to find its total; check it and fix it if needed.'
-          : ' Type the amount of each receipt to work out the total spent and the refund.'}
+          : ' Type the amount of each receipt to work out the total spent and the remaining budget.'}
       </p>
       {canEdit && (
         <label className="btn btn-accent mt-4 cursor-pointer px-4 py-2 text-[15px] focus-within:ring-2 focus-within:ring-brand-500">
@@ -728,8 +736,10 @@ function Liquidation({ project, canEdit, onDone, onFail }) {
             <dd className="font-display text-lg text-slate-900">{formatPeso2(project.amountSpent)}</dd>
           </div>
           <div>
-            <dt className="text-slate-600">{project.amountToRefund >= 0 ? 'Amount to refund' : 'Over the budget'}</dt>
-            <dd className="font-display text-lg text-slate-900">{formatPeso2(Math.abs(project.amountToRefund))}</dd>
+            <dt className="text-slate-600">Remaining Budget</dt>
+            <dd className={`font-display text-lg ${project.remainingBudget < 0 ? 'text-red-700' : 'text-slate-900'}`}>
+              {formatPeso2(project.remainingBudget)}
+            </dd>
           </div>
           {project.receiptsWithoutAmount > 0 && (
             <p className="text-amber-800 sm:col-span-3">
