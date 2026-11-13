@@ -29,7 +29,7 @@ export default function AdminProjects() {
   return user?.role === 'CHAIRMAN' ? <ChairmanProjects /> : <ProjectManagement />;
 }
 
-// The SK Admin's projects: new Project Requests (Form 3), drafts and the projects under way.
+// The SK Admin's projects: new Project Requests, drafts and the projects under way.
 function ProjectManagement() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -94,7 +94,7 @@ function ProjectManagement() {
         ) : projects.length === 0 ? (
           <EmptyState
             title={filter ? `No ${PROJECT_STATUS[filter].label.toLowerCase()} projects` : 'No projects yet'}
-            description="A project starts as a Project Request (Form 3), funded by an ABYIP item."
+            description="A project starts as a Project Request, funded by an ABYIP item."
             action={
               <Button variant="accent" onClick={newRequest}>
                 <Plus size={18} strokeWidth={2} aria-hidden="true" />

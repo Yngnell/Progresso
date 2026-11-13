@@ -189,7 +189,6 @@ function projectRows(p) {
     ['Project', p.title],
     ['ABYIP item', p.abyipItem || '-'],
     ['Status', PROJECT_STATUS_LABEL[p.status] || p.status],
-    ['Progress', `${p.progress || 0}%`],
     ['Expenses recorded', String(p.expenseCount || 0)],
     ['Files', String(p.fileCount || 0)],
     ['Dates', timeline],

@@ -3,8 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { ScanText } from 'lucide-react';
 import { Button, Input, Modal, Select, Textarea } from './ui';
 import ReadOnlyField from './ReadOnlyField';
-import { formTitle } from './FormHeader';
-import { ProgressMeter } from './Roundel';
 import { projectsApi, checkFile, FILE_ACCEPT, RECEIPT_ACCEPT } from '../api/projects';
 import { errorMessage, fieldErrors } from '../api/budget';
 import { formatPeso2, phDayOf, phToday } from '../utils/format';
@@ -12,8 +10,6 @@ import { formatPeso2, phDayOf, phToday } from '../utils/format';
 // The SK Admin's forms on a project page (one dialog each). Every form shows the server's
 // message under the field it is about; the server checks everything again.
 
-const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_PHOTO = 5 * 1024 * 1024;
 
 function FileInput({ label, accept, onChange, error, hint, id }) {
   return (
@@ -32,13 +28,13 @@ function FileInput({ label, accept, onChange, error, hint, id }) {
   );
 }
 
-// Shared shell: header "Form N · Name", the form body, Cancel and the save button.
-function FormModal({ number, name, id, busy, saveLabel, saveVariant, closeLabel = 'Cancel', onClose, error, children }) {
+// Shared shell: the form name as the header, the form body, Cancel and the save button.
+function FormModal({ name, id, busy, saveLabel, saveVariant, closeLabel = 'Cancel', onClose, error, children }) {
   return (
     <Modal
       open
       onClose={onClose}
-      title={formTitle(number, name)}
+      title={name}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>{closeLabel}</Button>
@@ -71,101 +67,7 @@ async function run({ setBusy, setErrors, setError, action, onDone, fallback }) {
   }
 }
 
-// ---------- Form 5 · Progress Update (Ongoing) ----------
-// The percentage starts at the current progress and cannot go below it.
-export function ProgressForm({ project, onClose, onDone }) {
-  const current = project.progress || 0;
-  const [form, setForm] = useState({ milestone: '', date: phToday(), percent: current, notes: '' });
-  const [photo, setPhoto] = useState(null);
-  const [errors, setErrors] = useState({});
-  const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const set = (k) => (e) => {
-    const v = e.target.value;
-    setForm((f) => ({ ...f, [k]: v }));
-    setErrors((x) => ({ ...x, [k]: undefined }));
-  };
-  const setPercent = (v) => {
-    setForm((f) => ({ ...f, percent: v }));
-    setErrors((x) => ({ ...x, percent: undefined }));
-  };
-
-  function submit(e) {
-    e.preventDefault();
-    const e2 = {};
-    if (!form.milestone.trim()) e2.milestone = 'Enter the milestone';
-    if (!form.date) e2.date = 'Enter the date';
-    else if (form.date > phToday()) e2.date = 'The date cannot be in the future';
-    const pct = Number(form.percent);
-    if (form.percent === '' || !Number.isInteger(pct) || pct < 0 || pct > 100) e2.percent = 'Enter a whole percentage from 0 to 100';
-    else if (pct < current) e2.percent = `The progress is already ${current}%; it cannot go down`;
-    if (photo && !PHOTO_TYPES.includes(photo.type)) e2.photo = 'Choose a JPG, PNG or WEBP picture.';
-    else if (photo && photo.size > MAX_PHOTO) e2.photo = 'The picture must be 5 MB or smaller.';
-    setErrors(e2);
-    if (Object.keys(e2).length) return;
-    run({
-      setBusy,
-      setErrors,
-      setError,
-      fallback: 'The progress update could not be saved. Try again.',
-      action: () => projectsApi.addProgress(project.id, { ...form, milestone: form.milestone.trim(), percent: pct, photo }),
-      onDone: (res) => onDone(res, `Progress updated to ${pct}%.`),
-    });
-  }
-
-  const pct = Math.max(0, Math.min(100, Number(form.percent) || 0));
-  return (
-    <FormModal number={5} name="Progress Update" id="progress-form" busy={busy} saveLabel="Save update" onClose={onClose} error={error}>
-      <form id="progress-form" onSubmit={submit} noValidate className="space-y-4">
-        <ProgressMeter value={current} label="Current progress" />
-        <Input label="Milestone" maxLength={200} placeholder="e.g. Venue booked" value={form.milestone} onChange={set('milestone')} error={errors.milestone} />
-        <Input label="Date" type="date" max={phToday()} value={form.date} onChange={set('date')} error={errors.date} />
-        <div>
-          <label className="label" htmlFor="progress-percent">New progress (%)</label>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              value={pct}
-              onChange={(e) => setPercent(Math.max(current, Number(e.target.value)))}
-              aria-label="Progress slider"
-              className="h-2 min-w-0 flex-1 cursor-pointer accent-[var(--pine)]"
-            />
-            <input
-              id="progress-percent"
-              type="number"
-              min={current}
-              max="100"
-              step="1"
-              inputMode="numeric"
-              className="input w-24"
-              value={form.percent}
-              onChange={(e) => setPercent(e.target.value === '' ? '' : Number(e.target.value))}
-            />
-          </div>
-          <p className="mt-1 text-[13px] text-slate-600">At least {current}% (the current progress).</p>
-          {errors.percent && <p className="mt-1 text-[13px] text-clay-text">{errors.percent}</p>}
-        </div>
-        <Textarea label="Notes (optional)" rows={3} maxLength={2000} value={form.notes} onChange={set('notes')} />
-        <FileInput
-          id="progress-photo"
-          label="Picture (optional)"
-          accept=".jpg,.jpeg,.png,.webp"
-          onChange={(f) => {
-            setPhoto(f);
-            setErrors((x) => ({ ...x, photo: undefined }));
-          }}
-          error={errors.photo}
-          hint="JPG, PNG or WEBP, up to 5 MB. It is added to the project’s Pictures."
-        />
-      </form>
-    </FormModal>
-  );
-}
-
-// ---------- Form 6 · Expense (Ongoing) ----------
+// ---------- Expense (Ongoing) ----------
 // The amount cannot exceed what is left of the approved cost. "Read receipt" lets Claude fill in
 // the amount, date and supplier from the receipt; the SK Admin checks them before saving.
 export function ExpenseForm({ project, categories, receiptReading, onClose, onDone }) {
@@ -235,7 +137,7 @@ export function ExpenseForm({ project, categories, receiptReading, onClose, onDo
   }
 
   return (
-    <FormModal number={6} name="Expense" id="expense-form" busy={busy} saveLabel="Save expense" onClose={onClose} error={error}>
+    <FormModal name="Expense" id="expense-form" busy={busy} saveLabel="Save expense" onClose={onClose} error={error}>
       <div className="grid gap-2 sm:grid-cols-3">
         <ReadOnlyField label="Approved cost" value={formatPeso2(project.approvedCost)} />
         <ReadOnlyField label="Spent so far" value={formatPeso2(project.amountSpent)} />
@@ -282,12 +184,11 @@ export function ExpenseForm({ project, categories, receiptReading, onClose, onDo
   );
 }
 
-// ---------- Form 7 · File Upload ----------
-// One project document: its type, the file (PDF, DOCX, JPG or PNG, up to 10 MB) and a description.
+// ---------- File Upload ----------
+// One project document: its type and the file (PDF, DOCX, JPG or PNG, up to 10 MB).
 export function FileForm({ project, documentTypes, onClose, onDone }) {
   const types = Object.entries(documentTypes).filter(([value]) => value !== 'LIQUIDATION');
   const [documentType, setDocumentType] = useState('');
-  const [description, setDescription] = useState('');
   const [file, setFile] = useState(null);
   const [errors, setErrors] = useState({});
   const [error, setError] = useState(null);
@@ -306,13 +207,13 @@ export function FileForm({ project, documentTypes, onClose, onDone }) {
       setErrors,
       setError,
       fallback: 'The file could not be uploaded. Try again.',
-      action: () => projectsApi.addFile(project.id, { file, documentType, description: description.trim() }),
+      action: () => projectsApi.addFile(project.id, { file, documentType }),
       onDone: (res) => onDone(res, `“${file.name}” was added to the project files.`),
     });
   }
 
   return (
-    <FormModal number={7} name="File Upload" id="file-form" busy={busy} saveLabel="Upload file" onClose={onClose} error={error}>
+    <FormModal name="File Upload" id="file-form" busy={busy} saveLabel="Upload file" onClose={onClose} error={error}>
       <form id="file-form" onSubmit={submit} noValidate className="space-y-4">
         <ReadOnlyField label="Project" value={project.title} />
         <Select
@@ -336,20 +237,12 @@ export function FileForm({ project, documentTypes, onClose, onDone }) {
           error={errors.file}
           hint="PDF, DOCX, JPG or PNG, up to 10 MB."
         />
-        <Textarea
-          label="Description (optional)"
-          rows={2}
-          maxLength={300}
-          placeholder="e.g. SK Resolution No. 5, s. 2026"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
       </form>
     </FormModal>
   );
 }
 
-// ---------- Form 8 · Completion (Ongoing) ----------
+// ---------- Completion (Ongoing) ----------
 // The approved cost, the actual cost (all expenses) and the unused amount are filled in; the
 // participants start from the attendance linked to the project and can be changed. Both reports
 // are required. Completing returns the unused amount to the ABYIP item.
@@ -409,7 +302,7 @@ export function CompletionForm({ project, ask, onClose, onDone }) {
   }
 
   return (
-    <FormModal number={8} name="Completion" id="completion-form" busy={busy} saveLabel="Complete project" onClose={onClose} error={error}>
+    <FormModal name="Completion" id="completion-form" busy={busy} saveLabel="Complete project" onClose={onClose} error={error}>
       <div className="grid gap-2 sm:grid-cols-3">
         <ReadOnlyField label="Approved cost" value={info ? formatPeso2(info.approvedCost) : '…'} />
         <ReadOnlyField label="Actual cost" value={info ? formatPeso2(info.actualCost) : '…'} hint="Sum of the expenses" />
@@ -461,7 +354,7 @@ export function CompletionForm({ project, ask, onClose, onDone }) {
   );
 }
 
-// ---------- Form 9 · Cancellation (Approved or Ongoing) ----------
+// ---------- Cancellation (Approved or Ongoing) ----------
 // The reason and the date. The unspent part of the reserve goes back to the ABYIP item;
 // expenses and files are kept. A warning shows the amount first, then a confirmation.
 export function CancellationForm({ project, ask, onClose, onDone }) {
@@ -497,7 +390,7 @@ export function CancellationForm({ project, ask, onClose, onDone }) {
   }
 
   return (
-    <FormModal number={9} name="Cancellation" id="cancel-form" busy={busy} saveLabel="Cancel project" saveVariant="danger" closeLabel="Close" onClose={onClose} error={error}>
+    <FormModal name="Cancellation" id="cancel-form" busy={busy} saveLabel="Cancel project" saveVariant="danger" closeLabel="Close" onClose={onClose} error={error}>
       <div className="notice notice-warn text-sm" role="note">
         <p className="font-semibold">{formatPeso2(unspent)} of the reserved amount has not been spent.</p>
         <p className="mt-1">

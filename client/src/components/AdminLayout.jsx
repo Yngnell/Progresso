@@ -134,7 +134,7 @@ export default function AdminLayout() {
     .map((g) => ({ ...g, links: g.links.filter((l) => !l.roles || l.roles.includes(role)) }))
     .filter((g) => g.links.length > 0);
 
-  // What waits for the Barangay Chairman: Project Requests to review (Approvals, Form 4), and
+  // What waits for the Barangay Chairman: Project Requests to review (Approvals), and
   // deletion requests (Projects). Only the chairman sees the counts.
   const isChairman = user?.role === 'CHAIRMAN';
   const { data: proposalData } = useQuery({

@@ -44,7 +44,7 @@ const emptyForm = () => ({
   rows: [newRow()],
 });
 
-// Form 3 · Project Request (SK Admin). New requests and drafts or requests returned for
+// Project Request (SK Admin). New requests and drafts or requests returned for
 // revision. "Save as Draft" keeps it with the SK Admin; "Submit for Approval" sends it to the
 // Barangay Chairman (every field is needed and the cost must fit the ABYIP item's balance).
 export default function ProjectRequestForm() {
@@ -234,7 +234,6 @@ export default function ProjectRequestForm() {
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <FormHeader
-          number={3}
           name="Project Request"
           description="Save it as a draft while it is being prepared. Submitting sends it to the Barangay Chairman for approval."
         />

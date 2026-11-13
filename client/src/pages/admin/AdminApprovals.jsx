@@ -10,7 +10,7 @@ import ProjectReviewForm from '../../components/ProjectReviewForm';
 import { formatDate, formatPeso2 } from '../../utils/format';
 
 // Approvals (Barangay Chairman): the Project Requests waiting for a decision (Pending).
-// Review opens Form 4: Approve, Return for Revision or Reject.
+// Review: Approve, Return for Revision or Reject.
 export default function AdminApprovals() {
   const qc = useQueryClient();
   const [notice, setNotice] = useState(null);

@@ -22,7 +22,7 @@ enum Role {
 // The SK project process (Forms 3 to 9):
 //   DRAFT -> PENDING (SK Admin submits) -> APPROVED | REJECTED | FOR_REVISION (Barangay Chairman)
 //   FOR_REVISION -> PENDING (resubmitted); APPROVED -> ONGOING (started);
-//   ONGOING -> COMPLETED (Form 8); APPROVED | ONGOING -> CANCELLED (Form 9).
+//   ONGOING -> COMPLETED (Completion); APPROVED | ONGOING -> CANCELLED (Cancellation).
 // PROPOSED, PLANNING and ON_HOLD are from the earlier flow; they are kept in the type but no
 // project uses them any more (existing projects were moved to the new statuses).
 enum ProjectStatus {
@@ -145,7 +145,7 @@ model Project {
   category       String?
   status         ProjectStatus @default(DRAFT)
   budget         Decimal       @default(0) @db.Decimal(12, 2) // kept equal to estimatedCost
-  progress       Int           @default(0) // current progress (0-100) from the latest Form 5 update
+  progress       Int           @default(0) // no longer used (the progress updates were removed)
   // How progress is measured: DATETIME (elapsed share of the start-to-end time) or
   // ATTENDEE (people who checked in at the linked events / targetAttendees)
   progressType    String       @default("DATETIME")
@@ -175,7 +175,7 @@ model Project {
   // "Prepared by" on the project proposal form (snapshots of the official's name/position)
   proposedByName      String?
   proposedByPosition  String?
-  // Form 3: Project Request
+  // Project Request: Project Request
   abyipItemId         String?
   abyipItem           AbyipItem? @relation(fields: [abyipItemId], references: [id])
   objectives          String?
@@ -184,12 +184,12 @@ model Project {
   submittedAt         DateTime?
   approvedAt          DateTime?
   startedAt           DateTime?
-  // Form 8: Project Completion
+  // Completion: Project Completion
   actualEndDate         DateTime?
   actualParticipants    Int?
   accomplishmentSummary String?
   completedAt           DateTime?
-  // Form 9: Project Cancellation (the reason is cancelReason)
+  // Cancellation: Project Cancellation (the reason is cancelReason)
   cancelDate          DateTime?
   cancelledAt         DateTime?
   budgetRows     ProjectBudgetRow[]
@@ -262,7 +262,7 @@ model Expense {
   receiptFile  String? // stored file name inside server/uploads/receipts
   receiptName  String? // original file name, shown to the user
   receiptType  String? // MIME type
-  // Form 6: Expense (item is the description)
+  // Expense: Expense (item is the description)
   category     String?
   supplier     String?
   fileId       String? // the receipt, kept in the project files
@@ -335,7 +335,7 @@ model AttendanceRecord {
   officialId  String?
   official    Official?        @relation(fields: [officialId], references: [id], onDelete: SetNull)
   userId      String?          // older check-ins made with an account
-  // Optional project link (Form 8 counts the participants from it)
+  // Optional project link (Completion counts the participants from it)
   projectId   String?
   project     Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
   status      AttendanceStatus @default(PRESENT)
@@ -386,7 +386,7 @@ model PendingSignup {
   @@index([createdAt])
 }
 
-// A progress photo of a project or an event, shown on the public site.
+// A photo of a project (no longer shown; kept so old records are not lost) or an event.
 // Receipt liquidation of an Ongoing project (JPG, PNG or PDF). At least one is needed
 // before the project can be marked as completed. Files live in uploads/receipts.
 model LiquidationFile {
@@ -476,7 +476,7 @@ model Setting {
 
 // ---------- SK project process (Forms 1 to 9) ----------
 
-// Form 1: the SK budget of one year (one record per year).
+// Annual Budget: the SK budget of one year (one record per year).
 model AnnualBudget {
   id          String      @id @default(uuid())
   year        Int         @unique
@@ -488,7 +488,7 @@ model AnnualBudget {
   updatedAt   DateTime    @updatedAt
 }
 
-// Form 2: a program or project in the Annual Barangay Youth Investment Program (ABYIP).
+// ABYIP Item: a program or project in the Annual Barangay Youth Investment Program (ABYIP).
 // The allotments of a year never exceed that year's SK budget.
 model AbyipItem {
   id             String       @id @default(uuid())
@@ -507,7 +507,7 @@ model AbyipItem {
   @@index([year])
 }
 
-// Form 3: one row of a project's budget breakdown (total = quantity x unit cost).
+// Project Request: one row of a project's budget breakdown (total = quantity x unit cost).
 model ProjectBudgetRow {
   id           String  @id @default(uuid())
   projectId    String
@@ -521,7 +521,7 @@ model ProjectBudgetRow {
   @@index([projectId])
 }
 
-// Form 4: every decision of the Barangay Chairman on a project request, kept as history.
+// Review: every decision of the Barangay Chairman on a project request, kept as history.
 model ProjectReview {
   id         String   @id @default(uuid())
   projectId  String
@@ -535,7 +535,7 @@ model ProjectReview {
   @@index([projectId, reviewedAt])
 }
 
-// Form 5: a progress update of an ongoing project; the percentage never goes down.
+// Progress updates of a project. No longer used: kept so old records are not lost.
 model ProgressUpdate {
   id          String   @id @default(uuid())
   projectId   String

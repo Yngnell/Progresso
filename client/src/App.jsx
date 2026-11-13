@@ -88,7 +88,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="projects" element={<AdminProjects />} />
         <Route path="archive" element={<AdminArchive />} />
-        {/* Form 1 and Form 2: the SK Admin records them; the Barangay Chairman views them */}
+        {/* Budget & ABYIP: the SK Admin records them; the Barangay Chairman views them */}
         <Route
           path="budget"
           element={
@@ -98,7 +98,7 @@ export default function App() {
           }
         />
         <Route path="projects/:id" element={<AdminProjectDetail />} />
-        {/* Form 3: Project Request (the SK Admin) */}
+        {/* Project Request (the SK Admin) */}
         <Route
           path="projects/new"
           element={

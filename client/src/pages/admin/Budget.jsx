@@ -4,7 +4,6 @@ import { Pencil, Plus } from 'lucide-react';
 import PageHeader from '../../components/PageHeader';
 import KpiCard from '../../components/KpiCard';
 import ReadOnlyField from '../../components/ReadOnlyField';
-import { formTitle } from '../../components/FormHeader';
 import { Button, Card, EmptyState, Input, Modal, Select, Textarea } from '../../components/ui';
 import { budgetApi, errorMessage, fieldErrors } from '../../api/budget';
 import { useAuth } from '../../context/AuthContext';
@@ -14,7 +13,7 @@ import { useConfirm } from '../../components/ConfirmDialog';
 
 const THIS_YEAR = new Date().getFullYear();
 
-// Budget & ABYIP: Form 1 (the SK budget of a year) and Form 2 (the ABYIP items it funds).
+// Budget & ABYIP: the Annual Budget (the SK budget of a year) and the ABYIP items it funds.
 // The SK Admin records them; the Barangay Chairman views them. Every balance comes from the server.
 export default function Budget() {
   const { user } = useAuth();
@@ -64,7 +63,7 @@ export default function Budget() {
         title="Budget & ABYIP"
         description={
           canEdit
-            ? 'Record the SK budget of each year (Form 1) and the programs it funds in the Annual Barangay Youth Investment Program (Form 2).'
+            ? 'Record the SK budget of each year and the programs it funds in the Annual Barangay Youth Investment Program (ABYIP).'
             : 'The SK budget of each year and the programs it funds in the Annual Barangay Youth Investment Program. View only.'
         }
         actions={
@@ -104,7 +103,7 @@ export default function Budget() {
           title={`No SK budget for ${year} yet`}
           description={
             canEdit
-              ? 'Record the year’s total SK budget first (Form 1). ABYIP items can then be added within it.'
+              ? 'Record the year’s total SK budget first. ABYIP items can then be added within it.'
               : 'The SK Admin has not recorded this year’s budget yet.'
           }
           action={canEdit && <Button onClick={() => setBudgetForm({ year })}>Record the {year} budget</Button>}
@@ -259,7 +258,7 @@ function ItemsTable({ items, canEdit, onEdit }) {
   );
 }
 
-// Form 1 · Annual Budget. One record per year; the year cannot change once saved.
+// Annual Budget. One record per year; the year cannot change once saved.
 function BudgetForm({ budget, fundSources, onClose, onSaved }) {
   const isNew = !budget.id;
   const [form, setForm] = useState({
@@ -310,7 +309,7 @@ function BudgetForm({ budget, fundSources, onClose, onSaved }) {
     <Modal
       open
       onClose={onClose}
-      title={formTitle(1, 'Annual Budget')}
+      title="Annual Budget"
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -349,7 +348,7 @@ function BudgetForm({ budget, fundSources, onClose, onSaved }) {
   );
 }
 
-// Form 2 · ABYIP Item. The allotments of a year cannot exceed its SK budget.
+// ABYIP Item. The allotments of a year cannot exceed its SK budget.
 function ItemForm({ item, budgets, centers, quarters, onClose, onSaved }) {
   const isNew = !item.id;
   const [form, setForm] = useState({
@@ -412,7 +411,7 @@ function ItemForm({ item, budgets, centers, quarters, onClose, onSaved }) {
     <Modal
       open
       onClose={onClose}
-      title={formTitle(2, 'ABYIP Item')}
+      title="ABYIP Item"
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>

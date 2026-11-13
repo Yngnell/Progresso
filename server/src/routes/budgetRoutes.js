@@ -11,7 +11,7 @@ const {
 const { protect } = require('../middleware/auth');
 const { requireSkAdmin, requireStaff } = require('../utils/roles');
 
-// Form 1 (Annual Budget) and Form 2 (ABYIP Item): the SK Admin records them; the SK side
+// Annual Budget and ABYIP Item: the SK Admin records them; the SK side
 // (including the Barangay Chairman) can view them.
 const budgets = express.Router();
 budgets.get('/', protect, requireStaff, listBudgets);

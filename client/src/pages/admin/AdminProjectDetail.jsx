@@ -1,20 +1,18 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Ban, CircleCheck, ClipboardCheck, FileText, Pencil, Play, Receipt, Send, Trash2, TrendingUp, Upload, X } from 'lucide-react';
+import { ArrowLeft, Ban, CircleCheck, ClipboardCheck, FileText, Pencil, Play, Receipt, Send, Trash2, Upload, X } from 'lucide-react';
 import { projectsApi } from '../../api/projects';
 import { useAuth } from '../../context/AuthContext';
 import OverflowMenu from '../../components/OverflowMenu';
-import { ProgressMeter, StageSteps, StatusRibbon } from '../../components/Roundel';
+import { StageSteps, StatusRibbon } from '../../components/Roundel';
 import { Button, Card } from '../../components/ui';
-import PhotoGallery from '../../components/PhotoGallery';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
 import { useConfirm } from '../../components/ConfirmDialog';
 import DownloadButton from '../../components/DownloadButton';
 import ProjectReviewForm from '../../components/ProjectReviewForm';
-import { CancellationForm, CompletionForm, ExpenseForm, FileForm, ProgressForm } from '../../components/ProjectForms';
+import { CancellationForm, CompletionForm, ExpenseForm, FileForm } from '../../components/ProjectForms';
 import { CLOSED_STATUSES, EDITABLE_STATUSES, formatDate, formatPeso2 } from '../../utils/format';
-import { isManager, isWorker } from '../../utils/roles';
 
 const errorText = (err, fallback) => err?.response?.data?.message || fallback;
 const DECISION = {
@@ -26,8 +24,8 @@ const DECISION = {
 const FILE_OPEN = ['DRAFT', 'FOR_REVISION', 'APPROVED', 'ONGOING'];
 const ARCHIVE_TAB = { COMPLETED: 'completed', REJECTED: 'rejected', CANCELLED: 'cancelled' };
 
-// One project in the SK project process. The SK Admin works on it through Forms 3 and 5 to 9;
-// the Barangay Chairman reviews it (Form 4). Rejected, completed, cancelled and deleted projects
+// One project in the SK project process. The SK Admin works on it through the project forms;
+// the Barangay Chairman reviews it (Review). Rejected, completed, cancelled and deleted projects
 // are view only.
 export default function AdminProjectDetail() {
   const { id } = useParams();
@@ -53,7 +51,7 @@ export default function AdminProjectDetail() {
   const refresh = (res, message) => {
     setNote(message || '');
     setError('');
-    if (res?.project) qc.setQueryData(['projects', id], (old) => ({ ...old, project: { ...res.project, photos: old?.project?.photos } }));
+    if (res?.project) qc.setQueryData(['projects', id], (old) => ({ ...old, project: res.project }));
     qc.invalidateQueries({ queryKey: ['projects'] });
     qc.invalidateQueries({ queryKey: ['abyip'] });
     qc.invalidateQueries({ queryKey: ['budgets'] });
@@ -91,8 +89,6 @@ export default function AdminProjectDetail() {
   const closed = CLOSED_STATUSES.includes(project.status);
   const viewOnly = deleted || closed;
   const deletion = project.deletionRequests?.[0];
-  const canUploadPictures = isWorker(user) && !viewOnly;
-  const canDeletePicture = (p) => !viewOnly && (isManager(user) || (p.uploadedById && p.uploadedById === user?.id));
   const back = deleted
     ? { to: '/admin/archive?tab=deleted', label: 'Archives' }
     : closed
@@ -175,7 +171,6 @@ export default function AdminProjectDetail() {
           project={project}
           isSkAdmin={isSkAdmin}
           isChairman={isChairman}
-          meta={data}
           ask={ask}
           onDone={refresh}
           onFail={fail}
@@ -187,8 +182,16 @@ export default function AdminProjectDetail() {
         <div className="min-w-0 space-y-6 lg:col-span-2">
           <Summary project={project} />
           <Breakdown project={project} />
-          {shows(['ONGOING', 'COMPLETED', 'CANCELLED']) && <Progress project={project} />}
-          {(shows(['ONGOING', 'COMPLETED', 'CANCELLED']) || project.expenses?.length > 0) && <Expenses project={project} canRemove={isSkAdmin && !deleted && project.status === 'ONGOING'} ask={ask} onDone={refresh} onFail={fail} />}
+          {(shows(['ONGOING', 'COMPLETED', 'CANCELLED']) || project.expenses?.length > 0) && (
+            <RecordExpenses
+              project={project}
+              meta={data}
+              canRecord={isSkAdmin && !deleted && project.status === 'ONGOING'}
+              ask={ask}
+              onDone={refresh}
+              onFail={fail}
+            />
+          )}
           {project.status === 'COMPLETED' && <Completion project={project} />}
           {project.status === 'CANCELLED' && <Cancellation project={project} />}
           <Files
@@ -200,27 +203,6 @@ export default function AdminProjectDetail() {
             onDone={refresh}
             onFail={fail}
           />
-          <Card className="p-6">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <h2 className="section-title">Pictures</h2>
-              <DownloadButton
-                empty={(project.photos || []).length === 0}
-                onDownload={() => projectsApi.downloadSection(project, 'pictures')}
-                onError={(t) => fail(t)({})}
-              />
-            </div>
-            <p className="mb-4 mt-1 text-sm text-slate-600">
-              Pictures of the work appear on the public project page once the project is approved.
-            </p>
-            <PhotoGallery
-              photos={project.photos}
-              target={{ projectId: project.id }}
-              canUpload={canUploadPictures}
-              canDelete={canDeletePicture}
-              onChange={() => qc.invalidateQueries({ queryKey: ['projects', id] })}
-              emptyText="No pictures yet."
-            />
-          </Card>
         </div>
 
         <div className="min-w-0 space-y-6">
@@ -234,7 +216,7 @@ export default function AdminProjectDetail() {
 }
 
 // What happens next, and the buttons for it (by status and role).
-function ActionPanel({ project, meta, isSkAdmin, isChairman, ask, onDone, onFail, navigate }) {
+function ActionPanel({ project, isSkAdmin, isChairman, ask, onDone, onFail, navigate }) {
   const [form, setForm] = useState(null); // which form dialog is open
   const closeForm = () => setForm(null);
   const formDone = (res, text) => {
@@ -302,7 +284,7 @@ function ActionPanel({ project, meta, isSkAdmin, isChairman, ask, onDone, onFail
           <Button
             disabled={start.isPending}
             onClick={async () => {
-              if (await ask(`Start “${project.title}” now? It becomes Ongoing, and progress and expenses can then be recorded.`)) start.mutate();
+              if (await ask(`Start “${project.title}” now? It becomes Ongoing, and expenses can then be recorded.`)) start.mutate();
             }}
           >
             <Play size={16} aria-hidden="true" /> {start.isPending ? 'Starting…' : 'Start project'}
@@ -311,18 +293,12 @@ function ActionPanel({ project, meta, isSkAdmin, isChairman, ask, onDone, onFail
       );
     }
   } else if (project.status === 'ONGOING') {
-    text = 'Ongoing: record progress, expenses and files, then complete the project.';
+    text = 'Ongoing: record expenses and files, then complete the project.';
     if (isSkAdmin) {
       actions = (
         <>
           <Button variant="ghost" onClick={() => setForm('cancel')}>
             <Ban size={16} aria-hidden="true" /> Cancel project
-          </Button>
-          <Button variant="secondary" onClick={() => setForm('progress')}>
-            <TrendingUp size={16} aria-hidden="true" /> Progress update
-          </Button>
-          <Button variant="secondary" onClick={() => setForm('expense')}>
-            <Receipt size={16} aria-hidden="true" /> Record expense
           </Button>
           <Button onClick={() => setForm('complete')}>
             <CircleCheck size={16} aria-hidden="true" /> Complete project
@@ -337,18 +313,8 @@ function ActionPanel({ project, meta, isSkAdmin, isChairman, ask, onDone, onFail
       <p className="text-[15px] text-ink">{text}</p>
       {actions && <div className="actions-stack flex flex-wrap gap-2">{actions}</div>}
       {form === 'review' && <ProjectReviewForm projectId={project.id} onClose={closeForm} onDone={formDone} />}
-      {form === 'progress' && <ProgressForm project={project} onClose={closeForm} onDone={formDone} />}
       {form === 'cancel' && <CancellationForm project={project} ask={ask} onClose={closeForm} onDone={formDone} />}
       {form === 'complete' && <CompletionForm project={project} ask={ask} onClose={closeForm} onDone={formDone} />}
-      {form === 'expense' && (
-        <ExpenseForm
-          project={project}
-          categories={meta?.expenseCategories || []}
-          receiptReading={Boolean(meta?.receiptReading)}
-          onClose={closeForm}
-          onDone={formDone}
-        />
-      )}
     </Card>
   );
 }
@@ -462,12 +428,11 @@ function Money({ project }) {
           </>
         )}
       </div>
-      {project.status === 'ONGOING' && <ProgressMeter value={project.progress} className="mt-4" />}
     </Card>
   );
 }
 
-// Form 4 history: every decision of the Barangay Chairman.
+// Review history: every decision of the Barangay Chairman.
 function Reviews({ project }) {
   const reviews = project.reviews || [];
   return (
@@ -492,37 +457,11 @@ function Reviews({ project }) {
   );
 }
 
-// Form 5 entries: the milestones and their percentages.
-function Progress({ project }) {
-  const updates = project.progressUpdates || [];
-  return (
-    <Card className="p-6">
-      <h2 className="section-title">Progress</h2>
-      <ProgressMeter value={project.progress} className="mt-3" label="Current progress" />
-      {updates.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-600">No progress updates yet.</p>
-      ) : (
-        <ol className="mt-5 space-y-4">
-          {updates.map((u) => (
-            <li key={u.id} className="flex gap-3">
-              <span className="font-number w-12 shrink-0 text-right text-lg text-pine">{u.percent}%</span>
-              <div className="min-w-0 border-l-2 border-line pl-3">
-                <p className="font-semibold text-ink">{u.milestone}</p>
-                <p className="text-[13px] text-slate-600">{formatDate(u.date)}{u.createdBy?.name ? ` · ${u.createdBy.name}` : ''}</p>
-                {u.notes && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{u.notes}</p>}
-                {u.photoId && <p className="mt-1 text-[13px] text-slate-600">Picture added to Pictures.</p>}
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
-    </Card>
-  );
-}
-
-// Form 6 entries.
-function Expenses({ project, canRemove, ask, onDone, onFail }) {
+// Record Expenses: the button to record one (SK Admin, while Ongoing) and the expenses recorded.
+function RecordExpenses({ project, meta, canRecord, ask, onDone, onFail }) {
   const list = project.expenses || [];
+  const canRemove = canRecord;
+  const [recording, setRecording] = useState(false);
   const remove = useMutation({
     mutationFn: (expenseId) => projectsApi.deleteExpense(project.id, expenseId),
     onSuccess: (res) => onDone(res, 'The expense was removed. Its receipt stays in the project files.'),
@@ -531,13 +470,32 @@ function Expenses({ project, canRemove, ask, onDone, onFail }) {
   return (
     <Card className="overflow-hidden">
       <div className="card-head flex flex-wrap items-start justify-between gap-3 px-6 py-4">
-        <h2 className="section-title">Expenses</h2>
-        <DownloadButton
-          label="Receipts"
-          empty={!(project.liquidationFiles || []).some((f) => ['RECEIPT', 'LIQUIDATION'].includes(f.documentType) && f.mimeType !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')}
-          onDownload={() => projectsApi.downloadSection(project, 'receipt-liquidation')}
-        />
+        <h2 className="section-title">Record Expenses</h2>
+        <div className="flex flex-wrap items-start gap-2">
+          {canRecord && (
+            <Button size="sm" onClick={() => setRecording(true)}>
+              <Receipt size={16} aria-hidden="true" /> Record expense
+            </Button>
+          )}
+          <DownloadButton
+            label="Receipts"
+            empty={!(project.liquidationFiles || []).some((f) => ['RECEIPT', 'LIQUIDATION'].includes(f.documentType) && f.mimeType !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')}
+            onDownload={() => projectsApi.downloadSection(project, 'receipt-liquidation')}
+          />
+        </div>
       </div>
+      {recording && (
+        <ExpenseForm
+          project={project}
+          categories={meta?.expenseCategories || []}
+          receiptReading={Boolean(meta?.receiptReading)}
+          onClose={() => setRecording(false)}
+          onDone={(res, text) => {
+            setRecording(false);
+            onDone(res, text);
+          }}
+        />
+      )}
       {list.length === 0 ? (
         <p className="px-6 py-5 text-slate-600">No expenses recorded yet.</p>
       ) : (
@@ -627,7 +585,7 @@ function Cancellation({ project }) {
   );
 }
 
-// The project files (Form 7, plus the request attachments, receipts and completion reports).
+// The project files (File Upload, plus the request attachments, receipts and completion reports).
 function Files({ project, documentTypes, canDelete, canUpload, ask, onDone, onFail }) {
   const files = project.liquidationFiles || [];
   const [uploading, setUploading] = useState(false);

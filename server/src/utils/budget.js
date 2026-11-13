@@ -1,8 +1,8 @@
 const prisma = require('../prisma');
 const { round2, projectMoney, yearSummary, itemsWithBalance } = require('./projectBudget');
 
-// The Overall Budget on the Dashboard: this year's SK budget (Form 1) minus every expense
-// (Form 6) of the projects it funds. Deleted projects are left out. With projectId, that
+// The Overall Budget on the Dashboard: this year's SK budget (Annual Budget) minus every expense
+// (Expense) of the projects it funds. Deleted projects are left out. With projectId, that
 // project's approved cost, what it has spent and what is left of it (its Remaining Budget).
 // Computed from the database each time, so a new expense or budget shows right away.
 //   { year, totalBudget, totalSpent, remaining, reserved, hasBudget }

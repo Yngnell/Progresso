@@ -1,6 +1,6 @@
-// API helpers for the SK project process (Forms 3 to 9):
-//   Form 3 Project Request (Draft -> Pending) · Form 4 Review (Chairman) · Start (Approved -> Ongoing)
-//   Form 5 Progress · Form 6 Expense · Form 7 File · Form 8 Completion · Form 9 Cancellation
+// API helpers for the SK project process:
+//   Project Request (Draft -> Pending) · Review (Chairman) · Start (Approved -> Ongoing)
+//   Expense · File Upload · Completion · Cancellation
 import api from './axios';
 
 // The project name as a file name, the same way the server writes it:
@@ -15,7 +15,7 @@ export function downloadBase(title) {
   return base || 'Project';
 }
 
-// Files accepted by the project file module (Forms 3, 6, 7 and 8).
+// Files accepted by the project file module.
 export const FILE_ACCEPT = '.pdf,.docx,.jpg,.jpeg,.png';
 export const RECEIPT_ACCEPT = '.pdf,.jpg,.jpeg,.png';
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -42,29 +42,26 @@ export const projectsApi = {
   list: (params) => api.get('/projects', { params }).then((r) => r.data),
   get: (id) => api.get(`/projects/${id}`).then((r) => r.data),
 
-  // Form 3: saved as a Draft; submit sends it to the Barangay Chairman.
+  // Project Request: saved as a Draft; submit sends it to the Barangay Chairman.
   create: (data) => api.post('/projects', data).then((r) => r.data),
   update: (id, data) => api.put(`/projects/${id}`, data).then((r) => r.data),
   submit: (id) => api.patch(`/projects/${id}/submit`).then((r) => r.data),
-  // Form 4 (Barangay Chairman): { decision: 'APPROVE' | 'RETURN' | 'REJECT', remarks }
+  // Review (Barangay Chairman): { decision: 'APPROVE' | 'RETURN' | 'REJECT', remarks }
   review: (id, data) => api.patch(`/projects/${id}/review`, data).then((r) => r.data),
   // Approved -> Ongoing
   start: (id) => api.patch(`/projects/${id}/start`).then((r) => r.data),
-  // Form 5: { milestone, date, percent, notes, photo? }
-  addProgress: (id, { photo, ...fields }) =>
-    api.post(`/projects/${id}/progress`, form({ ...fields, photos: photo })).then((r) => r.data),
-  // Form 6: { description, category, supplier, amount, date, receipt }
+  // Expense: { description, category, supplier, amount, date, receipt }
   addExpense: (id, fields) => api.post(`/projects/${id}/expenses`, form(fields)).then((r) => r.data),
   deleteExpense: (id, expenseId) => api.delete(`/projects/${id}/expenses/${expenseId}`).then((r) => r.data),
-  // Claude reads a receipt to prefill Form 6: { readable, total, date, storeName }
+  // Claude reads a receipt to prefill the Expense form: { readable, total, date, storeName }
   readReceipt: (file) => api.post('/projects/receipt-read', form({ file })).then((r) => r.data),
-  // Form 7: { file, documentType, description }
+  // File Upload: { file, documentType }
   addFile: (id, fields) => api.post(`/projects/${id}/files`, form(fields)).then((r) => r.data),
   deleteFile: (id, fileId) => api.delete(`/projects/${id}/files/${fileId}`).then((r) => r.data),
-  // Form 8
+  // Completion
   completionInfo: (id) => api.get(`/projects/${id}/completion-info`).then((r) => r.data),
   complete: (id, fields) => api.patch(`/projects/${id}/complete`, form(fields)).then((r) => r.data),
-  // Form 9: { reason, date }
+  // Cancellation: { reason, date }
   cancel: (id, data) => api.patch(`/projects/${id}/cancel`, data).then((r) => r.data),
 
   // The files need the login token, so they are fetched and opened from a blob URL.
@@ -80,15 +77,14 @@ export const projectsApi = {
       throw err;
     }
   },
-  // Downloads of a section: 'receipt-liquidation' | 'purchase-request' (one PDF each) or
-  // 'pictures' (one ZIP). Saves the file as e.g. ProjectName_Receipt_Liquidation.pdf.
+  // Downloads of a section: 'receipt-liquidation' | 'purchase-request' (one PDF each).
+  // Saves the file as e.g. ProjectName_Receipt_Liquidation.pdf.
   downloadSection: async (project, section) => {
     const res = await api.get(`/projects/${project.id}/download/${section}`, { responseType: 'blob' });
     const base = downloadBase(project.title);
     const name = {
       'receipt-liquidation': `${base}_Receipt_Liquidation.pdf`,
       'purchase-request': `${base}_Purchase_Request.pdf`,
-      pictures: `${base}_Pictures.zip`,
     }[section];
     const url = URL.createObjectURL(res.data);
     const a = document.createElement('a');

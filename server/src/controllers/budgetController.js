@@ -9,7 +9,7 @@ const {
   yearSummary,
 } = require('../utils/projectBudget');
 
-// Form 1 (Annual Budget) and Form 2 (ABYIP Item). The SK Admin records them; the Barangay
+// Annual Budget and ABYIP Item. The SK Admin records them; the Barangay
 // Chairman can view them. Validation errors are returned per field: { message, errors: {field: text} }.
 
 const invalid = (res, errors) =>
@@ -21,7 +21,7 @@ const money = (v) => {
 };
 const peso = (n) => `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-// ---------- Form 1: Annual Budget ----------
+// ---------- Annual Budget ----------
 
 function readBudget(body, { requireYear }) {
   const errors = {};
@@ -89,7 +89,7 @@ async function updateBudget(req, res, next) {
   }
 }
 
-// ---------- Form 2: ABYIP Item ----------
+// ---------- ABYIP Item ----------
 
 function readItem(body) {
   const errors = {};
@@ -130,7 +130,7 @@ async function listItems(req, res, next) {
   }
 }
 
-// GET /api/abyip/:id — one item with its remaining balance (Form 3 shows it under the dropdown).
+// GET /api/abyip/:id — one item with its remaining balance (Project Request shows it under the dropdown).
 async function getItem(req, res, next) {
   try {
     const item = await itemRemaining(req.params.id, { excludeProjectId: req.query.excludeProject || undefined });
@@ -144,7 +144,7 @@ async function getItem(req, res, next) {
 // Checks the allotments of the item's year stay within the year's SK budget.
 async function checkAllotment(data, excludeItemId) {
   const s = await yearSummary(data.year, { excludeItemId });
-  if (!s.budget) return { year: `There is no SK budget for ${data.year} yet. Record it in Form 1 first.` };
+  if (!s.budget) return { year: `There is no SK budget for ${data.year} yet. Record it under Annual Budget first.` };
   if (data.allottedAmount > s.unallotted) {
     return { allottedAmount: `Only ${peso(s.unallotted)} of the ${data.year} budget is not yet allotted.` };
   }

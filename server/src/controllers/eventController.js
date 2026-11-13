@@ -60,7 +60,7 @@ const FINISHED_MESSAGE = 'This meeting has already ended and can no longer be ch
 const EDITABLE_FIELDS = ['endAt', 'meetingLink', 'relatedProjectId'];
 
 // A meeting can be linked to an Approved or Ongoing project (shown on the calendar; its
-// attendance counts toward the project's participants in Form 8). Returns an error or null.
+// attendance counts toward the project's participants in Completion). Returns an error or null.
 async function checkProjectLink(projectId) {
   if (!projectId) return null;
   const project = await prisma.project.findUnique({ where: { id: String(projectId) }, select: { status: true, archivedAt: true } });

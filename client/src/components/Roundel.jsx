@@ -5,7 +5,6 @@ import { PROJECT_STATUS } from '../utils/format';
 //   StatusRibbon:    a project's status as a chip in its fixed colour.
 //   StageSteps:      where a project is in the process
 //                    Request -> Review -> Approved -> Ongoing -> Completed.
-//   ProgressMeter:   the progress percentage from the latest Form 5 update.
 // ---------------------------------------------------------------------------
 
 export const STAGES = ['DRAFT', 'PENDING', 'APPROVED', 'ONGOING', 'COMPLETED'];
@@ -106,25 +105,3 @@ export function StageSteps({ status, showLabels = true, className = '' }) {
   );
 }
 
-// Progress (0-100) as a bar with the number.
-export function ProgressMeter({ value = 0, className = '', label = 'Progress' }) {
-  const pct = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
-  return (
-    <div className={className}>
-      <div className="flex items-baseline justify-between text-sm">
-        <span className="text-slate-600">{label}</span>
-        <span className="font-semibold text-ink">{pct}%</span>
-      </div>
-      <div
-        className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100"
-        role="progressbar"
-        aria-label={label}
-        aria-valuenow={pct}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
-        <div className="h-full rounded-full bg-pine transition-[width]" style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
-}

@@ -231,8 +231,7 @@ export default function Dashboard() {
           <KpiCard
             label="Status"
             value={PROJECT_STATUS[selected.status]?.label || selected.status}
-            note={['ONGOING', 'COMPLETED'].includes(selected.status) ? `Progress ${selected.progress || 0}%` : undefined}
-            meter={['ONGOING', 'COMPLETED'].includes(selected.status) ? selected.progress || 0 : undefined}
+            note={selected.abyipItem ? `ABYIP: ${selected.abyipItem.name}` : undefined}
             tone="azure"
           />
         ) : (
@@ -250,7 +249,7 @@ export default function Dashboard() {
             tone="green"
           />
         )}
-        {/* Overall Budget: this year's SK budget (Form 1) minus every expense (Form 6); for one
+        {/* Overall Budget: this year's SK budget minus every recorded expense; for one
             project, its approved cost minus its expenses. Recomputed by the server on every load. */}
         <KpiCard
           label={selected ? 'Remaining Budget' : 'Overall Budget'}

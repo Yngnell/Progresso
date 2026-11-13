@@ -1,11 +1,11 @@
 // The SK project process: which status changes are allowed. Every change goes through
 // assertTransition, so any other change is refused by the server.
-//   DRAFT -> PENDING                       the SK Admin submits (Form 3)
-//   PENDING -> APPROVED | REJECTED | FOR_REVISION   the Barangay Chairman decides (Form 4)
-//   FOR_REVISION -> PENDING                the SK Admin resubmits (Form 3)
+//   DRAFT -> PENDING                       the SK Admin submits (Project Request)
+//   PENDING -> APPROVED | REJECTED | FOR_REVISION   the Barangay Chairman decides (Review)
+//   FOR_REVISION -> PENDING                the SK Admin resubmits (Project Request)
 //   APPROVED -> ONGOING                    the SK Admin starts the project
-//   ONGOING -> COMPLETED                   Form 8
-//   APPROVED | ONGOING -> CANCELLED        Form 9
+//   ONGOING -> COMPLETED                   Completion
+//   APPROVED | ONGOING -> CANCELLED        Cancellation
 
 const TRANSITIONS = {
   DRAFT: ['PENDING'],

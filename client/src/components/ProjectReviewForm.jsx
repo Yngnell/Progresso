@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ExternalLink, FileText } from 'lucide-react';
 import { Button, Modal } from './ui';
 import ReadOnlyField from './ReadOnlyField';
-import { formTitle } from './FormHeader';
 import { useConfirm } from './ConfirmDialog';
 import { projectsApi } from '../api/projects';
 import { errorMessage, fieldErrors } from '../api/budget';
@@ -27,7 +26,7 @@ const DONE = {
   REJECT: 'was rejected and moved to Archives.',
 };
 
-// Form 4 · Review (Barangay Chairman). A read-only summary of the Pending request, then the
+// Review (Barangay Chairman). A read-only summary of the Pending request, then the
 // decision. Remarks are required to return or reject. The reviewer and the date are filled in.
 export default function ProjectReviewForm({ projectId, onClose, onDone }) {
   const { user } = useAuth();
@@ -78,7 +77,7 @@ export default function ProjectReviewForm({ projectId, onClose, onDone }) {
       open
       size="xl"
       onClose={onClose}
-      title={formTitle(4, 'Review')}
+      title="Review"
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>

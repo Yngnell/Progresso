@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Hourglass } from 'lucide-react';
 import { formatPeso, formatDate } from '../utils/format';
-import { ProgressMeter, StageSteps, StatusRibbon } from './Roundel';
+import { StageSteps, StatusRibbon } from './Roundel';
 
 // Card used in both the admin lists and the public grid. The ribbon is the status badge
 // and the steps show where the project is in the flow.
@@ -39,7 +39,6 @@ export function ProjectCard({ project, footer, to, notice }) {
         )}
 
         <StageSteps status={project.status} className="mt-4" />
-        {project.status === 'ONGOING' && <ProgressMeter value={project.progress} className="mt-4" />}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           {project.startDate && project.endDate ? (
             <span className="text-sm text-slate-600">

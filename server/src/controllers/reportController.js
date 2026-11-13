@@ -117,7 +117,7 @@ async function projectSummary(projectId) {
     },
   });
   if (!p) return null;
-  // Spending is the sum of the project's Form 6 expenses; the budget is its approved cost.
+  // Spending is the sum of the project's Expense expenses; the budget is its approved cost.
   const spent = Math.round(p.expenses.reduce((s, e) => s + Number(e.amount || 0), 0) * 100) / 100;
   return {
     id: p.id,
@@ -128,7 +128,6 @@ async function projectSummary(projectId) {
     budget: Number(p.estimatedCost || 0),
     totalSpent: spent,
     remainingBudget: Math.round((Number(p.estimatedCost || 0) - spent) * 100) / 100,
-    progress: p.progress,
     expenseCount: p.expenses.length,
     fileCount: p.liquidationFiles.length,
     startDate: p.startDate,

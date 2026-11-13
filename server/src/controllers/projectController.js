@@ -1,22 +1,19 @@
-const path = require('path');
 const prisma = require('../prisma');
 const { readReceipt, isReaderConfigured } = require('../utils/receiptReader');
-const { receiptPath, removeReceiptFile, photoPath, removePhotoFile, uploadedFiles } = require('../middleware/upload');
-const { fileBase, combinePdf, sendPdf, sendZip } = require('../utils/combineFiles');
-const { photosForProject } = require('./photoController');
+const { receiptPath, removeReceiptFile, uploadedFiles } = require('../middleware/upload');
+const { fileBase, combinePdf, sendPdf } = require('../utils/combineFiles');
 const { isStaff } = require('../utils/roles');
 const { EDITABLE, CLOSED, STATUS_LABEL, assertTransition } = require('../utils/projectStatus');
 const { EXPENSE_CATEGORIES, round2, itemRemaining, projectMoney } = require('../utils/projectBudget');
 
-// The SK project process (Forms 3 to 9). Status changes only go through assertTransition:
-//   Form 3  Project Request      SK Admin   saved as DRAFT; submitted -> PENDING (FOR_REVISION -> PENDING)
-//   Form 4  Review               Chairman   PENDING -> APPROVED | FOR_REVISION | REJECTED
-//           Start                SK Admin   APPROVED -> ONGOING
-//   Form 5  Progress Update      SK Admin   ONGOING
-//   Form 6  Expense              SK Admin   ONGOING
-//   Form 7  File Upload          SK Admin   any project that is still open
-//   Form 8  Completion           SK Admin   ONGOING -> COMPLETED
-//   Form 9  Cancellation         SK Admin   APPROVED | ONGOING -> CANCELLED
+// The SK project process. Status changes only go through assertTransition:
+//   Project Request   SK Admin   saved as DRAFT; submitted -> PENDING (FOR_REVISION -> PENDING)
+//   Review            Chairman   PENDING -> APPROVED | FOR_REVISION | REJECTED
+//   Start             SK Admin   APPROVED -> ONGOING
+//   Expense           SK Admin   ONGOING
+//   File Upload       SK Admin   any project that is still open
+//   Completion        SK Admin   ONGOING -> COMPLETED
+//   Cancellation      SK Admin   APPROVED | ONGOING -> CANCELLED
 // Money is computed in utils/projectBudget.js only. Rejected, completed and cancelled projects
 // are view only (Archives); a project removed through a deletion request is kept as archived.
 
@@ -25,7 +22,7 @@ const MIN_REASON_LENGTH = 10;
 
 const ACTIVE = ['DRAFT', 'PENDING', 'FOR_REVISION', 'APPROVED', 'ONGOING'];
 const PUBLIC = ['APPROVED', 'ONGOING', 'COMPLETED'];
-// Form 7 document types. LIQUIDATION is added by Form 8 only.
+// File Upload document types. LIQUIDATION is added by Completion only.
 const DOCUMENT_TYPES = {
   SK_RESOLUTION: 'SK Resolution',
   ACTIVITY_DESIGN: 'Activity design',
@@ -64,10 +61,6 @@ const includeOpts = {
   abyipItem: { select: { id: true, name: true, year: true, center: true, targetQuarter: true, allottedAmount: true } },
   budgetRows: { orderBy: { displayOrder: 'asc' } },
   reviews: { orderBy: { reviewedAt: 'desc' }, include: { reviewer: { select: { id: true, name: true } } } },
-  progressUpdates: {
-    orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
-    include: { createdBy: { select: { name: true } } },
-  },
   liquidationFiles: { orderBy: { createdAt: 'asc' }, select: FILE_FIELDS },
   expenses: {
     orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
@@ -85,7 +78,7 @@ const includeOpts = {
   },
 };
 
-// Approved cost, spent so far (Form 6 expenses) and what is left of it.
+// Approved cost, spent so far (Expense expenses) and what is left of it.
 function withInfo(project) {
   const spent = round2((project.expenses || []).reduce((sum, e) => sum + Number(e.amount), 0));
   const approvedCost = round2(project.estimatedCost);
@@ -105,10 +98,7 @@ function stripInternal(project) {
     deletionRequests, liquidationFiles, expenses, reviews, amountSpent, remainingBudget,
     reviewRemarks, reviewedBy, cancelReason, budgetRows, ...rest
   } = project;
-  return {
-    ...rest,
-    progressUpdates: (rest.progressUpdates || []).map(({ createdBy, createdById, ...u }) => u),
-  };
+  return rest;
 }
 
 // Which projects the person may see. The Barangay Chairman never sees the SK Admin's drafts.
@@ -159,7 +149,7 @@ async function loadFor(req, res, statuses, action) {
 }
 
 // A project for the SK side: the money figures and the ABYIP item's balance available to it
-// (Forms 3 and 4; the project itself is left out so its own reserve is not counted twice).
+// (Project Request and Review).
 async function staffView(project) {
   const result = withInfo(project);
   if (project.abyipItemId) {
@@ -213,7 +203,7 @@ async function getProjects(req, res, next) {
 }
 
 // GET /api/projects/:id. The SK side also gets the ABYIP item's balance available to this
-// request (Forms 3 and 4).
+// request (Project Request and Review).
 async function getProject(req, res, next) {
   try {
     const project = await prisma.project.findFirst({
@@ -221,14 +211,13 @@ async function getProject(req, res, next) {
       include: includeOpts,
     });
     if (!project) return res.status(404).json({ message: 'Project not found' });
-    const photos = await photosForProject(project.id);
-    if (!isStaff(req.user)) return res.json({ project: { ...stripInternal(withInfo(project)), photos } });
-    const result = { ...(await staffView(project)), photos };
+    if (!isStaff(req.user)) return res.json({ project: stripInternal(withInfo(project)) });
+    const result = await staffView(project);
     res.json({
       project: result,
       documentTypes: DOCUMENT_TYPES,
       expenseCategories: EXPENSE_CATEGORIES,
-      // Form 6 offers "Read receipt" only when Claude receipt reading is set up.
+      // Expense offers "Read receipt" only when Claude receipt reading is set up.
       receiptReading: isReaderConfigured(),
     });
   } catch (err) {
@@ -236,7 +225,7 @@ async function getProject(req, res, next) {
   }
 }
 
-// ---------- Form 3: Project Request ----------
+// ---------- Project Request ----------
 
 // Reads the request form. A draft needs only the title; submitting needs every field (see
 // submitErrors). Budget rows: blank rows are dropped; total = quantity x unit cost.
@@ -383,7 +372,7 @@ async function submitProject(req, res, next) {
   }
 }
 
-// ---------- Form 4: Review (Barangay Chairman) ----------
+// ---------- Review (Barangay Chairman) ----------
 
 const DECISIONS = {
   APPROVE: { status: 'APPROVED', approvalState: 'APPROVED' },
@@ -454,65 +443,10 @@ async function startProject(req, res, next) {
   }
 }
 
-// ---------- Form 5: Progress Update (Ongoing) ----------
-
-// POST /api/projects/:id/progress — SK Admin. multipart: milestone, date, percent, notes and an
-// optional picture ("photos", one). The percentage can stay the same or go up, never down.
-async function addProgress(req, res, next) {
-  const files = req.files || [];
-  const discard = () => files.forEach((f) => removePhotoFile(f.filename));
-  try {
-    const project = await loadFor(req, res, ['ONGOING'], 'Adding a progress update');
-    if (!project) return discard();
-    const errors = {};
-    const milestone = text(req.body.milestone, 200);
-    if (!milestone) errors.milestone = 'Enter the milestone';
-    const date = phDay(req.body.date);
-    if (!date) errors.date = 'Enter the date';
-    else if (String(req.body.date).slice(0, 10) > phToday()) errors.date = 'The date cannot be in the future';
-    const percent = Number(req.body.percent);
-    if (req.body.percent === '' || req.body.percent == null || !Number.isInteger(percent) || percent < 0 || percent > 100) {
-      errors.percent = 'Enter a whole percentage from 0 to 100';
-    } else if (percent < project.progress) {
-      errors.percent = `The progress is already ${project.progress}%; it cannot go down`;
-    }
-    if (files.length > 1) errors.photo = 'Attach one picture only';
-    if (Object.keys(errors).length) {
-      discard();
-      return invalid(res, errors);
-    }
-    const notes = text(req.body.notes, 2000) || null;
-    await prisma.$transaction(async (tx) => {
-      let photoId = null;
-      if (files[0]) {
-        const photo = await tx.photo.create({
-          data: {
-            projectId: project.id,
-            caption: milestone,
-            fileName: files[0].filename,
-            mimeType: files[0].mimetype,
-            uploadedByName: req.user.name,
-            uploadedById: req.user.id,
-          },
-        });
-        photoId = photo.id;
-      }
-      await tx.progressUpdate.create({
-        data: { projectId: project.id, milestone, date, percent, notes, photoId, createdById: req.user.id },
-      });
-      await tx.project.update({ where: { id: project.id }, data: { progress: percent } });
-    });
-    await sendProject(res, project.id, 201);
-  } catch (err) {
-    discard();
-    next(err);
-  }
-}
-
-// ---------- Form 6: Expense (Ongoing) ----------
+// ---------- Expense (Ongoing) ----------
 
 // POST /api/projects/receipt-read — SK Admin. multipart "file" (a receipt: PDF, JPG or PNG).
-// Claude reads the total, date and store to prefill Form 6; nothing is saved and the file is removed.
+// Claude reads the total, date and store to prefill Expense; nothing is saved and the file is removed.
 async function readReceiptFile(req, res, next) {
   const files = uploadedFiles(req);
   try {
@@ -621,10 +555,10 @@ async function deleteExpense(req, res, next) {
   }
 }
 
-// ---------- Form 7: File Upload ----------
+// ---------- File Upload ----------
 
 // POST /api/projects/:id/files — SK Admin. multipart: "file" (PDF, DOCX, JPG or PNG, up to
-// 10 MB), documentType and description.
+// 10 MB) and documentType.
 async function addFile(req, res, next) {
   const files = uploadedFiles(req);
   const discard = () => files.forEach((f) => removeReceiptFile(f.filename));
@@ -648,7 +582,6 @@ async function addFile(req, res, next) {
         uploadedById: req.user.id,
         uploadedByName: req.user.name,
         documentType: req.body.documentType,
-        description: text(req.body.description, 300) || null,
       },
     });
     await sendProject(res, project.id, 201);
@@ -696,7 +629,7 @@ async function getFile(req, res, next) {
   }
 }
 
-// ---------- Form 8: Completion (Ongoing) ----------
+// ---------- Completion (Ongoing) ----------
 
 async function completionNumbers(project) {
   const money = await projectMoney(project);
@@ -709,7 +642,7 @@ async function completionNumbers(project) {
   };
 }
 
-// GET /api/projects/:id/completion-info — SK side. The automatic values of Form 8 and the
+// GET /api/projects/:id/completion-info — SK side. The automatic values of Completion and the
 // participants counted from the attendance linked to the project.
 async function getCompletionInfo(req, res, next) {
   try {
@@ -772,7 +705,6 @@ async function completeProject(req, res, next) {
           actualParticipants: participants,
           accomplishmentSummary: summary,
           completedAt: new Date(),
-          progress: 100,
         },
       }),
     ]);
@@ -784,7 +716,7 @@ async function completeProject(req, res, next) {
   }
 }
 
-// ---------- Form 9: Cancellation (Approved or Ongoing) ----------
+// ---------- Cancellation (Approved or Ongoing) ----------
 
 // PATCH /api/projects/:id/cancel — SK Admin. { reason, date }. Approved or Ongoing -> Cancelled.
 // The unspent part of the reserve goes back to the ABYIP item; expenses and files are kept.
@@ -839,28 +771,6 @@ function downloadCombined(types, section) {
 const downloadLiquidation = downloadCombined(['RECEIPT', 'LIQUIDATION'], 'Receipt_Liquidation');
 const downloadPurchaseRequest = downloadCombined(['PURCHASE_REQUEST'], 'Purchase_Request');
 
-// GET /api/projects/:id/download/pictures — every picture of the project as one ZIP.
-async function downloadPictures(req, res, next) {
-  try {
-    const project = await prisma.project.findFirst({ where: { id: req.params.id, ...visibleWhere(req.user) }, select: { title: true } });
-    if (!project) return res.status(404).json({ message: 'Project not found' });
-    const photos = await prisma.photo.findMany({
-      where: { projectId: req.params.id },
-      orderBy: { createdAt: 'asc' },
-      select: { fileName: true },
-    });
-    if (photos.length === 0) return res.status(404).json({ message: NOTHING });
-    const base = fileBase(project.title);
-    const width = Math.max(2, String(photos.length).length);
-    const entries = photos.map((p, i) => ({
-      path: photoPath(p.fileName),
-      name: `${base}_Picture_${String(i + 1).padStart(width, '0')}${path.extname(p.fileName) || '.jpg'}`,
-    }));
-    await sendZip(res, entries, `${base}_Pictures.zip`);
-  } catch (err) {
-    next(err);
-  }
-}
 
 // ---------- Deletion requests (the Deleted tab of Archives) ----------
 
@@ -1019,7 +929,6 @@ module.exports = {
   submitProject,
   reviewProject,
   startProject,
-  addProgress,
   readReceiptFile,
   addExpense,
   deleteExpense,
@@ -1031,7 +940,6 @@ module.exports = {
   cancelProject,
   downloadLiquidation,
   downloadPurchaseRequest,
-  downloadPictures,
   requestDeletion,
   withdrawDeletion,
   listDeletionRequests,

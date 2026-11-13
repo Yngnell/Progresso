@@ -22,7 +22,7 @@ const TABS = [
 const EMPTY = {
   completed: ['No completed projects yet', 'A project appears here after the SK Admin marks it as completed.'],
   rejected: ['No rejected requests', 'A Project Request appears here when the Barangay Chairman rejects it.'],
-  cancelled: ['No cancelled projects', 'An approved or ongoing project appears here after the SK Admin cancels it (Form 9).'],
+  cancelled: ['No cancelled projects', 'An approved or ongoing project appears here after the SK Admin cancels it.'],
   deleted: ['No deleted projects', 'A project appears here after the Barangay Chairman approves its deletion request.'],
 };
 

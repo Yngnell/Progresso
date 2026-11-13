@@ -1,12 +1,10 @@
 const fs = require('fs');
-const archiver = require('archiver');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 
 // Downloads of a project's files:
 //   combinePdf - receipts or Purchase Request files as ONE PDF (oldest upload first). PDF files
 //                keep their own pages; JPG and PNG images become pages of their own. Images are
 //                embedded as they are (never re-compressed), so the original quality is kept.
-//   sendZip    - the project's pictures as one ZIP (stored as they are, not re-compressed).
 
 const A4 = [595.28, 841.89]; // points
 const MARGIN = 24;
@@ -85,17 +83,5 @@ function sendPdf(res, buffer, name) {
   res.end(buffer);
 }
 
-// entries: [{ path, name }]. Streams the ZIP; files that are missing on disk are skipped.
-function sendZip(res, entries, name) {
-  res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Content-Disposition', `attachment; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`);
-  const zip = archiver('zip', { store: true });
-  zip.on('error', (err) => res.destroy(err));
-  zip.pipe(res);
-  entries.forEach((e) => {
-    if (fs.existsSync(e.path)) zip.file(e.path, { name: e.name });
-  });
-  return zip.finalize();
-}
 
-module.exports = { fileBase, combinePdf, sendPdf, sendZip };
+module.exports = { fileBase, combinePdf, sendPdf };

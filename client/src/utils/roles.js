@@ -12,10 +12,6 @@ export const isStaff = (user) => STAFF_ROLES.includes(user?.role);
 export const isAdmin = (user) => user?.role === 'ADMIN' || user?.role === 'OFFICIAL';
 // The role used for access checks: an official counts as the admin.
 export const accessRole = (user) => (user?.role === 'OFFICIAL' ? 'ADMIN' : user?.role);
-// Deletes anyone's project pictures.
-export const isManager = (user) => isAdmin(user);
-// Adds project pictures.
-export const isWorker = (user) => user?.role === 'ADMIN' || user?.role === 'OFFICIAL';
 
 // Name of the person's role, shown under their name.
 export function roleLabel(user) {

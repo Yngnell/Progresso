@@ -5,7 +5,7 @@ import { ArrowRight } from 'lucide-react';
 import { projectsApi } from '../../api/projects';
 import { Card, EmptyState } from '../../components/ui';
 import PageHeader from '../../components/PageHeader';
-import { ProgressMeter, StatusRibbon } from '../../components/Roundel';
+import { StatusRibbon } from '../../components/Roundel';
 import { PROJECT_STATUS, formatDate, formatPeso2 } from '../../utils/format';
 
 // The Barangay Chairman's Projects (view only): the requests and projects still in progress.
@@ -63,7 +63,6 @@ export default function ChairmanProjects() {
                       {p.startDate ? `${formatDate(p.startDate)} – ${formatDate(p.endDate)}` : 'Dates not set'} · {formatPeso2(p.estimatedCost)}
                     </p>
                   </div>
-                  {p.status === 'ONGOING' && <ProgressMeter value={p.progress} className="w-full md:w-56" />}
                   <Link
                     to={`/admin/projects/${p.id}`}
                     className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-pine hover:underline"

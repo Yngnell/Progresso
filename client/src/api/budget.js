@@ -1,4 +1,4 @@
-// Form 1 (Annual Budget) and Form 2 (ABYIP Item). The balances come from the server.
+// Annual Budget and ABYIP Item. The balances come from the server.
 import api from './axios';
 
 export const budgetApi = {
