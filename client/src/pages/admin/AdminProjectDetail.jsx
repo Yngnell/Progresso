@@ -504,7 +504,7 @@ function RecordExpenses({ project, meta, canRecord, ask, onDone, onFail }) {
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Description</th>
+                <th>Receipt</th>
                 <th>Category</th>
                 <th>Supplier</th>
                 <th className="text-right">Amount</th>

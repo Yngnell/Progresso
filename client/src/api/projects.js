@@ -50,10 +50,10 @@ export const projectsApi = {
   review: (id, data) => api.patch(`/projects/${id}/review`, data).then((r) => r.data),
   // Approved -> Ongoing
   start: (id) => api.patch(`/projects/${id}/start`).then((r) => r.data),
-  // Expense: { description, category, supplier, amount, date, receipt }
+  // Expense: { receipt, amount, date, supplier?, category? }
   addExpense: (id, fields) => api.post(`/projects/${id}/expenses`, form(fields)).then((r) => r.data),
   deleteExpense: (id, expenseId) => api.delete(`/projects/${id}/expenses/${expenseId}`).then((r) => r.data),
-  // Claude reads a receipt to prefill the Expense form: { readable, total, date, storeName }
+  // Claude reads a receipt to prefill the Expense form: { readable, total, date, storeName, category }
   readReceipt: (file) => api.post('/projects/receipt-read', form({ file })).then((r) => r.data),
   // File Upload: { file, documentType }
   addFile: (id, fields) => api.post(`/projects/${id}/files`, form(fields)).then((r) => r.data),

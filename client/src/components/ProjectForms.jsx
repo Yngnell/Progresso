@@ -68,10 +68,11 @@ async function run({ setBusy, setErrors, setError, action, onDone, fallback }) {
 }
 
 // ---------- Expense (Ongoing) ----------
-// The amount cannot exceed what is left of the approved cost. "Read receipt" lets Claude fill in
-// the amount, date and supplier from the receipt; the SK Admin checks them before saving.
-export function ExpenseForm({ project, categories, receiptReading, onClose, onDone }) {
-  const [form, setForm] = useState({ description: '', category: '', supplier: '', amount: '', date: phToday() });
+// Only the receipt, the amount and the date are needed. When receipt reading is set up, the receipt is
+// read as soon as it is chosen: Claude fills in the amount, date, supplier and category (check them before
+// saving). The amount cannot exceed what is left of the approved cost.
+export function ExpenseForm({ project, categories = [], receiptReading, onClose, onDone }) {
+  const [form, setForm] = useState({ supplier: '', category: '', amount: '', date: phToday() });
   const [receipt, setReceipt] = useState(null);
   const [errors, setErrors] = useState({});
   const [error, setError] = useState(null);
@@ -86,11 +87,13 @@ export function ExpenseForm({ project, categories, receiptReading, onClose, onDo
     setErrors((x) => ({ ...x, [k]: undefined }));
   };
 
-  async function readReceipt() {
+  // Reads the chosen receipt right away (when receipt reading is set up) and fills the form.
+  async function readReceipt(file = receipt) {
+    if (!file) return;
     setReadNote(null);
     setReading(true);
     try {
-      const r = await projectsApi.readReceipt(receipt);
+      const r = await projectsApi.readReceipt(file);
       if (!r.readable || r.total == null) {
         setReadNote({ ok: false, text: 'The receipt could not be read. Type the amount instead.' });
         return;
@@ -100,9 +103,13 @@ export function ExpenseForm({ project, categories, receiptReading, onClose, onDo
         amount: String(r.total),
         date: r.date && r.date <= phToday() ? r.date : f.date,
         supplier: r.storeName || f.supplier,
+        category: r.category || f.category,
       }));
-      setErrors((x) => ({ ...x, amount: undefined, date: undefined }));
-      setReadNote({ ok: true, text: `Read ${formatPeso2(r.total)}${r.storeName ? ` from ${r.storeName}` : ''}. Check the values before saving.` });
+      setErrors((x) => ({ ...x, amount: undefined, date: undefined, category: undefined }));
+      setReadNote({
+        ok: true,
+        text: `Read ${formatPeso2(r.total)}${r.storeName ? ` from ${r.storeName}` : ''}${r.category ? ` · ${r.category}` : ''}. Check the values before saving.`,
+      });
     } catch (err) {
       setReadNote({ ok: false, text: errorMessage(err, 'The receipt could not be read. Type the amount instead.') });
     } finally {
@@ -113,8 +120,6 @@ export function ExpenseForm({ project, categories, receiptReading, onClose, onDo
   function submit(e) {
     e.preventDefault();
     const e2 = {};
-    if (!form.description.trim()) e2.description = 'Describe the expense';
-    if (!form.category) e2.category = 'Choose the category';
     const amt = Number(form.amount);
     if (form.amount === '' || !(amt > 0)) e2.amount = 'The amount must be above zero';
     else if (Math.round(amt * 100) / 100 > remaining) {
@@ -131,7 +136,7 @@ export function ExpenseForm({ project, categories, receiptReading, onClose, onDo
       setErrors,
       setError,
       fallback: 'The expense could not be saved. Try again.',
-      action: () => projectsApi.addExpense(project.id, { ...form, description: form.description.trim(), receipt }),
+      action: () => projectsApi.addExpense(project.id, { ...form, supplier: form.supplier.trim(), receipt }),
       onDone: (res) => onDone(res, `Expense of ${formatPeso2(amt)} recorded.`),
     });
   }
@@ -152,28 +157,34 @@ export function ExpenseForm({ project, categories, receiptReading, onClose, onDo
             onChange={(f) => {
               setReceipt(f);
               setReadNote(null);
-              setErrors((x) => ({ ...x, receipt: f ? checkFile(f, { receipt: true }) || undefined : undefined }));
+              const problem = f ? checkFile(f, { receipt: true }) : null;
+              setErrors((x) => ({ ...x, receipt: problem || undefined }));
+              if (f && !problem && receiptReading) readReceipt(f);
             }}
             error={errors.receipt}
             hint="PDF, JPG or PNG, up to 10 MB. It is kept in the project files."
           />
-          {receiptReading && receipt && !receiptProblem && (
-            <Button size="sm" variant="secondary" className="mt-2" onClick={readReceipt} disabled={reading}>
-              <ScanText size={16} aria-hidden="true" /> {reading ? 'Reading…' : 'Read receipt'}
+          {reading && (
+            <p className="mt-2 inline-flex items-center gap-1.5 text-[13px] text-slate-600" role="status">
+              <ScanText size={14} aria-hidden="true" /> Reading the receipt…
+            </p>
+          )}
+          {receiptReading && receipt && !receiptProblem && !reading && readNote && !readNote.ok && (
+            <Button size="sm" variant="secondary" className="mt-2" onClick={() => readReceipt()}>
+              <ScanText size={16} aria-hidden="true" /> Read again
             </Button>
           )}
           {readNote && (
             <p className={`mt-2 text-[13px] ${readNote.ok ? 'text-sage-text' : 'text-clay-text'}`} role="status">{readNote.text}</p>
           )}
         </div>
-        <Input label="Description" maxLength={200} placeholder="e.g. Snacks for participants" value={form.description} onChange={set('description')} error={errors.description} />
         <div className="grid gap-4 sm:grid-cols-2">
           <Select
-            label="Category"
+            label={receiptReading ? 'Category (detected from the receipt)' : 'Category (optional)'}
             value={form.category}
             onChange={set('category')}
             error={errors.category}
-            options={[{ value: '', label: 'Choose…' }, ...categories.map((c) => ({ value: c, label: c }))]}
+            options={[{ value: '', label: 'Not set' }, ...categories.map((c) => ({ value: c, label: c }))]}
           />
           <Input label="Supplier (optional)" maxLength={120} value={form.supplier} onChange={set('supplier')} />
           <Input label="Amount (₱)" type="number" min="0" step="0.01" inputMode="decimal" value={form.amount} onChange={set('amount')} error={errors.amount} />

@@ -446,7 +446,7 @@ async function startProject(req, res, next) {
 // ---------- Expense (Ongoing) ----------
 
 // POST /api/projects/receipt-read — SK Admin. multipart "file" (a receipt: PDF, JPG or PNG).
-// Claude reads the total, date and store to prefill Expense; nothing is saved and the file is removed.
+// Claude reads the total, date, store and category to prefill Expense; nothing is saved and the file is removed.
 async function readReceiptFile(req, res, next) {
   const files = uploadedFiles(req);
   try {
@@ -460,18 +460,19 @@ async function readReceiptFile(req, res, next) {
       total: r?.total ?? null,
       date: r?.date ?? null,
       storeName: r?.storeName ?? null,
+      category: EXPENSE_CATEGORIES.includes(r?.category) ? r.category : null,
     });
   } catch (err) {
     console.error('Receipt reading failed:', err.message);
-    res.json({ readable: false, total: null, date: null, storeName: null });
+    res.json({ readable: false, total: null, date: null, storeName: null, category: null });
   } finally {
     files.forEach((f) => removeReceiptFile(f.filename));
   }
 }
 
-// POST /api/projects/:id/expenses — SK Admin. multipart: description, category, supplier,
-// amount, date and the receipt ("receipt", required). The amount cannot exceed what is left
-// of the approved cost; the receipt is kept in the project files.
+// POST /api/projects/:id/expenses — SK Admin. multipart: the receipt ("receipt", required),
+// amount, date, and an optional supplier and category (detected when the receipt is read). The amount cannot exceed what is left of the approved
+// cost; the receipt is kept in the project files and names the expense.
 async function addExpense(req, res, next) {
   const files = uploadedFiles(req);
   const discard = () => files.forEach((f) => removeReceiptFile(f.filename));
@@ -479,10 +480,9 @@ async function addExpense(req, res, next) {
     const project = await loadFor(req, res, ['ONGOING'], 'Recording an expense');
     if (!project) return discard();
     const errors = {};
-    const item = text(req.body.description, 200);
-    if (!item) errors.description = 'Describe the expense';
-    if (!EXPENSE_CATEGORIES.includes(req.body.category)) errors.category = 'Choose the category';
     const supplier = text(req.body.supplier, 120) || null;
+    const category = req.body.category ? String(req.body.category) : null;
+    if (category && !EXPENSE_CATEGORIES.includes(category)) errors.category = 'Choose a category from the list';
     const amount = Number(req.body.amount);
     if (req.body.amount === '' || req.body.amount == null || !Number.isFinite(amount) || amount <= 0) {
       errors.amount = 'The amount must be above zero';
@@ -503,6 +503,7 @@ async function addExpense(req, res, next) {
       discard();
       return invalid(res, errors);
     }
+    const item = text(receipt.originalname, 200) || 'Receipt';
     await prisma.$transaction(async (tx) => {
       const file = await tx.liquidationFile.create({
         data: {
@@ -517,14 +518,13 @@ async function addExpense(req, res, next) {
           storeName: supplier,
           readStatus: 'MANUAL',
           documentType: 'RECEIPT',
-          description: item,
         },
       });
       await tx.expense.create({
         data: {
           projectId: project.id,
           item,
-          category: req.body.category,
+          category,
           supplier,
           amount: round2(amount),
           date,

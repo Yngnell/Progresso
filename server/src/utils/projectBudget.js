@@ -18,7 +18,7 @@ const CENTERS = [
   'Social Inclusion and Equity', 'Peace Building and Security', 'Governance', 'Global Mobility', 'Agriculture',
 ];
 const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
-// Expense: what an expense was for.
+// What an expense was for. Detected from the receipt when it is read (it can be changed).
 const EXPENSE_CATEGORIES = [
   'Food and Refreshments', 'Supplies and Materials', 'Venue and Equipment Rental', 'Transportation',
   'Honoraria and Prizes', 'Printing and Documentation', 'Other Expenses',

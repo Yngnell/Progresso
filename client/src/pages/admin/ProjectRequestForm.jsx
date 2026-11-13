@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileText, Plus, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import FormHeader from '../../components/FormHeader';
 import ReadOnlyField from '../../components/ReadOnlyField';
 import { StatusRibbon } from '../../components/Roundel';
 import { Button, Card, Input, Textarea } from '../../components/ui';
 import { useConfirm } from '../../components/ConfirmDialog';
-import { projectsApi, checkFile, FILE_ACCEPT } from '../../api/projects';
+import { projectsApi } from '../../api/projects';
 import { budgetApi, errorMessage, fieldErrors } from '../../api/budget';
 import { EDITABLE_STATUSES, formatDate, formatPeso2, phDayOf } from '../../utils/format';
 
@@ -26,11 +26,6 @@ const rowTotal = (r) => {
 };
 const blankRow = (r) => !r.item.trim() && r.quantity === '' && r.unitCost === '';
 
-// The two attachments of a request; both go into the project files.
-const ATTACHMENTS = [
-  { type: 'ACTIVITY_DESIGN', label: 'Activity design' },
-  { type: 'SK_RESOLUTION', label: 'SK Resolution' },
-];
 
 const emptyForm = () => ({
   title: '',
@@ -54,7 +49,6 @@ export default function ProjectRequestForm() {
   const qc = useQueryClient();
   const [ask, askDialog] = useConfirm();
   const [form, setForm] = useState(emptyForm);
-  const [files, setFiles] = useState({}); // type -> File chosen, uploaded on save
   const [errors, setErrors] = useState(location.state?.errors || {});
   const [error, setError] = useState(location.state?.error || null);
   const [busy, setBusy] = useState(null); // 'draft' | 'submit'
@@ -126,10 +120,6 @@ export default function ProjectRequestForm() {
       if (r.quantity === '' || !(Number(r.quantity) > 0)) e[`rows.${i}.quantity`] = 'Above zero';
       if (r.unitCost === '' || !(Number(r.unitCost) >= 0)) e[`rows.${i}.unitCost`] = 'Zero or more';
     });
-    for (const [type, file] of Object.entries(files)) {
-      const bad = checkFile(file);
-      if (bad) e[`file.${type}`] = bad;
-    }
     if (submit) {
       if (!form.abyipItemId) e.abyipItemId = 'Choose the ABYIP item that funds this project';
       if (!form.description.trim()) e.description = 'Describe the project';
@@ -165,11 +155,6 @@ export default function ProjectRequestForm() {
       };
       const res = id ? await projectsApi.update(id, body) : await projectsApi.create(body);
       savedId = res.project.id;
-      for (const [type, file] of Object.entries(files)) {
-        if (!file) continue;
-        await projectsApi.addFile(savedId, { file, documentType: type });
-      }
-      setFiles({});
       if (submit) await projectsApi.submit(savedId);
       qc.invalidateQueries({ queryKey: ['projects'] });
       qc.invalidateQueries({ queryKey: ['projects', savedId] });
@@ -197,15 +182,6 @@ export default function ProjectRequestForm() {
     }
   }
 
-  async function removeSavedFile(file) {
-    if (!(await ask(`Remove “${file.originalName}” from this request?`))) return;
-    try {
-      await projectsApi.deleteFile(id, file.id);
-      qc.invalidateQueries({ queryKey: ['projects', id] });
-    } catch (err) {
-      setError(errorMessage(err, 'The file could not be removed.'));
-    }
-  }
 
   if (id && projectQ.isLoading) return <p className="text-slate-600">Loading…</p>;
   if (id && !project) return <p className="notice notice-error">This project could not be found.</p>;
@@ -351,45 +327,6 @@ export default function ProjectRequestForm() {
           </div>
         </Card>
 
-        <Card className="p-5 sm:p-6">
-          <h2 className="section-title">Attachments</h2>
-          <p className="mt-1 text-sm text-slate-600">PDF, DOCX, JPG or PNG, up to 10 MB. They are kept in the project files.</p>
-          <div className="mt-4 grid gap-5 sm:grid-cols-2">
-            {ATTACHMENTS.map(({ type, label }) => {
-              const saved = (project?.liquidationFiles || []).filter((f) => f.documentType === type);
-              const chosen = files[type];
-              return (
-                <div key={type}>
-                  <p className="label">{label}</p>
-                  {saved.map((f) => (
-                    <div key={f.id} className="mb-2 flex items-center gap-2 rounded-control border border-line bg-panel px-3 py-2 text-sm">
-                      <FileText size={16} className="shrink-0 text-slate-600" aria-hidden="true" />
-                      <button type="button" className="min-w-0 flex-1 truncate text-left font-medium text-pine hover:underline" onClick={() => projectsApi.openFile(id, f.id)}>
-                        {f.originalName}
-                      </button>
-                      <button type="button" onClick={() => removeSavedFile(f)} className="rounded-control p-1 text-slate-600 hover:text-clay-text" aria-label={`Remove ${f.originalName}`}>
-                        <X size={16} aria-hidden="true" />
-                      </button>
-                    </div>
-                  ))}
-                  <input
-                    type="file"
-                    accept={FILE_ACCEPT}
-                    aria-label={`${label} file`}
-                    className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-control file:border file:border-line file:bg-panel file:px-3 file:py-2 file:text-sm file:font-medium file:text-ink hover:file:bg-pine-light"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] || null;
-                      setFiles((x) => ({ ...x, [type]: file }));
-                      setErrors((x) => ({ ...x, [`file.${type}`]: checkFile(file) || undefined }));
-                    }}
-                  />
-                  {chosen && !errors[`file.${type}`] && <p className="mt-1 text-[13px] text-slate-600">Uploaded when you save.</p>}
-                  {errors[`file.${type}`] && <p className="mt-1 text-[13px] text-clay-text">{errors[`file.${type}`]}</p>}
-                </div>
-              );
-            })}
-          </div>
-        </Card>
 
         <div className="actions-stack flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
           <Button variant="secondary" type="submit" disabled={Boolean(busy)}>
