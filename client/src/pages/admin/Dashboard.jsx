@@ -13,7 +13,7 @@ import { useAuth } from '../../context/AuthContext';
 import { isAdmin } from '../../utils/roles';
 import { Badge, Button, Card } from '../../components/ui';
 import { PROJECT_STATUS, formatPeso, formatPeso2, formatDateTime } from '../../utils/format';
-import { STAGES, StageSteps, StatusRibbon } from '../../components/Roundel';
+import { StageSteps, StatusRibbon } from '../../components/Roundel';
 import DateTile from '../../components/DateTile';
 import EventTypeIcon from '../../components/EventTypeIcon';
 import KpiCard from '../../components/KpiCard';
@@ -24,15 +24,19 @@ import {
 import { CHART } from '../../components/charts/palette';
 
 // Same colours as the status ribbons, so the donut and the ribbons read as one system.
+// Draft gray, Pending yellow, For Revision orange, Approved green, Ongoing blue,
+// Completed dark green, Rejected red, Cancelled dark gray.
 const STATUS_COLOR = {
-  PROPOSED: CHART.gold,
-  PLANNING: '#6A967A',
-  ONGOING: CHART.azure,
-  COMPLETED: CHART.green,
-  CANCELLED: CHART.red,
-  ON_HOLD: CHART.slate,
+  DRAFT: CHART.slate,
+  PENDING: CHART.gold,
+  FOR_REVISION: '#D9822B',
+  APPROVED: CHART.green,
+  ONGOING: '#2F6FB0',
+  COMPLETED: CHART.azure,
+  REJECTED: CHART.red,
+  CANCELLED: '#5B5750',
 };
-const STATUS_ORDER = ['PROPOSED', 'PLANNING', 'ONGOING', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
+const STATUS_ORDER = ['DRAFT', 'PENDING', 'FOR_REVISION', 'APPROVED', 'ONGOING', 'COMPLETED', 'REJECTED', 'CANCELLED'];
 const STATUS_LABEL = Object.fromEntries(STATUS_ORDER.map((k) => [k, PROJECT_STATUS[k].label]));
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -191,14 +195,14 @@ export default function Dashboard() {
           <Link to="/admin/approvals">
             <Button variant="primary">
               <ClipboardCheck size={18} strokeWidth={1.75} aria-hidden="true" />
-              Review proposals
+              Review requests
             </Button>
           </Link>
           )}
         </div>
       </div>
 
-      {/* Chairman: proposals waiting for a decision */}
+      {/* Chairman: Project Requests waiting for a decision */}
       {isChairman && awaiting > 0 && (
         <Link
           to={s.pendingApproval > 0 ? '/admin/approvals' : '/admin/projects'}
@@ -207,7 +211,7 @@ export default function Dashboard() {
           <span className="font-semibold">
             {[
               s.pendingApproval > 0 &&
-                `${s.pendingApproval} ${s.pendingApproval === 1 ? 'proposal' : 'proposals'}`,
+                `${s.pendingApproval} Project ${s.pendingApproval === 1 ? 'Request' : 'Requests'}`,
               s.pendingDeletions > 0 &&
                 `${s.pendingDeletions} deletion ${s.pendingDeletions === 1 ? 'request' : 'requests'}`,
             ]
@@ -225,15 +229,10 @@ export default function Dashboard() {
       <div className={`grid gap-4 sm:grid-cols-2 ${selected ? 'lg:grid-cols-3' : ''}`}>
         {selected ? (
           <KpiCard
-            label="Stage"
+            label="Status"
             value={PROJECT_STATUS[selected.status]?.label || selected.status}
-            note={
-              selected.status === 'CANCELLED'
-                ? 'Rejected at the Proposed stage'
-                : selected.status === 'ON_HOLD'
-                  ? 'Paused at the Ongoing stage'
-                  : `Stage ${STAGES.indexOf(selected.status) + 1} of ${STAGES.length}`
-            }
+            note={['ONGOING', 'COMPLETED'].includes(selected.status) ? `Progress ${selected.progress || 0}%` : undefined}
+            meter={['ONGOING', 'COMPLETED'].includes(selected.status) ? selected.progress || 0 : undefined}
             tone="azure"
           />
         ) : (
@@ -245,25 +244,25 @@ export default function Dashboard() {
         )}
         {selected && (
           <KpiCard
-            label="Liquidation"
-            value={`${selected.liquidationCount || 0} file${selected.liquidationCount === 1 ? '' : 's'}`}
-            note={
-              selected.checklistTotal
-                ? `Checklist: ${selected.checklistDone} of ${selected.checklistTotal} done`
-                : 'No checklist items'
-            }
+            label="Expenses"
+            value={`${(selected.expenses || []).length}`}
+            note={`${(selected.liquidationFiles || []).length} file${(selected.liquidationFiles || []).length === 1 ? '' : 's'} in the project`}
             tone="green"
           />
         )}
-        {/* Overall Budget: all project budgets minus every saved receipt (for one project,
-            its Remaining Budget). Recomputed by the server on every load. */}
+        {/* Overall Budget: this year's SK budget (Form 1) minus every expense (Form 6); for one
+            project, its approved cost minus its expenses. Recomputed by the server on every load. */}
         <KpiCard
           label={selected ? 'Remaining Budget' : 'Overall Budget'}
           value={s.budget ? formatPeso2(s.budget.remaining) : '—'}
           note={
-            s.budget
-              ? `${formatPeso2(s.budget.totalBudget)} budget − ${formatPeso2(s.budget.totalSpent)} in receipts`
-              : undefined
+            !s.budget
+              ? undefined
+              : selected
+                ? `${formatPeso2(s.budget.totalBudget)} approved − ${formatPeso2(s.budget.totalSpent)} spent`
+                : s.budget.hasBudget
+                  ? `${s.budget.year} SK budget ${formatPeso2(s.budget.totalBudget)} − ${formatPeso2(s.budget.totalSpent)} spent`
+                  : `No SK budget recorded for ${s.budget.year} yet (Budget & ABYIP)`
           }
           tone="gold"
         />
@@ -366,7 +365,7 @@ export default function Dashboard() {
             {canManage && (
               <>
                 {' '}
-                <Link to="/admin/projects" className="font-semibold text-brand-700">
+                <Link to="/admin/projects/new" className="font-semibold text-brand-700">
                   Send a Project Request
                 </Link>
                 .
@@ -381,8 +380,8 @@ export default function Dashboard() {
                 <thead>
                   <tr>
                     <th className="py-2 pr-4 font-medium">Project</th>
-                    <th className="w-56 py-2 pr-4 font-medium">Stage</th>
-                    <th className="py-2 text-right font-medium">Budget</th>
+                    <th className="w-56 py-2 pr-4 font-medium">Step</th>
+                    <th className="py-2 text-right font-medium">Cost</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -401,7 +400,7 @@ export default function Dashboard() {
                         <StageSteps status={p.status} showLabels={false} />
                       </td>
                       <td className="py-3 text-right font-semibold text-slate-900">
-                        {formatPeso(p.budget)}
+                        {formatPeso(p.estimatedCost ?? p.budget)}
                       </td>
                     </tr>
                   ))}
@@ -419,7 +418,7 @@ export default function Dashboard() {
                       <StatusRibbon status={p.status} />
                     </span>
                     <StageSteps status={p.status} className="mt-3" />
-                    <span className="mt-2 block text-sm text-slate-600">Budget {formatPeso(p.budget)}</span>
+                    <span className="mt-2 block text-sm text-slate-600">Cost {formatPeso(p.estimatedCost ?? p.budget)}</span>
                   </Link>
                 </li>
               ))}

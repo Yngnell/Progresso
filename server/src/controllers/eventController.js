@@ -57,7 +57,18 @@ const MEETING_TITLE = 'Meeting';
 const finished = (event, now = new Date()) => new Date(event.endAt || event.startAt) <= now;
 const FINISHED_MESSAGE = 'This meeting has already ended and can no longer be changed';
 // What an existing meeting may still change. Meetings are never deleted (their attendance stays).
-const EDITABLE_FIELDS = ['endAt', 'meetingLink'];
+const EDITABLE_FIELDS = ['endAt', 'meetingLink', 'relatedProjectId'];
+
+// A meeting can be linked to an Approved or Ongoing project (shown on the calendar; its
+// attendance counts toward the project's participants in Form 8). Returns an error or null.
+async function checkProjectLink(projectId) {
+  if (!projectId) return null;
+  const project = await prisma.project.findUnique({ where: { id: String(projectId) }, select: { status: true, archivedAt: true } });
+  if (!project || project.archivedAt || !['APPROVED', 'ONGOING'].includes(project.status)) {
+    return 'Link the meeting to an approved or ongoing project';
+  }
+  return null;
+}
 
 // Normalize event body into Prisma-ready data. Start and end must not be in the past,
 // and the end must be after the start.
@@ -105,6 +116,8 @@ async function createEvent(req, res, next) {
     if (error) return res.status(400).json({ message: error });
     if (!data.startAt) return res.status(400).json({ message: 'Start date/time is required' });
     if (!data.title) data.title = MEETING_TITLE;
+    const linkError = await checkProjectLink(data.relatedProjectId);
+    if (linkError) return res.status(400).json({ message: linkError });
 
     const event = await prisma.event.create({ data, include: includeOpts });
     res.status(201).json({ event: hideQr(event) });
@@ -124,7 +137,7 @@ async function updateEvent(req, res, next) {
     // Only the end time and the meeting link of a meeting can be changed.
     const extra = Object.keys(req.body || {}).filter((k) => !EDITABLE_FIELDS.includes(k));
     if (extra.length > 0) {
-      return res.status(400).json({ message: 'Only the end time and the meeting link of a meeting can be changed' });
+      return res.status(400).json({ message: 'Only the end time, the meeting link and the project of a meeting can be changed' });
     }
     const body = {};
     EDITABLE_FIELDS.forEach((k) => {
@@ -132,12 +145,18 @@ async function updateEvent(req, res, next) {
     });
     const { data, error } = parseEventBody(body, existing);
     if (error) return res.status(400).json({ message: error });
+    const linkError = await checkProjectLink(data.relatedProjectId);
+    if (linkError) return res.status(400).json({ message: linkError });
 
     const event = await prisma.event.update({
       where: { id: req.params.id },
       data,
       include: includeOpts,
     });
+    // The meeting's attendance follows its project link.
+    if (data.relatedProjectId !== undefined && data.relatedProjectId !== existing.relatedProjectId) {
+      await prisma.attendanceRecord.updateMany({ where: { eventId: existing.id }, data: { projectId: data.relatedProjectId } });
+    }
     res.json({ event: hideQr(event) });
   } catch (err) {
     next(err);

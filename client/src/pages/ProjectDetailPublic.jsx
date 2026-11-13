@@ -3,9 +3,9 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { projectsApi } from '../api/projects';
 import { Card } from '../components/ui';
-import { StageSteps, StatusRibbon } from '../components/Roundel';
+import { ProgressMeter, StageSteps, StatusRibbon } from '../components/Roundel';
 import PhotoGallery from '../components/PhotoGallery';
-import { formatPeso, formatDateTime } from '../utils/format';
+import { formatDate, formatPeso } from '../utils/format';
 
 function Fact({ label, children }) {
   return (
@@ -61,12 +61,43 @@ export default function ProjectDetailPublic() {
         </p>
 
         <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-5 border-t border-slate-100 pt-5 sm:grid-cols-4">
-          <Fact label="Budget">{formatPeso(project.budget)}</Fact>
+          <Fact label="Budget">{formatPeso(project.estimatedCost ?? project.budget)}</Fact>
           <Fact label="Venue">{project.location}</Fact>
-          <Fact label="Start">{formatDateTime(project.startDate)}</Fact>
-          <Fact label="End">{formatDateTime(project.endDate)}</Fact>
+          <Fact label="Start">{formatDate(project.startDate)}</Fact>
+          <Fact label="End">{formatDate(project.actualEndDate || project.endDate)}</Fact>
         </dl>
+        {project.objectives && (
+          <div className="mt-5 border-t border-slate-100 pt-5">
+            <p className="text-sm font-semibold text-slate-600">Objectives</p>
+            <p className="mt-1 max-w-prose whitespace-pre-wrap text-slate-700">{project.objectives}</p>
+          </div>
+        )}
       </Card>
+
+      {['ONGOING', 'COMPLETED'].includes(project.status) && (
+        <Card className="mt-6 p-6">
+          <h2 className="section-title">Progress</h2>
+          <ProgressMeter value={project.progress} className="mt-4" label="How far along it is" />
+          {(project.progressUpdates || []).length > 0 && (
+            <ol className="mt-5 space-y-3">
+              {project.progressUpdates.map((u) => (
+                <li key={u.id} className="flex gap-3">
+                  <span className="font-number w-12 shrink-0 text-right text-lg text-pine">{u.percent}%</span>
+                  <div className="min-w-0 border-l-2 border-line pl-3">
+                    <p className="font-semibold text-ink">{u.milestone}</p>
+                    <p className="text-[13px] text-slate-600">{formatDate(u.date)}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+          {project.status === 'COMPLETED' && project.accomplishmentSummary && (
+            <p className="mt-5 max-w-prose whitespace-pre-wrap border-t border-slate-100 pt-4 text-slate-700">
+              {project.accomplishmentSummary}
+            </p>
+          )}
+        </Card>
+      )}
 
       {project.photos?.length > 0 && (
         <Card className="mt-6 p-6">

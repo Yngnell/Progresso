@@ -26,6 +26,8 @@ import AdminMeetings from './pages/admin/AdminMeetings';
 import AdminEventDetail from './pages/admin/AdminEventDetail';
 import AdminAttendance from './pages/admin/AdminAttendance';
 import Settings from './pages/admin/Settings';
+import Budget from './pages/admin/Budget';
+import ProjectRequestForm from './pages/admin/ProjectRequestForm';
 
 export default function App() {
   return (
@@ -86,7 +88,33 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="projects" element={<AdminProjects />} />
         <Route path="archive" element={<AdminArchive />} />
+        {/* Form 1 and Form 2: the SK Admin records them; the Barangay Chairman views them */}
+        <Route
+          path="budget"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'CHAIRMAN']}>
+              <Budget />
+            </ProtectedRoute>
+          }
+        />
         <Route path="projects/:id" element={<AdminProjectDetail />} />
+        {/* Form 3: Project Request (the SK Admin) */}
+        <Route
+          path="projects/new"
+          element={
+            <ProtectedRoute roles={['ADMIN']}>
+              <ProjectRequestForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="projects/:id/edit"
+          element={
+            <ProtectedRoute roles={['ADMIN']}>
+              <ProjectRequestForm />
+            </ProtectedRoute>
+          }
+        />
         {/* Approvals: the Barangay Chairman only */}
         <Route
           path="approvals"

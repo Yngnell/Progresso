@@ -1,12 +1,30 @@
 ﻿// Maps backend enum values to label + badge tone for display.
+// The SK project process (see server/src/utils/projectStatus.js). The older stage names stay
+// only so an old link or record still shows a word.
 export const PROJECT_STATUS = {
-  PROPOSED: { label: 'Proposed', tone: 'slate' },
-  PLANNING: { label: 'Planning', tone: 'blue' },
-  ONGOING: { label: 'Ongoing', tone: 'amber' },
+  DRAFT: { label: 'Draft', tone: 'slate' },
+  PENDING: { label: 'Pending', tone: 'amber' },
+  FOR_REVISION: { label: 'For Revision', tone: 'amber' },
+  APPROVED: { label: 'Approved', tone: 'green' },
+  REJECTED: { label: 'Rejected', tone: 'red' },
+  ONGOING: { label: 'Ongoing', tone: 'blue' },
   COMPLETED: { label: 'Completed', tone: 'green' },
-  CANCELLED: { label: 'Cancelled', tone: 'red' },
-  ON_HOLD: { label: 'On Hold', tone: 'slate' },
+  CANCELLED: { label: 'Cancelled', tone: 'slate' },
+  PROPOSED: { label: 'Pending', tone: 'amber' },
+  PLANNING: { label: 'Approved', tone: 'green' },
+  ON_HOLD: { label: 'Ongoing', tone: 'blue' },
 };
+
+// Statuses still in progress (Projects page) and closed ones (Archives).
+export const ACTIVE_STATUSES = ['DRAFT', 'PENDING', 'FOR_REVISION', 'APPROVED', 'ONGOING'];
+export const CLOSED_STATUSES = ['COMPLETED', 'REJECTED', 'CANCELLED'];
+// The SK Admin may change a request only while it is a draft or returned for revision.
+export const EDITABLE_STATUSES = ['DRAFT', 'FOR_REVISION'];
+
+// Today's date in the Philippines as YYYY-MM-DD (for date inputs).
+export const phToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+// A saved date as YYYY-MM-DD in the Philippines (for date inputs).
+export const phDayOf = (d) => (d ? new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) : '');
 
 export const EVENT_TYPE = {
   MEETING: { label: 'Meeting', tone: 'blue' },

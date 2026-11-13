@@ -13,6 +13,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const photoRoutes = require('./routes/photoRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const reportRoutes = require('./routes/reportRoutes');
+const budgetRoutes = require('./routes/budgetRoutes');
 const { syncNotifications } = require('./utils/notifications');
 const { markAbsentees } = require('./utils/absentees');
 const { cleanupPendingSignups } = require('./utils/verification');
@@ -42,6 +43,8 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/photos', photoRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/budgets', budgetRoutes.budgets);
+app.use('/api/abyip', budgetRoutes.abyip);
 
 // Centralized error handler (must be last)
 app.use(errorHandler);

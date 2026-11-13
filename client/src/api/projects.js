@@ -1,5 +1,6 @@
-// API helpers for Projects and their flow:
-// Project Request -> Proposed -> Planning -> Ongoing -> Completed (or Proposed -> Cancelled).
+// API helpers for the SK project process (Forms 3 to 9):
+//   Form 3 Project Request (Draft -> Pending) · Form 4 Review (Chairman) · Start (Approved -> Ongoing)
+//   Form 5 Progress · Form 6 Expense · Form 7 File · Form 8 Completion · Form 9 Cancellation
 import api from './axios';
 
 // The project name as a file name, the same way the server writes it:
@@ -14,53 +15,63 @@ export function downloadBase(title) {
   return base || 'Project';
 }
 
+// Files accepted by the project file module (Forms 3, 6, 7 and 8).
+export const FILE_ACCEPT = '.pdf,.docx,.jpg,.jpeg,.png';
+export const RECEIPT_ACCEPT = '.pdf,.jpg,.jpeg,.png';
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+// A message when a chosen file cannot be uploaded, else null.
+export function checkFile(file, { receipt = false } = {}) {
+  if (!file) return null;
+  const ok = receipt ? /\.(pdf|jpe?g|png)$/i : /\.(pdf|docx|jpe?g|png)$/i;
+  if (!ok.test(file.name)) return receipt ? 'Choose a PDF, JPG or PNG file.' : 'Choose a PDF, DOCX, JPG or PNG file.';
+  if (file.size > MAX_FILE_BYTES) return 'The file must be 10 MB or smaller.';
+  return null;
+}
+
+const form = (fields) => {
+  const fd = new FormData();
+  Object.entries(fields).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') fd.append(k, v);
+  });
+  return fd;
+};
+
 export const projectsApi = {
-  // Active projects (Proposed, Planning, Ongoing, On Hold); { archive: 'completed' |
-  // 'cancelled' | 'onhold' | 'deleted' } lists one tab of Archives.
+  // Active projects; { archive: 'completed' | 'rejected' | 'cancelled' | 'deleted' | 'all' }
+  // lists one tab of Archives (or everything); { status: 'PENDING' } narrows the list.
   list: (params) => api.get('/projects', { params }).then((r) => r.data),
   get: (id) => api.get(`/projects/${id}`).then((r) => r.data),
-  // The Project Request: saved as Proposed.
+
+  // Form 3: saved as a Draft; submit sends it to the Barangay Chairman.
   create: (data) => api.post('/projects', data).then((r) => r.data),
   update: (id, data) => api.put(`/projects/${id}`, data).then((r) => r.data),
-  // Barangay Chairman: { decision: 'APPROVE' | 'REJECT', remarks }
-  review: (id, data) => api.put(`/projects/${id}/review`, data).then((r) => r.data),
-  // SK Admin, Planning: { startDate, endDate } -> Ongoing
-  setSchedule: (id, data) => api.put(`/projects/${id}/schedule`, data).then((r) => r.data),
-  // SK Admin, Ongoing: receipt liquidation (JPG, PNG or PDF; several at once)
-  uploadLiquidation: (id, files) => {
-    const formData = new FormData();
-    [...files].forEach((f) => formData.append('files', f));
-    return api.post(`/projects/${id}/liquidation`, formData).then((r) => r.data);
-  },
-  deleteLiquidation: (id, fileId) =>
-    api.delete(`/projects/${id}/liquidation/${fileId}`).then((r) => r.data),
-  // SK Admin, Ongoing: type or correct a receipt's { amount, receiptDate, storeName }
-  updateLiquidation: (id, fileId, data) =>
-    api.put(`/projects/${id}/liquidation/${fileId}`, data).then((r) => r.data),
+  submit: (id) => api.patch(`/projects/${id}/submit`).then((r) => r.data),
+  // Form 4 (Barangay Chairman): { decision: 'APPROVE' | 'RETURN' | 'REJECT', remarks }
+  review: (id, data) => api.patch(`/projects/${id}/review`, data).then((r) => r.data),
+  // Approved -> Ongoing
+  start: (id) => api.patch(`/projects/${id}/start`).then((r) => r.data),
+  // Form 5: { milestone, date, percent, notes, photo? }
+  addProgress: (id, { photo, ...fields }) =>
+    api.post(`/projects/${id}/progress`, form({ ...fields, photos: photo })).then((r) => r.data),
+  // Form 6: { description, category, supplier, amount, date, receipt }
+  addExpense: (id, fields) => api.post(`/projects/${id}/expenses`, form(fields)).then((r) => r.data),
+  deleteExpense: (id, expenseId) => api.delete(`/projects/${id}/expenses/${expenseId}`).then((r) => r.data),
+  // Claude reads a receipt to prefill Form 6: { readable, total, date, storeName }
+  readReceipt: (file) => api.post('/projects/receipt-read', form({ file })).then((r) => r.data),
+  // Form 7: { file, documentType, description }
+  addFile: (id, fields) => api.post(`/projects/${id}/files`, form(fields)).then((r) => r.data),
+  deleteFile: (id, fileId) => api.delete(`/projects/${id}/files/${fileId}`).then((r) => r.data),
+  // Form 8
+  completionInfo: (id) => api.get(`/projects/${id}/completion-info`).then((r) => r.data),
+  complete: (id, fields) => api.patch(`/projects/${id}/complete`, form(fields)).then((r) => r.data),
+  // Form 9: { reason, date }
+  cancel: (id, data) => api.patch(`/projects/${id}/cancel`, data).then((r) => r.data),
+
   // The files need the login token, so they are fetched and opened from a blob URL.
-  openLiquidation: async (id, fileId) => {
+  openFile: async (id, fileId) => {
     const tab = window.open('', '_blank'); // opened first so the browser allows the pop-up
     try {
-      const res = await api.get(`/projects/${id}/liquidation/${fileId}`, { responseType: 'blob' });
-      const url = URL.createObjectURL(res.data);
-      if (tab) tab.location.href = url;
-      else window.location.href = url;
-    } catch (err) {
-      if (tab) tab.close();
-      throw err;
-    }
-  },
-  // Purchase Request files (scanned or signed PR forms): SK Admin adds and removes them.
-  uploadPrFiles: (id, files) => {
-    const formData = new FormData();
-    [...files].forEach((f) => formData.append('files', f));
-    return api.post(`/projects/${id}/pr-files`, formData).then((r) => r.data);
-  },
-  deletePrFile: (id, fileId) => api.delete(`/projects/${id}/pr-files/${fileId}`).then((r) => r.data),
-  openPrFile: async (id, fileId) => {
-    const tab = window.open('', '_blank'); // opened first so the browser allows the pop-up
-    try {
-      const res = await api.get(`/projects/${id}/pr-files/${fileId}`, { responseType: 'blob' });
+      const res = await api.get(`/projects/${id}/files/${fileId}`, { responseType: 'blob' });
       const url = URL.createObjectURL(res.data);
       if (tab) tab.location.href = url;
       else window.location.href = url;
@@ -88,18 +99,6 @@ export const projectsApi = {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   },
-  // SK Admin, Ongoing: the optional checklist
-  addChecklistItem: (id, label) => api.post(`/projects/${id}/checklist`, { label }).then((r) => r.data),
-  updateChecklistItem: (id, itemId, data) =>
-    api.put(`/projects/${id}/checklist/${itemId}`, data).then((r) => r.data),
-  deleteChecklistItem: (id, itemId) =>
-    api.delete(`/projects/${id}/checklist/${itemId}`).then((r) => r.data),
-  // SK Admin, Ongoing -> Completed
-  complete: (id) => api.post(`/projects/${id}/complete`).then((r) => r.data),
-  // SK Admin: Ongoing -> On Hold, On Hold -> Ongoing, On Hold -> Archives (On Hold tab)
-  hold: (id) => api.post(`/projects/${id}/hold`).then((r) => r.data),
-  resume: (id) => api.post(`/projects/${id}/resume`).then((r) => r.data),
-  archiveHold: (id) => api.post(`/projects/${id}/archive-hold`).then((r) => r.data),
   // Projects are never deleted directly: file a request with a reason, then the
   // chairman approves ({ decision: 'APPROVE' | 'REJECT', remarks }) or rejects it.
   requestDeletion: (id, reason) =>

@@ -1,21 +1,34 @@
 const prisma = require('../prisma');
+const { round2, projectMoney, yearSummary, itemsWithBalance } = require('./projectBudget');
 
-// The Overall Budget: the budgets of the projects in the Projects module minus every receipt
-// saved in their Receipt Liquidation. Deleted projects (archivedAt) and cancelled (rejected)
-// Project Requests are left out: they hold no money. With projectId, only that project (its
-// Remaining Budget). Computed from the database each time, so adding, editing or deleting a
-// receipt or a project changes it right away.
-const round2 = (n) => Math.round(n * 100) / 100;
-
+// The Overall Budget on the Dashboard: this year's SK budget (Form 1) minus every expense
+// (Form 6) of the projects it funds. Deleted projects are left out. With projectId, that
+// project's approved cost, what it has spent and what is left of it (its Remaining Budget).
+// Computed from the database each time, so a new expense or budget shows right away.
+//   { year, totalBudget, totalSpent, remaining, reserved, hasBudget }
 async function overallBudget(projectId = null) {
-  const projectWhere = { archivedAt: null, status: { not: 'CANCELLED' }, ...(projectId ? { id: projectId } : {}) };
-  const [budgets, receipts] = await Promise.all([
-    prisma.project.aggregate({ where: projectWhere, _sum: { budget: true } }),
-    prisma.liquidationFile.aggregate({ where: { project: projectWhere }, _sum: { amount: true } }),
-  ]);
-  const totalBudget = round2(Number(budgets._sum.budget || 0));
-  const totalSpent = round2(Number(receipts._sum.amount || 0));
-  return { totalBudget, totalSpent, remaining: round2(totalBudget - totalSpent) };
+  if (projectId) {
+    const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, estimatedCost: true } });
+    if (!project) return { totalBudget: 0, totalSpent: 0, remaining: 0 };
+    const m = await projectMoney(project);
+    return { totalBudget: m.approvedCost, totalSpent: m.spent, remaining: m.remaining };
+  }
+  const year = Number(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }).slice(0, 4));
+  const [summary, items] = await Promise.all([yearSummary(year), itemsWithBalance({ year })]);
+  const spent = await prisma.expense.aggregate({
+    where: { project: { archivedAt: null, abyipItem: { year } } },
+    _sum: { amount: true },
+  });
+  const totalSpent = round2(spent._sum.amount);
+  return {
+    year,
+    hasBudget: Boolean(summary.budget),
+    totalBudget: summary.total,
+    totalSpent,
+    remaining: round2(summary.total - totalSpent),
+    // The approved costs still set aside for Approved and Ongoing projects.
+    reserved: round2(items.reduce((s, i) => s + i.reserved, 0)),
+  };
 }
 
 module.exports = { overallBudget, round2 };

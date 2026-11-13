@@ -8,6 +8,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   ListChecks,
+  Wallet,
   LogOut,
   Menu,
   Settings as SettingsIcon,
@@ -27,6 +28,7 @@ const groups = [
     links: [
       { to: '/admin', label: 'Dashboard', Icon: LayoutDashboard, end: true },
       // For the Barangay Chairman: view only; the badge counts deletion requests to decide.
+      { to: '/admin/budget', label: 'Budget & ABYIP', Icon: Wallet, roles: ['ADMIN', 'CHAIRMAN'] },
       { to: '/admin/projects', label: 'Projects', Icon: FolderKanban, badge: 'deletions' },
       // The Barangay Chairman's Project Requests to approve or reject (badge: how many).
       { to: '/admin/approvals', label: 'Approvals', Icon: ClipboardCheck, badge: 'proposals', roles: ['CHAIRMAN'] },
@@ -132,12 +134,12 @@ export default function AdminLayout() {
     .map((g) => ({ ...g, links: g.links.filter((l) => !l.roles || l.roles.includes(role)) }))
     .filter((g) => g.links.length > 0);
 
-  // What waits for the Barangay Chairman: proposals to approve or reject (Approvals), and
+  // What waits for the Barangay Chairman: Project Requests to review (Approvals, Form 4), and
   // deletion requests (Projects). Only the chairman sees the counts.
   const isChairman = user?.role === 'CHAIRMAN';
   const { data: proposalData } = useQuery({
-    queryKey: ['projects', 'proposals'],
-    queryFn: () => projectsApi.list({ status: 'PROPOSED' }),
+    queryKey: ['projects', 'pending'],
+    queryFn: () => projectsApi.list({ status: 'PENDING' }),
     enabled: isChairman,
   });
   const { data: deletionData } = useQuery({

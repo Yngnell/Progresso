@@ -2,6 +2,7 @@
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { eventsApi } from '../../api/events';
+import { projectsApi } from '../../api/projects';
 import { ChevronLeft, ChevronRight, Pencil, Plus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { isAdmin } from '../../utils/roles';
@@ -11,15 +12,16 @@ import EventTypeIcon from '../../components/EventTypeIcon';
 import { AttendanceQrButton } from '../../components/AttendanceQr';
 import AttendanceSettings from '../../components/AttendanceSettings';
 import MonthCalendar, { MONTHS } from '../../components/MonthCalendar';
-import { Button, Card, Modal, Input } from '../../components/ui';
+import { Button, Card, Modal, Input, Select } from '../../components/ui';
 import ConfirmDialog, { useConfirm } from '../../components/ConfirmDialog';
-import { formatDateTime, toDateTimeLocal } from '../../utils/format';
+import { dayKey, formatDateTime, toDateTimeLocal } from '../../utils/format';
 
 // Every event is a Meeting (the server names it "Meeting").
 const emptyForm = {
   startAt: '',
   endAt: '',
   meetingLink: '',
+  relatedProjectId: '',
 };
 
 // A meeting is finished once its end (or, without an end, its start) has passed:
@@ -49,6 +51,22 @@ export default function AdminMeetings() {
   });
 
   const events = data?.events || [];
+  // Approved and Ongoing projects: their start and end show on the calendar, and a meeting
+  // can be linked to one (its attendance then counts toward the project's participants).
+  const { data: projectData } = useQuery({
+    queryKey: ['projects', 'calendar'],
+    queryFn: () => projectsApi.list({ status: 'APPROVED,ONGOING' }),
+  });
+  const calendarProjects = projectData?.projects || [];
+  const markers = calendarProjects.flatMap((p) => [
+    p.startDate && { key: `${p.id}-s`, day: dayKey(new Date(p.startDate)), kind: 'start', title: p.title, id: p.id },
+    p.endDate && { key: `${p.id}-e`, day: dayKey(new Date(p.endDate)), kind: 'end', title: p.title, id: p.id },
+  ].filter(Boolean));
+  const selectedMarks = selectedDay ? markers.filter((m) => m.day === selectedDay) : [];
+  const projectOptions = [
+    { value: '', label: 'No project' },
+    ...calendarProjects.map((p) => ({ value: p.id, label: p.title })),
+  ];
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['events'] });
@@ -92,6 +110,7 @@ export default function AdminMeetings() {
       startAt: toDateTimeLocal(event.startAt),
       endAt: toDateTimeLocal(event.endAt),
       meetingLink: event.meetingLink || '',
+      relatedProjectId: event.relatedProjectId || '',
     });
     setError('');
     setModalOpen(true);
@@ -136,8 +155,8 @@ export default function AdminMeetings() {
     // datetime-local has no time zone; convert it here so the server stores the
     // exact moment picked (in the browser's Philippine time), not the same clock time in UTC.
     const toIso = (v) => (v ? new Date(v).toISOString() : '');
-    if (editing) saveMutation.mutate({ endAt: toIso(form.endAt), meetingLink: form.meetingLink });
-    else saveMutation.mutate({ ...form, startAt: toIso(form.startAt), endAt: toIso(form.endAt) });
+    if (editing) saveMutation.mutate({ endAt: toIso(form.endAt), meetingLink: form.meetingLink, relatedProjectId: form.relatedProjectId || null });
+    else saveMutation.mutate({ ...form, startAt: toIso(form.startAt), endAt: toIso(form.endAt), relatedProjectId: form.relatedProjectId || null });
   }
 
   // Earliest date and time the pickers allow: now (past dates and times are disabled).
@@ -202,6 +221,7 @@ export default function AdminMeetings() {
             year={year}
             month={month}
             events={events}
+            markers={markers}
             selectedDay={selectedDay}
             onSelectDay={setSelectedDay}
           />
@@ -217,6 +237,16 @@ export default function AdminMeetings() {
               <Plus size={18} strokeWidth={2} aria-hidden="true" />
               Add Event
             </Button>
+          )}
+          {selectedMarks.length > 0 && (
+            <ul className="mt-3 space-y-2">
+              {selectedMarks.map((m) => (
+                <li key={m.key} className="rounded-card border border-line bg-mustard-wash px-3 py-2 text-sm">
+                  <span className="font-semibold text-mustard-text">{m.kind === 'start' ? 'Project starts' : 'Project ends'}: </span>
+                  <Link to={`/admin/projects/${m.id}`} className="font-medium text-pine hover:underline">{m.title}</Link>
+                </li>
+              ))}
+            </ul>
           )}
           <div className="mt-3 space-y-3">
             {(selectedDay ? selectedEvents : events.filter((e) => new Date(e.startAt) >= new Date()).slice(0, 6)).length === 0 ? (
@@ -305,8 +335,21 @@ export default function AdminMeetings() {
             value={form.meetingLink}
             onChange={(e) => update('meetingLink', e.target.value)}
           />
+          <div>
+            <Select
+              label="Project (optional)"
+              value={form.relatedProjectId}
+              onChange={(e) => update('relatedProjectId', e.target.value)}
+              options={
+                form.relatedProjectId && !calendarProjects.some((p) => p.id === form.relatedProjectId)
+                  ? [...projectOptions, { value: form.relatedProjectId, label: editing?.relatedProject?.title || 'Linked project' }]
+                  : projectOptions
+              }
+            />
+            <p className="mt-1 text-[13px] text-slate-600">Attendance at a linked meeting counts toward the project’s participants.</p>
+          </div>
           {editing && (
-            <p className="text-[13px] text-slate-600">Only the end time and the meeting link can be changed.</p>
+            <p className="text-[13px] text-slate-600">Only the end time, the meeting link and the project can be changed.</p>
           )}
         </form>
       </Modal>

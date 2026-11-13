@@ -9,8 +9,8 @@ import PageHeader from '../components/PageHeader';
 
 const FILTERS = [
   { key: '', label: 'All' },
+  { key: 'APPROVED', label: 'Approved' },
   { key: 'ONGOING', label: 'Ongoing' },
-  { key: 'PLANNING', label: 'Planning' },
   { key: 'COMPLETED', label: 'Completed' },
 ];
 
@@ -28,7 +28,7 @@ export default function ProjectsPublic() {
     <div className="mx-auto max-w-content px-4 py-10 sm:px-8">
       <PageHeader
         title="SK Projects"
-        description="Follow the programs and projects run by your Sangguniang Kabataan, from planning to completion."
+        description="Follow the programs and projects run by your Sangguniang Kabataan, from approval to completion."
       />
 
       {projects.length > 0 && (

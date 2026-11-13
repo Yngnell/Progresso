@@ -1,135 +1,204 @@
 const path = require('path');
-const crypto = require('crypto');
 const prisma = require('../prisma');
-const { parsePhDate } = require('../utils/phTime');
-const { readReceipt, toReceiptFields, isReaderConfigured } = require('../utils/receiptReader');
-const { receiptPath, removeReceiptFile, photoPath } = require('../middleware/upload');
+const { readReceipt, isReaderConfigured } = require('../utils/receiptReader');
+const { receiptPath, removeReceiptFile, photoPath, removePhotoFile, uploadedFiles } = require('../middleware/upload');
 const { fileBase, combinePdf, sendPdf, sendZip } = require('../utils/combineFiles');
 const { photosForProject } = require('./photoController');
 const { isStaff } = require('../utils/roles');
+const { EDITABLE, CLOSED, STATUS_LABEL, assertTransition } = require('../utils/projectStatus');
+const { EXPENSE_CATEGORIES, round2, itemRemaining, projectMoney } = require('../utils/projectBudget');
 
-// Project flow (each step only to the next one; skipped stages are refused):
-//   Project Request -> PROPOSED -> PLANNING -> ONGOING -> COMPLETED
-//   PROPOSED -> CANCELLED when the Barangay Chairman rejects it
-//   ONGOING -> ON_HOLD (paused) -> ONGOING again (Resume), or -> Archives (On Hold tab)
-// - PROPOSED: the Barangay Chairman approves (-> PLANNING) or rejects (-> CANCELLED).
-// - PLANNING: the SK Admin saves the schedule (start and end) -> ONGOING.
-// - ONGOING: the SK Admin uploads the receipt liquidation (required) and keeps an optional
-//   checklist; "Project Completed" -> COMPLETED once both are done.
-// - ON_HOLD: paused; no liquidation, checklist or completion until it is resumed.
-// Completed, cancelled and archived On Hold projects are shown in Archives and are view only.
+// The SK project process (Forms 3 to 9). Status changes only go through assertTransition:
+//   Form 3  Project Request      SK Admin   saved as DRAFT; submitted -> PENDING (FOR_REVISION -> PENDING)
+//   Form 4  Review               Chairman   PENDING -> APPROVED | FOR_REVISION | REJECTED
+//           Start                SK Admin   APPROVED -> ONGOING
+//   Form 5  Progress Update      SK Admin   ONGOING
+//   Form 6  Expense              SK Admin   ONGOING
+//   Form 7  File Upload          SK Admin   any project that is still open
+//   Form 8  Completion           SK Admin   ONGOING -> COMPLETED
+//   Form 9  Cancellation         SK Admin   APPROVED | ONGOING -> CANCELLED
+// Money is computed in utils/projectBudget.js only. Rejected, completed and cancelled projects
+// are view only (Archives); a project removed through a deletion request is kept as archived.
 
-// Archived (deleted) projects are kept for the record but cannot be changed.
 const ARCHIVED_MESSAGE = 'This project is archived and can no longer be changed';
-const CLOSED_MESSAGE = 'This project is closed and can only be viewed';
-// Asking to delete a project needs a real reason (the client checks the same).
 const MIN_REASON_LENGTH = 10;
 
-// Shared include so lists and details always carry the team, creator, the latest deletion
-// request, the purchase requests, the liquidation files and the checklist.
+const ACTIVE = ['DRAFT', 'PENDING', 'FOR_REVISION', 'APPROVED', 'ONGOING'];
+const PUBLIC = ['APPROVED', 'ONGOING', 'COMPLETED'];
+// Form 7 document types. LIQUIDATION is added by Form 8 only.
+const DOCUMENT_TYPES = {
+  SK_RESOLUTION: 'SK Resolution',
+  ACTIVITY_DESIGN: 'Activity design',
+  PURCHASE_REQUEST: 'Purchase request',
+  RECEIPT: 'Receipt',
+  PHOTO: 'Photo',
+  REPORT: 'Report',
+  LIQUIDATION: 'Liquidation',
+};
+const UPLOAD_TYPES = ['SK_RESOLUTION', 'ACTIVITY_DESIGN', 'PURCHASE_REQUEST', 'RECEIPT', 'PHOTO', 'REPORT'];
+// Files can be added or removed while the project is being drafted, after a decision to go
+// ahead, and while it runs; not while the Barangay Chairman is reviewing it, and not once closed.
+const FILE_OPEN = ['DRAFT', 'FOR_REVISION', 'APPROVED', 'ONGOING'];
+const IMAGE_OR_PDF = ['application/pdf', 'image/jpeg', 'image/png'];
+
+const FILE_FIELDS = {
+  id: true,
+  originalName: true,
+  mimeType: true,
+  uploadedByName: true,
+  createdAt: true,
+  amount: true,
+  receiptDate: true,
+  storeName: true,
+  readStatus: true,
+  documentType: true,
+  description: true,
+};
+
 const includeOpts = {
   officials: { orderBy: { displayOrder: 'asc' } },
   createdBy: { select: { id: true, name: true } },
   reviewedBy: { select: { id: true, name: true } },
   // Latest deletion request (any status) so the UI can show pending/rejected.
   deletionRequests: { orderBy: { createdAt: 'desc' }, take: 1 },
-  requestItems: { orderBy: { displayOrder: 'asc' } },
-  liquidationFiles: {
-    orderBy: { createdAt: 'asc' },
+  abyipItem: { select: { id: true, name: true, year: true, center: true, targetQuarter: true, allottedAmount: true } },
+  budgetRows: { orderBy: { displayOrder: 'asc' } },
+  reviews: { orderBy: { reviewedAt: 'desc' }, include: { reviewer: { select: { id: true, name: true } } } },
+  progressUpdates: {
+    orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+    include: { createdBy: { select: { name: true } } },
+  },
+  liquidationFiles: { orderBy: { createdAt: 'asc' }, select: FILE_FIELDS },
+  expenses: {
+    orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
     select: {
       id: true,
-      originalName: true,
-      mimeType: true,
-      uploadedByName: true,
-      createdAt: true,
+      item: true,
+      category: true,
+      supplier: true,
       amount: true,
-      receiptDate: true,
-      storeName: true,
-      readStatus: true,
+      date: true,
+      fileId: true,
+      createdAt: true,
+      createdBy: { select: { name: true } },
     },
-  },
-  checklistItems: { orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }] },
-  prFiles: {
-    orderBy: { createdAt: 'asc' },
-    select: { id: true, originalName: true, mimeType: true, uploadedByName: true, createdAt: true },
   },
 };
 
-const round2 = (n) => Math.round(n * 100) / 100;
-
-// Receipt amounts: what was spent so far and the Remaining Budget (budget - spent).
-function liquidationTotals(project) {
-  const files = project.liquidationFiles || [];
-  const spent = round2(files.reduce((sum, f) => sum + (f.amount == null ? 0 : Number(f.amount)), 0));
+// Approved cost, spent so far (Form 6 expenses) and what is left of it.
+function withInfo(project) {
+  const spent = round2((project.expenses || []).reduce((sum, e) => sum + Number(e.amount), 0));
+  const approvedCost = round2(project.estimatedCost);
   return {
+    ...project,
+    statusLabel: STATUS_LABEL[project.status] || project.status,
+    approvedCost,
     amountSpent: spent,
-    // Remaining Budget: the project budget minus all its receipts.
-    remainingBudget: round2(Number(project.budget || 0) - spent),
-    receiptsWithoutAmount: files.filter((f) => f.amount == null).length,
-    receiptReading: isReaderConfigured(),
+    remainingBudget: round2(approvedCost - spent),
   };
 }
 
-// What still stands between an Ongoing project and "Project Completed".
-function completionInfo(project) {
-  const files = (project.liquidationFiles || []).length;
-  const items = project.checklistItems || [];
-  const open = items.filter((i) => !i.done).length;
-  const missing = [];
-  if (files === 0) missing.push('Upload at least one receipt liquidation file.');
-  if (open > 0) missing.push(`Check off the remaining ${open} checklist item${open === 1 ? '' : 's'}.`);
-  return {
-    canComplete: project.status === 'ONGOING' && missing.length === 0,
-    completeMissing: missing,
-    liquidationCount: files,
-    checklistDone: items.length - open,
-    checklistTotal: items.length,
-  };
-}
-
-const withInfo = (project) => ({ ...project, ...completionInfo(project), ...liquidationTotals(project) });
-
-// The SK side (admin, chairman, officials) sees everything; the public never sees
-// proposals or rejected projects, and never the liquidation files.
-function canSeeProposed(user) {
-  return isStaff(user);
-}
-
+// The public never sees drafts, requests under review, rejected or cancelled projects, nor any
+// money records, files or review remarks.
 function stripInternal(project) {
-  const { deletionRequests, liquidationFiles, amountSpent, remainingBudget, receiptsWithoutAmount, receiptReading, prFiles, ...rest } = project;
-  return rest;
+  const {
+    deletionRequests, liquidationFiles, expenses, reviews, amountSpent, remainingBudget,
+    reviewRemarks, reviewedBy, cancelReason, budgetRows, ...rest
+  } = project;
+  return {
+    ...rest,
+    progressUpdates: (rest.progressUpdates || []).map(({ createdBy, createdById, ...u }) => u),
+  };
 }
 
-// GET /api/projects — public.
-//   ?archive=completed|cancelled|onhold|deleted (SK side) lists one tab of Archives;
-//   ?archive=all (SK side) lists every project that is not deleted (the Dashboard);
-//   otherwise the active projects (Proposed, Planning, Ongoing, On Hold). The public list also
-//   shows completed projects, as before.
+// Which projects the person may see. The Barangay Chairman never sees the SK Admin's drafts.
+function visibleWhere(user) {
+  if (!isStaff(user)) return { status: { in: PUBLIC }, archivedAt: null };
+  if (user.role === 'CHAIRMAN') return { status: { not: 'DRAFT' } };
+  return {};
+}
+
+const invalid = (res, errors, extra = {}) =>
+  res.status(400).json({ message: Object.values(errors)[0], errors, ...extra });
+const peso = (n) =>
+  `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// Dates are entered as days (YYYY-MM-DD) and kept as the start of that day in the Philippines.
+const phToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+function phDay(value) {
+  const s = String(value || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(`${s}T00:00:00+08:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+const dayOf = (date) => new Date(date).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+const text = (v, max) => String(v ?? '').trim().slice(0, max);
+
+async function loadProject(id) {
+  return prisma.project.findUnique({ where: { id }, include: includeOpts });
+}
+
+// Loads a project for a change: refuses missing (404), archived and wrong-status (400) ones.
+// statuses: the statuses the action is allowed in.
+async function loadFor(req, res, statuses, action) {
+  const project = await prisma.project.findUnique({ where: { id: req.params.id } });
+  if (!project) {
+    res.status(404).json({ message: 'Project not found' });
+    return null;
+  }
+  if (project.archivedAt) {
+    res.status(400).json({ message: ARCHIVED_MESSAGE });
+    return null;
+  }
+  if (statuses && !statuses.includes(project.status)) {
+    const allowed = statuses.map((s) => STATUS_LABEL[s]).join(' or ');
+    res.status(400).json({ message: `${action} is only possible while the project is ${allowed}` });
+    return null;
+  }
+  return project;
+}
+
+// A project for the SK side: the money figures and the ABYIP item's balance available to it
+// (Forms 3 and 4; the project itself is left out so its own reserve is not counted twice).
+async function staffView(project) {
+  const result = withInfo(project);
+  if (project.abyipItemId) {
+    const item = await itemRemaining(project.abyipItemId, { excludeProjectId: project.id });
+    result.abyipRemaining = item ? item.remaining : null;
+  }
+  return result;
+}
+
+async function sendProject(res, id, code = 200, extra = {}) {
+  res.status(code).json({ project: await staffView(await loadProject(id)), ...extra });
+}
+
+// ---------- Lists and details ----------
+
+// GET /api/projects
+//   SK side: ?archive=completed|rejected|cancelled|deleted lists one tab of Archives; ?archive=all
+//   lists every project that is not deleted (Dashboard); otherwise the active projects. ?status=A,B
+//   narrows the list. The public sees approved, ongoing and completed projects.
 async function getProjects(req, res, next) {
   try {
-    const { status, category, archive } = req.query;
-    const staff = canSeeProposed(req.user);
-    const where = { archivedAt: null };
+    const { category, archive } = req.query;
+    const staff = isStaff(req.user);
+    const where = { archivedAt: null, ...visibleWhere(req.user) };
     if (category) where.category = category;
-    if (staff && archive === 'deleted') where.archivedAt = { not: null };
-    else if (staff && archive === 'completed') where.status = 'COMPLETED';
-    else if (staff && archive === 'cancelled') where.status = 'CANCELLED';
-    else if (staff && archive === 'onhold') {
-      where.status = 'ON_HOLD';
-      where.holdArchivedAt = { not: null };
+    if (staff) {
+      if (archive === 'deleted') where.archivedAt = { not: null };
+      else if (archive === 'completed') where.status = 'COMPLETED';
+      else if (archive === 'rejected') where.status = 'REJECTED';
+      else if (archive === 'cancelled') where.status = 'CANCELLED';
+      else if (archive !== 'all') {
+        where.status = { in: ACTIVE.filter((s) => s !== 'DRAFT' || req.user.role !== 'CHAIRMAN') };
+      }
     }
-    else if (staff && archive === 'all') {
-      // every stage
-    } else if (staff) {
-      where.status = { in: ['PROPOSED', 'PLANNING', 'ONGOING', 'ON_HOLD'] };
-      where.holdArchivedAt = null;
+    if (req.query.status) {
+      const asked = String(req.query.status).split(',').filter((s) => STATUS_LABEL[s]);
+      const allowed = staff ? asked.filter((s) => s !== 'DRAFT' || req.user.role !== 'CHAIRMAN') : asked.filter((s) => PUBLIC.includes(s));
+      where.status = { in: allowed };
     }
-    else {
-      where.status = { in: ['PLANNING', 'ONGOING', 'COMPLETED'] };
-      where.approvalState = 'APPROVED';
-    }
-    if (status) where.status = status;
-
     const projects = await prisma.project.findMany({
       where,
       orderBy: archive ? { updatedAt: 'desc' } : { createdAt: 'desc' },
@@ -143,415 +212,600 @@ async function getProjects(req, res, next) {
   }
 }
 
-// GET /api/projects/:id — public.
+// GET /api/projects/:id. The SK side also gets the ABYIP item's balance available to this
+// request (Forms 3 and 4).
 async function getProject(req, res, next) {
   try {
-    const project = await prisma.project.findUnique({
-      where: { id: req.params.id },
+    const project = await prisma.project.findFirst({
+      where: { id: req.params.id, ...visibleWhere(req.user) },
       include: includeOpts,
     });
-    const hiddenFromPublic =
-      project &&
-      (project.status === 'PROPOSED' || project.status === 'CANCELLED' || project.archivedAt || project.holdArchivedAt);
-    if (!project || (hiddenFromPublic && !canSeeProposed(req.user))) {
-      return res.status(404).json({ message: 'Project not found' });
-    }
-    const result = withInfo(project);
-    // Progress photos shown on the public project page
-    result.photos = await photosForProject(project.id);
-    res.json({ project: canSeeProposed(req.user) ? result : stripInternal(result) });
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+    const photos = await photosForProject(project.id);
+    if (!isStaff(req.user)) return res.json({ project: { ...stripInternal(withInfo(project)), photos } });
+    const result = { ...(await staffView(project)), photos };
+    res.json({
+      project: result,
+      documentTypes: DOCUMENT_TYPES,
+      expenseCategories: EXPENSE_CATEGORIES,
+      // Form 6 offers "Read receipt" only when Claude receipt reading is set up.
+      receiptReading: isReaderConfigured(),
+    });
   } catch (err) {
     next(err);
   }
 }
 
-// Turns the form's purchase request rows into rows ready to save. Blank rows are
-// dropped; amounts must be numbers that are not negative. Returns null when the
-// body sent no rows at all (so an update leaves the saved rows alone).
-// Today's date in the Philippines, as YYYY-MM-DD.
-const phToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+// ---------- Form 3: Project Request ----------
 
-// keepDates: the PR dates the project already has (editing keeps them even if past).
-function cleanRequestItems(raw, keepDates = new Set()) {
-  if (!Array.isArray(raw)) return null;
-  const items = [];
-  const today = phToday();
-  for (const row of raw) {
-    const prNo = String(row?.prNo ?? '').trim();
-    const requestedBy = String(row?.requestedBy ?? '').trim();
-    const amount = Number(row?.amount || 0);
-    const prDate = row?.prDate ? new Date(row.prDate) : null;
-    if (!prNo && !requestedBy && !amount && !prDate) continue;
-    if (!Number.isFinite(amount) || amount < 0) {
-      const err = new Error('Each amount must be a number that is not negative');
-      err.status = 400;
-      throw err;
-    }
-    // The date of a PR can be today or later, not in the past.
-    const day = row?.prDate ? String(row.prDate).slice(0, 10) : '';
-    if (day && day < today && !keepDates.has(day)) {
-      const err = new Error('The date of PR cannot be in the past');
-      err.status = 400;
-      throw err;
-    }
-    items.push({
-      prNo: prNo || null,
-      requestedBy: requestedBy || null,
-      amount,
-      prDate: prDate && !Number.isNaN(prDate.getTime()) ? prDate : null,
-      displayOrder: items.length,
-    });
-  }
-  return items;
-}
-
-// Normalize the Project Request form into Prisma-ready data + team ids. The status and
-// the schedule are not accepted here: they only change through the flow's own steps.
-function parseProjectBody(body, keepDates) {
-  const { title, description, category, budget, location, coverImageUrl, officialIds, proposedByName, proposedByPosition } = body;
-
+// Reads the request form. A draft needs only the title; submitting needs every field (see
+// submitErrors). Budget rows: blank rows are dropped; total = quantity x unit cost.
+function readRequest(body) {
+  const errors = {};
   const data = {};
-  if (title !== undefined) data.title = title;
-  if (description !== undefined) data.description = description;
-  if (category !== undefined) data.category = category;
-  if (budget !== undefined) data.budget = budget;
-  if (location !== undefined) data.location = location;
-  if (coverImageUrl !== undefined) data.coverImageUrl = coverImageUrl;
-  // "Prepared by" on the request form; blank clears it.
-  if (proposedByName !== undefined) data.proposedByName = proposedByName || null;
-  if (proposedByPosition !== undefined) data.proposedByPosition = proposedByPosition || null;
-
-  // The budget is the total of the purchase request amounts, when any are given.
-  const requestItems = cleanRequestItems(body.requestItems, keepDates);
-  if (requestItems) {
-    const total = requestItems.reduce((sum, i) => sum + i.amount, 0);
-    if (total > 0) data.budget = total;
+  data.title = text(body.title, 200);
+  if (!data.title) errors.title = 'Enter the project title';
+  data.abyipItemId = body.abyipItemId ? String(body.abyipItemId) : null;
+  data.description = text(body.description, 5000) || null;
+  data.objectives = text(body.objectives, 5000) || null;
+  data.location = text(body.location, 200) || null;
+  if (body.targetParticipants === '' || body.targetParticipants == null) data.targetParticipants = null;
+  else {
+    const n = Number(body.targetParticipants);
+    if (!Number.isInteger(n) || n < 1 || n > 1000000) errors.targetParticipants = 'Enter a whole number of participants (at least 1)';
+    else data.targetParticipants = n;
+  }
+  for (const key of ['startDate', 'endDate']) {
+    if (!body[key]) data[key] = null;
+    else {
+      data[key] = phDay(body[key]);
+      if (!data[key]) errors[key] = 'Enter a valid date';
+    }
+  }
+  if (data.startDate && data.endDate && data.endDate < data.startDate) {
+    errors.endDate = 'The end date cannot be before the start date';
   }
 
-  return { data, officialIds, requestItems };
+  const rows = [];
+  (Array.isArray(body.rows) ? body.rows : []).forEach((row, i) => {
+    const item = text(row?.item, 200);
+    const blank = (v) => v === '' || v == null;
+    if (!item && blank(row?.quantity) && blank(row?.unitCost)) return;
+    const quantity = Number(row?.quantity);
+    const unitCost = Number(row?.unitCost);
+    if (!item) errors[`rows.${i}.item`] = 'Enter the item';
+    if (blank(row?.quantity) || !Number.isFinite(quantity) || quantity <= 0) errors[`rows.${i}.quantity`] = 'Above zero';
+    if (blank(row?.unitCost) || !Number.isFinite(unitCost) || unitCost < 0) errors[`rows.${i}.unitCost`] = 'Zero or more';
+    rows.push({
+      item,
+      quantity: round2(quantity),
+      unitCost: round2(unitCost),
+      total: round2(round2(quantity) * round2(unitCost)),
+      displayOrder: rows.length,
+    });
+  });
+  const estimatedCost = round2(rows.reduce((sum, r) => sum + (Number.isFinite(r.total) ? r.total : 0), 0));
+  data.estimatedCost = estimatedCost;
+  data.budget = estimatedCost; // older screens and reports read "budget"
+  return { data, rows, errors };
 }
 
-// Loads a project for a change and refuses archived or closed ones.
-// Returns { project } or { error: [status, message] }.
-async function loadOpen(id) {
-  const project = await prisma.project.findUnique({ where: { id } });
-  if (!project) return { error: [404, 'Project not found'] };
-  if (project.archivedAt) return { error: [400, ARCHIVED_MESSAGE] };
-  if (project.status === 'COMPLETED' || project.status === 'CANCELLED' || project.holdArchivedAt) {
-    return { error: [400, CLOSED_MESSAGE] };
+// What a saved request still lacks before it can be submitted (field -> message).
+function submitErrors(p) {
+  const errors = {};
+  if (!p.title) errors.title = 'Enter the project title';
+  if (!p.abyipItemId) errors.abyipItemId = 'Choose the ABYIP item that funds this project';
+  if (!p.description) errors.description = 'Describe the project';
+  if (!p.objectives) errors.objectives = 'Write the objectives';
+  if (!p.targetParticipants) errors.targetParticipants = 'Enter the target number of participants';
+  if (!p.location) errors.location = 'Enter the venue';
+  if (!p.startDate) errors.startDate = 'Enter the start date';
+  if (!p.endDate) errors.endDate = 'Enter the end date';
+  if (!(p.budgetRows || []).length) errors.rows = 'Add at least one budget breakdown row';
+  else if (!(Number(p.estimatedCost) > 0)) errors.rows = 'The estimated cost must be above zero';
+  return errors;
+}
+
+async function checkItem(itemId, errors) {
+  if (itemId && !(await prisma.abyipItem.findUnique({ where: { id: itemId }, select: { id: true } }))) {
+    errors.abyipItemId = 'Choose an ABYIP item from the list';
   }
-  return { project };
 }
 
-// Like loadOpen, and the project must be at the given stage.
-async function loadAtStage(id, stage, action) {
-  const r = await loadOpen(id);
-  if (r.error) return r;
-  if (r.project.status !== stage) {
-    return { error: [400, `${action} is only possible while the project is ${STAGE_NAME[stage]}`] };
-  }
-  return r;
-}
-
-const fail = (res, [code, message]) => res.status(code).json({ message });
-const STAGE_NAME = { PROPOSED: 'Proposed', PLANNING: 'Planning', ONGOING: 'Ongoing', ON_HOLD: 'On Hold' };
-
-// POST /api/projects — admin. The Project Request: saved as Proposed, waiting for the
-// Barangay Chairman.
+// POST /api/projects — SK Admin. Saves a new request as a Draft.
 async function createProject(req, res, next) {
   try {
-    if (!req.body.title) {
-      return res.status(400).json({ message: 'Title is required' });
-    }
-    const { data, officialIds, requestItems } = parseProjectBody(req.body);
-    if (requestItems && requestItems.length > 0) {
-      data.requestItems = { create: requestItems };
-    }
-    data.status = 'PROPOSED';
-    data.approvalState = 'PENDING';
-    data.createdById = req.user.id;
-    if (Array.isArray(officialIds)) {
-      data.officials = { connect: officialIds.map((id) => ({ id })) };
-    }
-
-    const project = await prisma.project.create({ data, include: includeOpts });
-    res.status(201).json({ project: withInfo(project) });
+    const { data, rows, errors } = readRequest(req.body);
+    await checkItem(data.abyipItemId, errors);
+    if (Object.keys(errors).length) return invalid(res, errors);
+    const project = await prisma.project.create({
+      data: {
+        ...data,
+        status: 'DRAFT',
+        approvalState: 'PENDING',
+        createdById: req.user.id,
+        proposedByName: req.user.name,
+        proposedByPosition: req.user.position || 'SK Admin',
+        budgetRows: { create: rows },
+      },
+    });
+    await sendProject(res, project.id, 201);
   } catch (err) {
     next(err);
   }
 }
 
-// PUT /api/projects/:id — admin. Edits the request details (not the stage or schedule).
+// PUT /api/projects/:id — SK Admin. Only a Draft or a request returned for revision changes.
 async function updateProject(req, res, next) {
   try {
-    const r = await loadOpen(req.params.id);
-    if (r.error) return fail(res, r.error);
-
-    // PR dates already saved on the project stay valid when it is edited.
-    const saved = await prisma.projectRequestItem.findMany({
-      where: { projectId: req.params.id, prDate: { not: null } },
-      select: { prDate: true },
+    const project = await loadFor(req, res, EDITABLE, 'Editing the request');
+    if (!project) return;
+    const { data, rows, errors } = readRequest(req.body);
+    await checkItem(data.abyipItemId, errors);
+    if (Object.keys(errors).length) return invalid(res, errors);
+    await prisma.project.update({
+      where: { id: project.id },
+      data: { ...data, budgetRows: { deleteMany: {}, create: rows } },
     });
-    const keepDates = new Set(saved.map((i) => i.prDate.toISOString().slice(0, 10)));
-    const { data, officialIds, requestItems } = parseProjectBody(req.body, keepDates);
-    if (requestItems) {
-      // The sheet is saved as a whole: replace all rows with the ones sent.
-      data.requestItems = { deleteMany: {}, create: requestItems };
-    }
-    if (Array.isArray(officialIds)) {
-      // "set" replaces the whole team with the provided ids.
-      data.officials = { set: officialIds.map((id) => ({ id })) };
-    }
-
-    const project = await prisma.project.update({
-      where: { id: req.params.id },
-      data,
-      include: includeOpts,
-    });
-    res.json({ project: withInfo(project) });
+    await sendProject(res, project.id);
   } catch (err) {
     next(err);
   }
 }
 
-// PUT /api/projects/:id/review — Barangay Chairman. { decision: APPROVE | REJECT, remarks? }
-//   APPROVE -> Planning; REJECT -> Cancelled (it moves to Archives under Cancelled).
+// PATCH /api/projects/:id/submit — SK Admin. Draft or For Revision -> Pending. Every field is
+// required and the estimated cost must fit the ABYIP item's remaining balance.
+async function submitProject(req, res, next) {
+  try {
+    const project = await loadFor(req, res, EDITABLE, 'Submitting the request');
+    if (!project) return;
+    const full = await loadProject(project.id);
+    const errors = submitErrors(full);
+    if (Object.keys(errors).length) return invalid(res, errors);
+    const item = await itemRemaining(full.abyipItemId, { excludeProjectId: full.id });
+    const cost = round2(full.estimatedCost);
+    if (cost > item.remaining) {
+      const shortage = round2(cost - item.remaining);
+      return invalid(
+        res,
+        { estimatedCost: `The estimated cost is ${peso(shortage)} more than the remaining balance of “${item.name}” (${peso(item.remaining)}).` },
+        { shortage, remaining: item.remaining }
+      );
+    }
+    assertTransition(full.status, 'PENDING');
+    await prisma.project.update({
+      where: { id: full.id },
+      data: { status: 'PENDING', approvalState: 'PENDING', submittedAt: new Date() },
+    });
+    await sendProject(res, full.id);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ---------- Form 4: Review (Barangay Chairman) ----------
+
+const DECISIONS = {
+  APPROVE: { status: 'APPROVED', approvalState: 'APPROVED' },
+  RETURN: { status: 'FOR_REVISION', approvalState: 'RETURNED' },
+  REJECT: { status: 'REJECTED', approvalState: 'REJECTED' },
+};
+
+// PATCH /api/projects/:id/review — Barangay Chairman. { decision: APPROVE | RETURN | REJECT, remarks }
+// Remarks are required to return or reject. Approving reserves the estimated cost (the balance
+// is checked again, as other requests may have been approved since it was submitted). Every
+// decision is kept in the review history.
 async function reviewProject(req, res, next) {
   try {
-    const r = await loadAtStage(req.params.id, 'PROPOSED', 'Approving or rejecting');
-    if (r.error) return fail(res, r.error);
-    const { decision } = req.body;
-    if (decision !== 'APPROVE' && decision !== 'REJECT') {
-      return res.status(400).json({ message: 'Decision must be APPROVE or REJECT' });
+    const project = await loadFor(req, res, ['PENDING'], 'Reviewing the request');
+    if (!project) return;
+    const decision = DECISIONS[req.body.decision];
+    const remarks = text(req.body.remarks, 2000);
+    const errors = {};
+    if (!decision) errors.decision = 'Choose Approve, Return for Revision or Reject';
+    else if (req.body.decision !== 'APPROVE' && !remarks) {
+      errors.remarks = `Write the remarks: the SK Admin needs to know why it is ${req.body.decision === 'RETURN' ? 'returned' : 'rejected'}`;
     }
-    const remarks = (req.body.remarks || '').trim();
-    const project = await prisma.project.update({
-      where: { id: req.params.id },
-      data: {
-        status: decision === 'APPROVE' ? 'PLANNING' : 'CANCELLED',
-        approvalState: decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
-        reviewedById: req.user.id,
-        reviewedAt: new Date(),
-        reviewRemarks: remarks || null,
-      },
-      include: includeOpts,
-    });
-    res.json({ project: withInfo(project) });
+    if (Object.keys(errors).length) return invalid(res, errors);
+    if (req.body.decision === 'APPROVE') {
+      const item = project.abyipItemId && (await itemRemaining(project.abyipItemId, { excludeProjectId: project.id }));
+      const cost = round2(project.estimatedCost);
+      if (!item || cost > item.remaining) {
+        const left = item ? item.remaining : 0;
+        return invalid(res, {
+          decision: `The ABYIP item now has only ${peso(left)} left, ${peso(cost - left)} short of the estimated cost. Return it for revision instead.`,
+        });
+      }
+    }
+    assertTransition(project.status, decision.status);
+    const now = new Date();
+    await prisma.$transaction([
+      prisma.projectReview.create({
+        data: { projectId: project.id, decision: req.body.decision, remarks: remarks || null, reviewerId: req.user.id, reviewedAt: now },
+      }),
+      prisma.project.update({
+        where: { id: project.id },
+        data: {
+          status: decision.status,
+          approvalState: decision.approvalState,
+          reviewedById: req.user.id,
+          reviewedAt: now,
+          reviewRemarks: remarks || null,
+          ...(req.body.decision === 'APPROVE' ? { approvedAt: now } : {}),
+        },
+      }),
+    ]);
+    await sendProject(res, project.id);
   } catch (err) {
     next(err);
   }
 }
 
-// PUT /api/projects/:id/schedule — SK Admin. { startDate, endDate } (date and time).
-// Saving the schedule of a Planning project makes it Ongoing.
-async function setSchedule(req, res, next) {
+// PATCH /api/projects/:id/start — SK Admin. Approved -> Ongoing.
+async function startProject(req, res, next) {
   try {
-    const r = await loadAtStage(req.params.id, 'PLANNING', 'Setting the schedule');
-    if (r.error) return fail(res, r.error);
-    const start = req.body.startDate ? parsePhDate(req.body.startDate) : null;
-    const end = req.body.endDate ? parsePhDate(req.body.endDate) : null;
-    if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      return res.status(400).json({ message: 'Enter the start and the end date and time' });
-    }
-    // The start can be now or later (a minute of leeway for the time it takes to send).
-    if (start.getTime() < Date.now() - 60 * 1000) {
-      return res.status(400).json({ message: 'The start date and time cannot be in the past' });
-    }
-    if (end <= start) {
-      return res.status(400).json({ message: 'The end date and time must be later than the start' });
-    }
-    const project = await prisma.project.update({
-      where: { id: req.params.id },
-      data: { startDate: start, endDate: end, status: 'ONGOING' },
-      include: includeOpts,
-    });
-    res.json({ project: withInfo(project) });
+    const project = await loadFor(req, res, ['APPROVED'], 'Starting the project');
+    if (!project) return;
+    assertTransition(project.status, 'ONGOING');
+    await prisma.project.update({ where: { id: project.id }, data: { status: 'ONGOING', startedAt: new Date() } });
+    await sendProject(res, project.id);
   } catch (err) {
     next(err);
   }
 }
 
-// ---------- Receipt liquidation (Ongoing) ----------
+// ---------- Form 5: Progress Update (Ongoing) ----------
 
-// Reads new receipts one at a time in the background and saves what each says. A receipt that
-// cannot be read is marked FAILED for the SK Admin to type; nothing here fails the upload.
-async function readReceiptsLater(files) {
-  for (const f of files) {
-    let fields;
-    try {
-      fields = toReceiptFields(await readReceipt(receiptPath(f.fileName), f.mimeType));
-    } catch (err) {
-      console.error('Receipt reading failed:', err.message);
-      fields = { readStatus: 'FAILED' };
+// POST /api/projects/:id/progress — SK Admin. multipart: milestone, date, percent, notes and an
+// optional picture ("photos", one). The percentage can stay the same or go up, never down.
+async function addProgress(req, res, next) {
+  const files = req.files || [];
+  const discard = () => files.forEach((f) => removePhotoFile(f.filename));
+  try {
+    const project = await loadFor(req, res, ['ONGOING'], 'Adding a progress update');
+    if (!project) return discard();
+    const errors = {};
+    const milestone = text(req.body.milestone, 200);
+    if (!milestone) errors.milestone = 'Enter the milestone';
+    const date = phDay(req.body.date);
+    if (!date) errors.date = 'Enter the date';
+    else if (String(req.body.date).slice(0, 10) > phToday()) errors.date = 'The date cannot be in the future';
+    const percent = Number(req.body.percent);
+    if (req.body.percent === '' || req.body.percent == null || !Number.isInteger(percent) || percent < 0 || percent > 100) {
+      errors.percent = 'Enter a whole percentage from 0 to 100';
+    } else if (percent < project.progress) {
+      errors.percent = `The progress is already ${project.progress}%; it cannot go down`;
     }
-    // Skip it if the file was deleted, or the SK Admin typed the amount, while it was being read.
-    await prisma.liquidationFile.updateMany({ where: { id: f.id, readStatus: 'PENDING' }, data: fields }).catch(() => {});
+    if (files.length > 1) errors.photo = 'Attach one picture only';
+    if (Object.keys(errors).length) {
+      discard();
+      return invalid(res, errors);
+    }
+    const notes = text(req.body.notes, 2000) || null;
+    await prisma.$transaction(async (tx) => {
+      let photoId = null;
+      if (files[0]) {
+        const photo = await tx.photo.create({
+          data: {
+            projectId: project.id,
+            caption: milestone,
+            fileName: files[0].filename,
+            mimeType: files[0].mimetype,
+            uploadedByName: req.user.name,
+            uploadedById: req.user.id,
+          },
+        });
+        photoId = photo.id;
+      }
+      await tx.progressUpdate.create({
+        data: { projectId: project.id, milestone, date, percent, notes, photoId, createdById: req.user.id },
+      });
+      await tx.project.update({ where: { id: project.id }, data: { progress: percent } });
+    });
+    await sendProject(res, project.id, 201);
+  } catch (err) {
+    discard();
+    next(err);
   }
 }
 
-// POST /api/projects/:id/liquidation — SK Admin. multipart "files" (JPG, PNG or PDF, many).
-// When receipt reading is set up (ANTHROPIC_API_KEY), each receipt is read by Claude after the
-// upload (PENDING until then); otherwise the SK Admin types the amounts.
-async function addLiquidation(req, res, next) {
-  const files = req.files || [];
+// ---------- Form 6: Expense (Ongoing) ----------
+
+// POST /api/projects/receipt-read — SK Admin. multipart "file" (a receipt: PDF, JPG or PNG).
+// Claude reads the total, date and store to prefill Form 6; nothing is saved and the file is removed.
+async function readReceiptFile(req, res, next) {
+  const files = uploadedFiles(req);
+  try {
+    const file = req.files?.file?.[0];
+    if (!file) return res.status(400).json({ message: 'Choose the receipt to read' });
+    if (!IMAGE_OR_PDF.includes(file.mimetype)) return res.status(400).json({ message: 'A receipt must be a PDF, JPG or PNG' });
+    if (!isReaderConfigured()) return res.status(400).json({ message: 'Receipt reading is not set up. Type the amount instead.' });
+    const r = await readReceipt(receiptPath(file.filename), file.mimetype);
+    res.json({
+      readable: Boolean(r?.readable),
+      total: r?.total ?? null,
+      date: r?.date ?? null,
+      storeName: r?.storeName ?? null,
+    });
+  } catch (err) {
+    console.error('Receipt reading failed:', err.message);
+    res.json({ readable: false, total: null, date: null, storeName: null });
+  } finally {
+    files.forEach((f) => removeReceiptFile(f.filename));
+  }
+}
+
+// POST /api/projects/:id/expenses — SK Admin. multipart: description, category, supplier,
+// amount, date and the receipt ("receipt", required). The amount cannot exceed what is left
+// of the approved cost; the receipt is kept in the project files.
+async function addExpense(req, res, next) {
+  const files = uploadedFiles(req);
   const discard = () => files.forEach((f) => removeReceiptFile(f.filename));
   try {
-    const r = await loadAtStage(req.params.id, 'ONGOING', 'Uploading the liquidation');
-    if (r.error) {
-      discard();
-      return fail(res, r.error);
+    const project = await loadFor(req, res, ['ONGOING'], 'Recording an expense');
+    if (!project) return discard();
+    const errors = {};
+    const item = text(req.body.description, 200);
+    if (!item) errors.description = 'Describe the expense';
+    if (!EXPENSE_CATEGORIES.includes(req.body.category)) errors.category = 'Choose the category';
+    const supplier = text(req.body.supplier, 120) || null;
+    const amount = Number(req.body.amount);
+    if (req.body.amount === '' || req.body.amount == null || !Number.isFinite(amount) || amount <= 0) {
+      errors.amount = 'The amount must be above zero';
     }
-    if (files.length === 0) return res.status(400).json({ message: 'Choose at least one file to upload' });
-    const reading = isReaderConfigured();
-    const rows = files.map((f) => ({
-      id: crypto.randomUUID(),
-      projectId: req.params.id,
+    const date = phDay(req.body.date);
+    if (!date) errors.date = 'Enter the date';
+    else if (String(req.body.date).slice(0, 10) > phToday()) errors.date = 'The date cannot be in the future';
+    const receipt = req.files?.receipt?.[0];
+    if (!receipt) errors.receipt = 'Upload the receipt';
+    else if (!IMAGE_OR_PDF.includes(receipt.mimetype)) errors.receipt = 'A receipt must be a PDF, JPG or PNG';
+    if (!errors.amount) {
+      const money = await projectMoney(project);
+      if (round2(amount) > money.remaining) {
+        errors.amount = `Only ${peso(money.remaining)} of the approved cost is left; this is ${peso(round2(amount) - money.remaining)} over.`;
+      }
+    }
+    if (Object.keys(errors).length) {
+      discard();
+      return invalid(res, errors);
+    }
+    await prisma.$transaction(async (tx) => {
+      const file = await tx.liquidationFile.create({
+        data: {
+          projectId: project.id,
+          fileName: receipt.filename,
+          originalName: receipt.originalname,
+          mimeType: receipt.mimetype,
+          uploadedById: req.user.id,
+          uploadedByName: req.user.name,
+          amount: round2(amount),
+          receiptDate: date,
+          storeName: supplier,
+          readStatus: 'MANUAL',
+          documentType: 'RECEIPT',
+          description: item,
+        },
+      });
+      await tx.expense.create({
+        data: {
+          projectId: project.id,
+          item,
+          category: req.body.category,
+          supplier,
+          amount: round2(amount),
+          date,
+          fileId: file.id,
+          createdById: req.user.id,
+        },
+      });
+    });
+    await sendProject(res, project.id, 201);
+  } catch (err) {
+    discard();
+    next(err);
+  }
+}
+
+// DELETE /api/projects/:id/expenses/:expenseId — SK Admin, while Ongoing (a wrong entry).
+// The receipt stays in the project files.
+async function deleteExpense(req, res, next) {
+  try {
+    const project = await loadFor(req, res, ['ONGOING'], 'Removing an expense');
+    if (!project) return;
+    const expense = await prisma.expense.findUnique({ where: { id: req.params.expenseId } });
+    if (!expense || expense.projectId !== project.id) return res.status(404).json({ message: 'Expense not found' });
+    await prisma.expense.delete({ where: { id: expense.id } });
+    await sendProject(res, project.id);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ---------- Form 7: File Upload ----------
+
+// POST /api/projects/:id/files — SK Admin. multipart: "file" (PDF, DOCX, JPG or PNG, up to
+// 10 MB), documentType and description.
+async function addFile(req, res, next) {
+  const files = uploadedFiles(req);
+  const discard = () => files.forEach((f) => removeReceiptFile(f.filename));
+  try {
+    const project = await loadFor(req, res, FILE_OPEN, 'Uploading a file');
+    if (!project) return discard();
+    const errors = {};
+    const file = req.files?.file?.[0];
+    if (!file) errors.file = 'Choose the file to upload';
+    if (!UPLOAD_TYPES.includes(req.body.documentType)) errors.documentType = 'Choose the document type';
+    if (Object.keys(errors).length) {
+      discard();
+      return invalid(res, errors);
+    }
+    await prisma.liquidationFile.create({
+      data: {
+        projectId: project.id,
+        fileName: file.filename,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        uploadedById: req.user.id,
+        uploadedByName: req.user.name,
+        documentType: req.body.documentType,
+        description: text(req.body.description, 300) || null,
+      },
+    });
+    await sendProject(res, project.id, 201);
+  } catch (err) {
+    discard();
+    next(err);
+  }
+}
+
+// DELETE /api/projects/:id/files/:fileId — SK Admin. A receipt that backs an expense stays.
+async function deleteFile(req, res, next) {
+  try {
+    const project = await loadFor(req, res, FILE_OPEN, 'Removing a file');
+    if (!project) return;
+    const file = await prisma.liquidationFile.findUnique({
+      where: { id: req.params.fileId },
+      include: { _count: { select: { expenses: true } } },
+    });
+    if (!file || file.projectId !== project.id) return res.status(404).json({ message: 'File not found' });
+    if (file._count.expenses > 0) {
+      return res.status(400).json({ message: 'This receipt belongs to a recorded expense, so it is kept.' });
+    }
+    await prisma.liquidationFile.delete({ where: { id: file.id } });
+    const stillUsed = await prisma.expense.count({ where: { receiptFile: file.fileName } });
+    if (!stillUsed) removeReceiptFile(file.fileName);
+    await sendProject(res, project.id);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/projects/:id/files/:fileId — SK side (also from Archives). Opens the file.
+async function getFile(req, res, next) {
+  try {
+    const project = await prisma.project.findFirst({ where: { id: req.params.id, ...visibleWhere(req.user) }, select: { id: true } });
+    const file = project && (await prisma.liquidationFile.findUnique({ where: { id: req.params.fileId } }));
+    if (!file || file.projectId !== req.params.id) return res.status(404).json({ message: 'File not found' });
+    res.type(file.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.originalName || 'file')}`);
+    res.sendFile(receiptPath(file.fileName), (err) => {
+      if (err && !res.headersSent) res.status(404).json({ message: 'The file is missing' });
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ---------- Form 8: Completion (Ongoing) ----------
+
+async function completionNumbers(project) {
+  const money = await projectMoney(project);
+  const attendance = await prisma.attendanceRecord.count({ where: { projectId: project.id, status: 'PRESENT' } });
+  return {
+    approvedCost: money.approvedCost,
+    actualCost: money.spent,
+    unused: round2(money.approvedCost - money.spent),
+    attendanceCount: attendance,
+  };
+}
+
+// GET /api/projects/:id/completion-info — SK side. The automatic values of Form 8 and the
+// participants counted from the attendance linked to the project.
+async function getCompletionInfo(req, res, next) {
+  try {
+    const project = await prisma.project.findFirst({ where: { id: req.params.id, ...visibleWhere(req.user) } });
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+    res.json(await completionNumbers(project));
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PATCH /api/projects/:id/complete — SK Admin. multipart: actualEndDate, actualParticipants,
+// accomplishmentSummary, "report" and "liquidation" (both required). Ongoing -> Completed; the
+// unused part of the approved cost goes back to the ABYIP item (the balance counts the actual cost).
+async function completeProject(req, res, next) {
+  const files = uploadedFiles(req);
+  const discard = () => files.forEach((f) => removeReceiptFile(f.filename));
+  try {
+    const project = await loadFor(req, res, ['ONGOING'], 'Completing the project');
+    if (!project) return discard();
+    const errors = {};
+    const end = phDay(req.body.actualEndDate);
+    const endDay = String(req.body.actualEndDate || '').slice(0, 10);
+    if (!end) errors.actualEndDate = 'Enter the actual end date';
+    else if (endDay > phToday()) errors.actualEndDate = 'The actual end date cannot be in the future';
+    else if (project.startDate && endDay < dayOf(project.startDate)) errors.actualEndDate = 'The actual end date cannot be before the start date';
+    const participants = Number(req.body.actualParticipants);
+    if (req.body.actualParticipants === '' || req.body.actualParticipants == null || !Number.isInteger(participants) || participants < 0) {
+      errors.actualParticipants = 'Enter the number of participants';
+    }
+    const summary = text(req.body.accomplishmentSummary, 5000);
+    if (!summary) errors.accomplishmentSummary = 'Write the accomplishment summary';
+    const report = req.files?.report?.[0];
+    const liquidation = req.files?.liquidation?.[0];
+    if (!report) errors.report = 'Upload the accomplishment report';
+    if (!liquidation) errors.liquidation = 'Upload the liquidation report';
+    if (Object.keys(errors).length) {
+      discard();
+      return invalid(res, errors);
+    }
+    assertTransition(project.status, 'COMPLETED');
+    const fileRow = (f, documentType, description) => ({
+      projectId: project.id,
       fileName: f.filename,
       originalName: f.originalname,
       mimeType: f.mimetype,
       uploadedById: req.user.id,
       uploadedByName: req.user.name,
-      readStatus: reading ? 'PENDING' : null,
-    }));
-    await prisma.liquidationFile.createMany({ data: rows });
-    if (reading) readReceiptsLater(rows).catch((err) => console.error('Receipt reading failed:', err.message));
-    const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: includeOpts });
-    res.status(201).json({ project: withInfo(project) });
+      documentType,
+      description,
+    });
+    await prisma.$transaction([
+      prisma.liquidationFile.create({ data: fileRow(report, 'REPORT', 'Accomplishment report') }),
+      prisma.liquidationFile.create({ data: fileRow(liquidation, 'LIQUIDATION', 'Liquidation report') }),
+      prisma.project.update({
+        where: { id: project.id },
+        data: {
+          status: 'COMPLETED',
+          actualEndDate: end,
+          actualParticipants: participants,
+          accomplishmentSummary: summary,
+          completedAt: new Date(),
+          progress: 100,
+        },
+      }),
+    ]);
+    const numbers = await completionNumbers(project);
+    await sendProject(res, project.id, 200, { returned: numbers.unused });
   } catch (err) {
     discard();
     next(err);
   }
 }
 
-// GET /api/projects/:id/liquidation/:fileId — SK side (also from Archives).
-async function getLiquidationFile(req, res, next) {
+// ---------- Form 9: Cancellation (Approved or Ongoing) ----------
+
+// PATCH /api/projects/:id/cancel — SK Admin. { reason, date }. Approved or Ongoing -> Cancelled.
+// The unspent part of the reserve goes back to the ABYIP item; expenses and files are kept.
+async function cancelProject(req, res, next) {
   try {
-    const file = await prisma.liquidationFile.findUnique({ where: { id: req.params.fileId } });
-    if (!file || file.projectId !== req.params.id) {
-      return res.status(404).json({ message: 'File not found' });
-    }
-    res.type(file.mimeType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.originalName || 'liquidation')}`);
-    res.sendFile(receiptPath(file.fileName), (err) => {
-      if (err && !res.headersSent) res.status(404).json({ message: 'The file is missing' });
+    const project = await loadFor(req, res, ['APPROVED', 'ONGOING'], 'Cancelling the project');
+    if (!project) return;
+    const errors = {};
+    const reason = text(req.body.reason, 2000);
+    if (reason.length < MIN_REASON_LENGTH) errors.reason = `Give the reason (at least ${MIN_REASON_LENGTH} characters)`;
+    const date = phDay(req.body.date);
+    if (!date) errors.date = 'Enter the cancellation date';
+    else if (String(req.body.date).slice(0, 10) > phToday()) errors.date = 'The date cannot be in the future';
+    if (Object.keys(errors).length) return invalid(res, errors);
+    assertTransition(project.status, 'CANCELLED');
+    const money = await projectMoney(project);
+    await prisma.project.update({
+      where: { id: project.id },
+      data: { status: 'CANCELLED', cancelReason: reason, cancelDate: date, cancelledAt: new Date() },
     });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// PUT /api/projects/:id/liquidation/:fileId — SK Admin, while Ongoing. { amount, receiptDate?, storeName? }
-// Types or corrects what a receipt says.
-async function updateLiquidationFile(req, res, next) {
-  try {
-    const r = await loadAtStage(req.params.id, 'ONGOING', 'Changing a receipt');
-    if (r.error) return fail(res, r.error);
-    const file = await prisma.liquidationFile.findUnique({ where: { id: req.params.fileId } });
-    if (!file || file.projectId !== req.params.id) {
-      return res.status(404).json({ message: 'File not found' });
-    }
-    const amount = Number(req.body?.amount);
-    if (req.body?.amount === '' || req.body?.amount == null || !Number.isFinite(amount) || amount < 0) {
-      return res.status(400).json({ message: 'Enter the receipt amount as a number that is not negative' });
-    }
-    let receiptDate = null;
-    if (req.body?.receiptDate) {
-      receiptDate = new Date(`${String(req.body.receiptDate).slice(0, 10)}T00:00:00+08:00`);
-      if (Number.isNaN(receiptDate.getTime())) return res.status(400).json({ message: 'Enter a valid receipt date' });
-    }
-    await prisma.liquidationFile.update({
-      where: { id: file.id },
-      data: {
-        amount: round2(amount),
-        receiptDate,
-        storeName: String(req.body?.storeName || '').trim().slice(0, 120) || null,
-        readStatus: 'MANUAL',
-      },
-    });
-    const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: includeOpts });
-    res.json({ project: withInfo(project) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// DELETE /api/projects/:id/liquidation/:fileId — SK Admin, while Ongoing.
-async function deleteLiquidationFile(req, res, next) {
-  try {
-    const r = await loadAtStage(req.params.id, 'ONGOING', 'Deleting a liquidation file');
-    if (r.error) return fail(res, r.error);
-    const file = await prisma.liquidationFile.findUnique({ where: { id: req.params.fileId } });
-    if (!file || file.projectId !== req.params.id) {
-      return res.status(404).json({ message: 'File not found' });
-    }
-    await prisma.liquidationFile.delete({ where: { id: file.id } });
-    // The same stored file can still belong to an old expense record; keep it then.
-    const stillUsed = await prisma.expense.count({ where: { receiptFile: file.fileName } });
-    if (!stillUsed) removeReceiptFile(file.fileName);
-    const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: includeOpts });
-    res.json({ project: withInfo(project) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// ---------- Purchase Request files (scanned or signed PR forms) ----------
-
-// POST /api/projects/:id/pr-files — SK Admin, while the project is open. multipart "files".
-async function addPrFiles(req, res, next) {
-  const files = req.files || [];
-  const discard = () => files.forEach((f) => removeReceiptFile(f.filename));
-  try {
-    const r = await loadOpen(req.params.id);
-    if (r.error) {
-      discard();
-      return fail(res, r.error);
-    }
-    if (files.length === 0) return res.status(400).json({ message: 'Choose at least one file to upload' });
-    await prisma.purchaseRequestFile.createMany({
-      data: files.map((f) => ({
-        projectId: req.params.id,
-        fileName: f.filename,
-        originalName: f.originalname,
-        mimeType: f.mimetype,
-        uploadedById: req.user.id,
-        uploadedByName: req.user.name,
-      })),
-    });
-    const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: includeOpts });
-    res.status(201).json({ project: withInfo(project) });
-  } catch (err) {
-    discard();
-    next(err);
-  }
-}
-
-// GET /api/projects/:id/pr-files/:fileId — SK side.
-async function getPrFile(req, res, next) {
-  try {
-    const file = await prisma.purchaseRequestFile.findUnique({ where: { id: req.params.fileId } });
-    if (!file || file.projectId !== req.params.id) return res.status(404).json({ message: 'File not found' });
-    res.type(file.mimeType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.originalName || 'purchase-request')}`);
-    res.sendFile(receiptPath(file.fileName), (err) => {
-      if (err && !res.headersSent) res.status(404).json({ message: 'The file is missing' });
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// DELETE /api/projects/:id/pr-files/:fileId — SK Admin, while the project is open.
-async function deletePrFile(req, res, next) {
-  try {
-    const r = await loadOpen(req.params.id);
-    if (r.error) return fail(res, r.error);
-    const file = await prisma.purchaseRequestFile.findUnique({ where: { id: req.params.fileId } });
-    if (!file || file.projectId !== req.params.id) return res.status(404).json({ message: 'File not found' });
-    await prisma.purchaseRequestFile.delete({ where: { id: file.id } });
-    removeReceiptFile(file.fileName);
-    const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: includeOpts });
-    res.json({ project: withInfo(project) });
+    await sendProject(res, project.id, 200, { returned: money.remaining });
   } catch (err) {
     next(err);
   }
@@ -561,15 +815,16 @@ async function deletePrFile(req, res, next) {
 
 const NOTHING = 'No files to download.';
 
-// GET /api/projects/:id/download/receipt-liquidation — all receipts as one PDF, oldest first.
-// GET /api/projects/:id/download/purchase-request — all PR files as one PDF, oldest first.
-function downloadCombined(model, section) {
+// GET /api/projects/:id/download/receipt-liquidation — receipts and the liquidation report, one PDF.
+// GET /api/projects/:id/download/purchase-request — the purchase request files, one PDF.
+// Word files cannot be joined into a PDF, so they are left out of these downloads.
+function downloadCombined(types, section) {
   return async (req, res, next) => {
     try {
-      const project = await prisma.project.findUnique({ where: { id: req.params.id }, select: { title: true } });
+      const project = await prisma.project.findFirst({ where: { id: req.params.id, ...visibleWhere(req.user) }, select: { title: true } });
       if (!project) return res.status(404).json({ message: 'Project not found' });
-      const files = await prisma[model].findMany({
-        where: { projectId: req.params.id },
+      const files = await prisma.liquidationFile.findMany({
+        where: { projectId: req.params.id, documentType: { in: types }, mimeType: { in: IMAGE_OR_PDF } },
         orderBy: { createdAt: 'asc' },
         select: { fileName: true, originalName: true },
       });
@@ -581,13 +836,13 @@ function downloadCombined(model, section) {
     }
   };
 }
-const downloadLiquidation = downloadCombined('liquidationFile', 'Receipt_Liquidation');
-const downloadPurchaseRequest = downloadCombined('purchaseRequestFile', 'Purchase_Request');
+const downloadLiquidation = downloadCombined(['RECEIPT', 'LIQUIDATION'], 'Receipt_Liquidation');
+const downloadPurchaseRequest = downloadCombined(['PURCHASE_REQUEST'], 'Purchase_Request');
 
 // GET /api/projects/:id/download/pictures — every picture of the project as one ZIP.
 async function downloadPictures(req, res, next) {
   try {
-    const project = await prisma.project.findUnique({ where: { id: req.params.id }, select: { title: true } });
+    const project = await prisma.project.findFirst({ where: { id: req.params.id, ...visibleWhere(req.user) }, select: { title: true } });
     if (!project) return res.status(404).json({ message: 'Project not found' });
     const photos = await prisma.photo.findMany({
       where: { projectId: req.params.id },
@@ -607,134 +862,9 @@ async function downloadPictures(req, res, next) {
   }
 }
 
-// ---------- Checklist (Ongoing, optional) ----------
-
-async function projectWithInfo(id) {
-  const project = await prisma.project.findUnique({ where: { id }, include: includeOpts });
-  return withInfo(project);
-}
-
-// POST /api/projects/:id/checklist — SK Admin. { label }
-async function addChecklistItem(req, res, next) {
-  try {
-    const r = await loadAtStage(req.params.id, 'ONGOING', 'Changing the checklist');
-    if (r.error) return fail(res, r.error);
-    const label = String(req.body.label || '').trim();
-    if (!label) return res.status(400).json({ message: 'Write the checklist item' });
-    const count = await prisma.checklistItem.count({ where: { projectId: req.params.id } });
-    await prisma.checklistItem.create({
-      data: { projectId: req.params.id, label: label.slice(0, 200), displayOrder: count },
-    });
-    res.status(201).json({ project: await projectWithInfo(req.params.id) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// PUT /api/projects/:id/checklist/:itemId — SK Admin. { label?, done? }
-async function updateChecklistItem(req, res, next) {
-  try {
-    const r = await loadAtStage(req.params.id, 'ONGOING', 'Changing the checklist');
-    if (r.error) return fail(res, r.error);
-    const item = await prisma.checklistItem.findUnique({ where: { id: req.params.itemId } });
-    if (!item || item.projectId !== req.params.id) {
-      return res.status(404).json({ message: 'Checklist item not found' });
-    }
-    const data = {};
-    if (req.body.label !== undefined) {
-      const label = String(req.body.label || '').trim();
-      if (!label) return res.status(400).json({ message: 'Write the checklist item' });
-      data.label = label.slice(0, 200);
-    }
-    if (req.body.done !== undefined) data.done = Boolean(req.body.done);
-    await prisma.checklistItem.update({ where: { id: item.id }, data });
-    res.json({ project: await projectWithInfo(req.params.id) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// DELETE /api/projects/:id/checklist/:itemId — SK Admin.
-async function deleteChecklistItem(req, res, next) {
-  try {
-    const r = await loadAtStage(req.params.id, 'ONGOING', 'Changing the checklist');
-    if (r.error) return fail(res, r.error);
-    const item = await prisma.checklistItem.findUnique({ where: { id: req.params.itemId } });
-    if (!item || item.projectId !== req.params.id) {
-      return res.status(404).json({ message: 'Checklist item not found' });
-    }
-    await prisma.checklistItem.delete({ where: { id: item.id } });
-    res.json({ project: await projectWithInfo(req.params.id) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// POST /api/projects/:id/complete — SK Admin. "Project Completed": needs at least one
-// liquidation file and every checklist item (if any) checked. Moves it to Archives.
-async function completeProject(req, res, next) {
-  try {
-    const r = await loadAtStage(req.params.id, 'ONGOING', 'Marking the project as completed');
-    if (r.error) return fail(res, r.error);
-    const current = await projectWithInfo(req.params.id);
-    if (!current.canComplete) {
-      return res.status(400).json({ message: `The project cannot be completed yet. ${current.completeMissing.join(' ')}` });
-    }
-    const project = await prisma.project.update({
-      where: { id: req.params.id },
-      data: { status: 'COMPLETED' },
-      include: includeOpts,
-    });
-    res.json({ project: withInfo(project) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// ---------- On Hold ----------
-
-// Moves the project from one stage to another (the given checks already passed).
-async function setStage(id, data) {
-  const project = await prisma.project.update({ where: { id }, data, include: includeOpts });
-  return withInfo(project);
-}
-
-// POST /api/projects/:id/hold — SK Admin. Ongoing -> On Hold (paused).
-async function holdProject(req, res, next) {
-  try {
-    const r = await loadAtStage(req.params.id, 'ONGOING', 'Putting the project on hold');
-    if (r.error) return fail(res, r.error);
-    res.json({ project: await setStage(req.params.id, { status: 'ON_HOLD' }) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// POST /api/projects/:id/resume — SK Admin. On Hold -> Ongoing.
-async function resumeProject(req, res, next) {
-  try {
-    const r = await loadAtStage(req.params.id, 'ON_HOLD', 'Resuming the project');
-    if (r.error) return fail(res, r.error);
-    res.json({ project: await setStage(req.params.id, { status: 'ONGOING' }) });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// POST /api/projects/:id/archive-hold — SK Admin. On Hold -> Archives (On Hold tab), view only.
-async function archiveHeldProject(req, res, next) {
-  try {
-    const r = await loadAtStage(req.params.id, 'ON_HOLD', 'Moving the project to Archives');
-    if (r.error) return fail(res, r.error);
-    res.json({ project: await setStage(req.params.id, { holdArchivedAt: new Date() }) });
-  } catch (err) {
-    next(err);
-  }
-}
-
 // ---------- Deletion requests (the Deleted tab of Archives) ----------
 
-// POST /api/projects/:id/deletion-request — admin.
+// POST /api/projects/:id/deletion-request — SK Admin.
 async function requestDeletion(req, res, next) {
   try {
     const project = await prisma.project.findUnique({ where: { id: req.params.id } });
@@ -770,7 +900,7 @@ async function requestDeletion(req, res, next) {
   }
 }
 
-// DELETE /api/projects/:id/deletion-request — admin. Withdraw the pending request.
+// DELETE /api/projects/:id/deletion-request — SK Admin. Withdraw the pending request.
 async function withdrawDeletion(req, res, next) {
   try {
     const pending = await prisma.deletionRequest.findFirst({
@@ -788,7 +918,7 @@ async function withdrawDeletion(req, res, next) {
   }
 }
 
-// GET /api/projects/deletion-requests?status=PENDING — admin and chairman.
+// GET /api/projects/deletion-requests?status=PENDING — SK Admin and Barangay Chairman.
 async function listDeletionRequests(req, res, next) {
   try {
     const status = req.query.status || 'PENDING';
@@ -807,7 +937,7 @@ async function listDeletionRequests(req, res, next) {
   }
 }
 
-// PUT /api/projects/deletion-requests/:requestId/review — chairman.
+// PUT /api/projects/deletion-requests/:requestId/review — Barangay Chairman.
 // APPROVE moves the project to the archive; REJECT keeps it and records the remarks.
 async function reviewDeletion(req, res, next) {
   try {
@@ -862,7 +992,7 @@ async function reviewDeletion(req, res, next) {
   }
 }
 
-// POST /api/projects/:id/restore — chairman. Brings a deleted project back.
+// POST /api/projects/:id/restore — Barangay Chairman. Brings a deleted project back.
 async function restoreProject(req, res, next) {
   try {
     const existing = await prisma.project.findUnique({ where: { id: req.params.id } });
@@ -870,45 +1000,41 @@ async function restoreProject(req, res, next) {
     if (!existing.archivedAt) {
       return res.status(400).json({ message: 'This project is not in the archive' });
     }
-    const project = await prisma.project.update({
+    await prisma.project.update({
       where: { id: req.params.id },
       data: { archivedAt: null, archivedReason: null, archivedByName: null },
-      include: includeOpts,
     });
-    res.json({ project: withInfo(project) });
+    await sendProject(res, req.params.id);
   } catch (err) {
     next(err);
   }
 }
 
 module.exports = {
+  DOCUMENT_TYPES,
   getProjects,
   getProject,
   createProject,
   updateProject,
+  submitProject,
   reviewProject,
-  setSchedule,
-  addLiquidation,
-  getLiquidationFile,
-  updateLiquidationFile,
-  addPrFiles,
-  getPrFile,
-  deletePrFile,
+  startProject,
+  addProgress,
+  readReceiptFile,
+  addExpense,
+  deleteExpense,
+  addFile,
+  deleteFile,
+  getFile,
+  getCompletionInfo,
+  completeProject,
+  cancelProject,
   downloadLiquidation,
   downloadPurchaseRequest,
   downloadPictures,
-  deleteLiquidationFile,
-  addChecklistItem,
-  updateChecklistItem,
-  deleteChecklistItem,
-  completeProject,
-  holdProject,
-  resumeProject,
-  archiveHeldProject,
   requestDeletion,
   withdrawDeletion,
   listDeletionRequests,
   reviewDeletion,
   restoreProject,
-  completionInfo,
 };

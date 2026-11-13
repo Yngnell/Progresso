@@ -86,7 +86,7 @@ export function Textarea({ label, error, className = '', ...props }) {
   );
 }
 
-export function Select({ label, options = [], className = '', ...props }) {
+export function Select({ label, options = [], error, className = '', ...props }) {
   return (
     <div className={className}>
       {label && <label className="label">{label}</label>}
@@ -97,6 +97,7 @@ export function Select({ label, options = [], className = '', ...props }) {
           </option>
         ))}
       </select>
+      {error && <p className="mt-1 text-[13px] text-clay-text">{error}</p>}
     </div>
   );
 }

@@ -41,6 +41,7 @@ async function markAbsentees({ eventId, force = false } = {}) {
         endAt: true,
         qrActive: true,
         qrValidUntil: true,
+        relatedProjectId: true,
         attendance: { select: { officialId: true, participant: true } },
       },
     }),
@@ -56,7 +57,7 @@ async function markAbsentees({ eventId, force = false } = {}) {
     const names = new Set(e.attendance.filter((a) => !a.officialId).map((a) => a.participant.trim().toLowerCase()));
     for (const o of officials) {
       if (marked.has(o.id) || names.has(o.name.trim().toLowerCase())) continue;
-      rows.push({ eventId: e.id, officialId: o.id, participant: o.name, status: 'ABSENT', timeIn: null });
+      rows.push({ eventId: e.id, officialId: o.id, participant: o.name, status: 'ABSENT', timeIn: null, projectId: e.relatedProjectId || null });
     }
   }
   if (rows.length === 0) return 0;

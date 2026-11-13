@@ -24,8 +24,9 @@ async function getStats(req, res, next) {
       prisma.official.count({ where: { isActive: true } }),
       prisma.event.count({ where: { startAt: { gte: now }, ...onlyLinked } }),
       // Archived projects are kept for the record but left out of the Dashboard numbers.
+      // The Barangay Chairman never sees the SK Admin's drafts.
       prisma.project.findMany({
-        where: { archivedAt: null, ...onlyProject },
+        where: { archivedAt: null, ...onlyProject, ...(req.user?.role === 'CHAIRMAN' ? { status: { not: 'DRAFT' } } : {}) },
         select: {
           id: true,
           status: true,
@@ -49,7 +50,7 @@ async function getStats(req, res, next) {
       }),
     ]);
 
-    // The stage is stored on each project (Proposed, Planning, Ongoing, Completed, Cancelled).
+    // The status of each project (see utils/projectStatus.js).
     const counts = {};
     let pendingApproval = 0;
     let totalProjects = 0;
@@ -58,7 +59,7 @@ async function getStats(req, res, next) {
       totalProjects += 1;
       const { status } = p;
       counts[status] = (counts[status] || 0) + 1;
-      if (status === 'PROPOSED' && p.approvalState === 'PENDING') pendingApproval += 1;
+      if (status === 'PENDING') pendingApproval += 1;
     });
 
     // Present and Absent per session that already happened (Attendance by session chart)
@@ -78,13 +79,13 @@ async function getStats(req, res, next) {
         ongoingProjects: counts.ONGOING || 0,
         pendingApproval,
         pendingDeletions,
-        budget, // { totalBudget, totalSpent, remaining }
+        budget, // { year, totalBudget, totalSpent, remaining, reserved, hasBudget }
         totalViewers,
         totalOfficials,
         upcomingEvents,
         byStatus: Object.entries(counts).map(([status, count]) => ({ status, count })),
         analytics: {
-          activeProjects: (counts.ONGOING || 0) + (counts.PLANNING || 0),
+          activeProjects: (counts.ONGOING || 0) + (counts.APPROVED || 0),
           sessionAttendance: sessionAttendance.reverse(), // oldest first, so the chart reads left to right
         },
       },

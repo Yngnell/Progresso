@@ -118,6 +118,58 @@ function removePhotoFile(fileName) {
   fs.unlink(photoPath(fileName), () => {});
 }
 
+// ---------- Project files (Forms 3, 6, 7 and 8) ----------
+// One module for every project document: kept with the receipts (never public) and served
+// only through the authenticated file route. PDF, DOCX, JPG and PNG, up to 10 MB each.
+
+const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const PROJECT_FILE_TYPES = { 'application/pdf': '.pdf', [DOCX]: '.docx', 'image/jpeg': '.jpg', 'image/png': '.png' };
+const PROJECT_FILE_MAX = 10 * 1024 * 1024;
+
+// Some browsers send a Word file as a generic type; the .docx name decides then.
+function projectFileType(file) {
+  if (PROJECT_FILE_TYPES[file.mimetype]) return file.mimetype;
+  const generic = ['application/octet-stream', 'application/zip', 'application/x-zip-compressed', ''];
+  if (generic.includes(file.mimetype || '') && /.docx$/i.test(file.originalname || '')) return DOCX;
+  return null;
+}
+
+const projectFileUploader = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, RECEIPT_DIR),
+    filename: (_req, file, cb) => cb(null, crypto.randomUUID() + (PROJECT_FILE_TYPES[projectFileType(file)] || '')),
+  }),
+  limits: { fileSize: PROJECT_FILE_MAX, files: 2 },
+  fileFilter: (_req, file, cb) => {
+    const type = projectFileType(file);
+    if (!type) {
+      const err = new Error('Files must be PDF, DOCX, JPG or PNG');
+      err.status = 400;
+      return cb(err);
+    }
+    file.mimetype = type;
+    cb(null, true);
+  },
+});
+
+// Reads the named single-file fields, e.g. projectFiles(['file']) or
+// projectFiles(['report', 'liquidation']). The files arrive in req.files[field][0].
+function projectFiles(fields) {
+  const handler = projectFileUploader.fields(fields.map((name) => ({ name, maxCount: 1 })));
+  return (req, res, next) => {
+    handler(req, res, (err) => {
+      if (!err) return next();
+      err.status = 400;
+      if (err.code === 'LIMIT_FILE_SIZE') err.message = 'Each file must be 10 MB or smaller';
+      if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') err.message = 'Upload one file per field';
+      next(err);
+    });
+  };
+}
+
+// Every file a projectFiles() request carried (to remove them when the request is refused).
+const uploadedFiles = (req) => Object.values(req.files || {}).flat();
+
 module.exports = {
   liquidationUpload,
   receiptPath,
@@ -128,4 +180,7 @@ module.exports = {
   photoPath,
   removePhotoFile,
   MAX_PHOTOS,
+  projectFiles,
+  uploadedFiles,
+  PROJECT_FILE_MAX,
 };

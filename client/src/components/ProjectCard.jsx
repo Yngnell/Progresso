@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Hourglass } from 'lucide-react';
-import { formatPeso, formatDateTime } from '../utils/format';
-import { StageSteps, StatusRibbon } from './Roundel';
+import { formatPeso, formatDate } from '../utils/format';
+import { ProgressMeter, StageSteps, StatusRibbon } from './Roundel';
 
 // Card used in both the admin lists and the public grid. The ribbon is the status badge
 // and the steps show where the project is in the flow.
@@ -39,10 +39,11 @@ export function ProjectCard({ project, footer, to, notice }) {
         )}
 
         <StageSteps status={project.status} className="mt-4" />
+        {project.status === 'ONGOING' && <ProgressMeter value={project.progress} className="mt-4" />}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           {project.startDate && project.endDate ? (
             <span className="text-sm text-slate-600">
-              {formatDateTime(project.startDate)} – {formatDateTime(project.endDate)}
+              {formatDate(project.startDate)} – {formatDate(project.endDate)}
             </span>
           ) : (
             <span />
@@ -62,9 +63,11 @@ export function ProjectCard({ project, footer, to, notice }) {
 
       <dl className="mt-4 border-t border-slate-100 px-5 py-4">
         <div>
-          <dt className="text-sm text-slate-600">Budget</dt>
+          <dt className="text-sm text-slate-600">
+            {['DRAFT', 'PENDING', 'FOR_REVISION', 'REJECTED'].includes(project.status) ? 'Estimated cost' : 'Approved cost'}
+          </dt>
           <dd className="font-number text-xl text-slate-900">
-            {formatPeso(project.budget)}
+            {formatPeso(project.estimatedCost ?? project.budget)}
           </dd>
         </div>
       </dl>

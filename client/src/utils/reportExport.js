@@ -1,7 +1,7 @@
 // PDF and Excel exports of the Dashboard and Attendance reports.
 // The libraries are loaded only when someone exports, so normal pages stay light.
 import { settingsApi } from '../api/settings';
-import { formatDate, formatDateTime, formatTime } from './format';
+import { PROJECT_STATUS, formatDate, formatDateTime, formatTime } from './format';
 import { roleLabel } from './roles';
 
 // jsPDF's built-in fonts only know Latin-1: swap the special spaces and dashes the
@@ -156,18 +156,11 @@ const generatedBy = (user) => `${user?.name || ''} (${roleLabel(user)})`;
 
 // ---------------- Dashboard ----------------
 
-const PROJECT_ROWS = ['Planned', 'Ongoing', 'On Hold', 'Completed', 'Cancelled'];
+const PROJECT_ROWS = ['Draft', 'Pending', 'For Revision', 'Approved', 'Ongoing', 'Completed', 'Rejected', 'Cancelled'];
 
 const peso = (n) =>
   `PHP ${Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const PROJECT_STATUS_LABEL = {
-  PROPOSED: 'Proposed',
-  PLANNING: 'Planning',
-  ONGOING: 'Ongoing',
-  COMPLETED: 'Completed',
-  CANCELLED: 'Cancelled',
-  ON_HOLD: 'On Hold',
-};
+const PROJECT_STATUS_LABEL = Object.fromEntries(Object.entries(PROJECT_STATUS).map(([k, v]) => [k, v.label]));
 const slug = (t) =>
   String(t || '')
     .toLowerCase()
@@ -190,18 +183,19 @@ function dashboardDetails(report, user) {
 // The chosen project's own figures.
 function projectRows(p) {
   const timeline = p.startDate
-    ? `${formatDateTime(p.startDate)} to ${p.endDate ? formatDateTime(p.endDate) : '-'}`
+    ? `${formatDate(p.startDate)} to ${p.endDate ? formatDate(p.endDate) : '-'}`
     : '-';
   return [
     ['Project', p.title],
-    ['Category', p.category || '-'],
+    ['ABYIP item', p.abyipItem || '-'],
     ['Status', PROJECT_STATUS_LABEL[p.status] || p.status],
-    ['Liquidation files', String(p.liquidationCount || 0)],
-    ['Checklist', p.checklistTotal ? `${p.checklistDone} of ${p.checklistTotal} done` : 'No checklist items'],
-    ['Schedule', timeline],
-    ['Location', p.location || '-'],
-    ['Budget', peso(p.budget)],
-    ['Total receipts', peso(p.totalSpent)],
+    ['Progress', `${p.progress || 0}%`],
+    ['Expenses recorded', String(p.expenseCount || 0)],
+    ['Files', String(p.fileCount || 0)],
+    ['Dates', timeline],
+    ['Venue', p.location || '-'],
+    ['Approved cost', peso(p.budget)],
+    ['Total expenses', peso(p.totalSpent)],
     ['Remaining Budget', peso(p.remainingBudget)],
   ];
 }
@@ -210,8 +204,8 @@ function projectRows(p) {
 function budgetRows(report) {
   const b = report.budget || { totalBudget: 0, totalSpent: 0, remaining: 0 };
   return [
-    ['Total budget', peso(b.totalBudget)],
-    ['Total receipts', peso(b.totalSpent)],
+    [report.project ? 'Approved cost' : `SK budget ${b.year || ''}`.trim(), peso(b.totalBudget)],
+    ['Total expenses', peso(b.totalSpent)],
     [report.project ? 'Remaining Budget' : 'Overall Budget', peso(b.remaining)],
   ];
 }
@@ -527,13 +521,13 @@ export async function exportAttendanceExcel({ data, settings, user, filters }) {
 
 const ARCHIVE_TITLE = {
   completed: 'Completed Projects',
+  rejected: 'Rejected Project Requests',
   cancelled: 'Cancelled Projects',
-  onhold: 'On Hold Projects (Archived)',
   deleted: 'Deleted Projects',
 };
 
 const scheduleText = (p) =>
-  p.startDate && p.endDate ? `${formatDateTime(p.startDate)} - ${formatDateTime(p.endDate)}` : 'Not set';
+  p.startDate && p.endDate ? `${formatDate(p.startDate)} - ${formatDate(p.endDate)}` : 'Not set';
 
 // The table for one Archives tab: the same records the page shows.
 function archiveTable(tab, projects) {
@@ -544,7 +538,7 @@ function archiveTable(tab, projects) {
         String(i + 1),
         p.title,
         PROJECT_STATUS_LABEL[p.status] || p.status,
-        peso(p.budget),
+        peso(p.estimatedCost ?? p.budget),
         formatDate(p.archivedAt),
         p.archivedReason || '-',
         p.deletionRequests?.[0]?.requestedByName || '-',
@@ -554,16 +548,18 @@ function archiveTable(tab, projects) {
     };
   }
   const when = (p) =>
-    tab === 'onhold' ? p.holdArchivedAt : tab === 'cancelled' ? p.reviewedAt || p.updatedAt : p.updatedAt;
-  const note = (p) => (tab === 'cancelled' ? p.reviewRemarks || p.cancelReason || '-' : '-');
+    ({ completed: p.completedAt, rejected: p.reviewedAt, cancelled: p.cancelDate || p.cancelledAt })[tab] || p.updatedAt;
+  const note = (p) =>
+    ({ completed: p.accomplishmentSummary, rejected: p.reviewRemarks, cancelled: p.cancelReason })[tab] || '-';
+  const cost = (p) => (tab === 'completed' ? p.amountSpent ?? p.budget : p.estimatedCost ?? p.budget);
   return {
-    head: ['No.', 'Project', 'Status', 'Schedule', 'Budget', tab === 'onhold' ? 'Moved to Archives' : 'Date', 'Remarks'],
+    head: ['No.', 'Project', 'Status', 'Dates', tab === 'completed' ? 'Actual cost' : 'Cost', { completed: 'Completed on', rejected: 'Rejected on', cancelled: 'Cancelled on' }[tab] || 'Date', tab === 'completed' ? 'Accomplishment' : 'Reason / remarks'],
     rows: projects.map((p, i) => [
       String(i + 1),
       p.title,
       PROJECT_STATUS_LABEL[p.status] || p.status,
       scheduleText(p),
-      peso(p.budget),
+      peso(cost(p)),
       formatDate(when(p)),
       note(p),
     ]),

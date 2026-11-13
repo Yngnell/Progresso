@@ -62,6 +62,7 @@ const EVENT_FIELDS = {
   qrActive: true,
   qrValidFrom: true,
   qrValidUntil: true,
+  relatedProjectId: true,
 };
 
 // The default window: opens N minutes before the start; stays valid for the set length,
@@ -244,7 +245,14 @@ async function markPresent(req, res, next) {
       const record = existing
         ? await prisma.attendanceRecord.update({ where: { id: existing.id }, data: { status: 'PRESENT', timeIn: now } })
         : await prisma.attendanceRecord.create({
-            data: { eventId: event.id, officialId: official.id, participant: official.name, status: 'PRESENT', timeIn: now },
+            data: {
+              eventId: event.id,
+              officialId: official.id,
+              participant: official.name,
+              status: 'PRESENT',
+              timeIn: now,
+              projectId: event.relatedProjectId || null,
+            },
           });
       res.status(201).json({ record, officials: await namesLeft(event.id) });
     } catch (err) {

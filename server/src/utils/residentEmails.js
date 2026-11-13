@@ -31,7 +31,8 @@ function publicLine(n) {
   // Events are no longer on the public site, so residents are not emailed about them.
   if (n.event) return null;
   const p = n.project;
-  if (!p || p.archivedAt || p.approvalState !== 'APPROVED') return null;
+  // Only projects the public can see (approved, ongoing or completed) reach residents.
+  if (!p || p.archivedAt || !['APPROVED', 'ONGOING', 'COMPLETED'].includes(p.status)) return null;
   const link = `${APP_URL()}/projects/${p.id}`;
   if (n.type === 'ENDING_3D' || n.type === 'ENDING_1D') {
     return {

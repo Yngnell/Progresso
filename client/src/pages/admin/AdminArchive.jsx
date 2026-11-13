@@ -14,15 +14,15 @@ import { useConfirm } from '../../components/ConfirmDialog';
 
 const TABS = [
   { id: 'completed', label: 'Completed' },
+  { id: 'rejected', label: 'Rejected' },
   { id: 'cancelled', label: 'Cancelled' },
-  { id: 'onhold', label: 'On Hold' },
   { id: 'deleted', label: 'Deleted' },
 ];
 
 const EMPTY = {
   completed: ['No completed projects yet', 'A project appears here after the SK Admin marks it as completed.'],
-  cancelled: ['No cancelled projects', 'A Project Request appears here when the Barangay Chairman rejects it.'],
-  onhold: ['No on hold projects', 'An On Hold project appears here after the SK Admin moves it to Archives.'],
+  rejected: ['No rejected requests', 'A Project Request appears here when the Barangay Chairman rejects it.'],
+  cancelled: ['No cancelled projects', 'An approved or ongoing project appears here after the SK Admin cancels it (Form 9).'],
   deleted: ['No deleted projects', 'A project appears here after the Barangay Chairman approves its deletion request.'],
 };
 
@@ -60,7 +60,7 @@ export default function AdminArchive() {
     <div>
       <PageHeader
         title="Archives"
-        description="Completed, cancelled, on hold and deleted projects. They are view only and their records are kept."
+        description="Completed, rejected, cancelled and deleted projects. They are view only and their records are kept."
         actions={<ExportMenu onExport={onExport} disabled={isLoading} />}
       />
       {notice && (
@@ -99,7 +99,7 @@ export default function AdminArchive() {
   );
 }
 
-// Completed, Cancelled or archived On Hold projects, opened read only.
+// Completed, Rejected or Cancelled projects, opened read only.
 function ClosedList({ tab }) {
   const { data, isLoading } = useQuery({
     queryKey: ['projects', 'archive', tab],

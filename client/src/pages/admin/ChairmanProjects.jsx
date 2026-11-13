@@ -5,13 +5,12 @@ import { ArrowRight } from 'lucide-react';
 import { projectsApi } from '../../api/projects';
 import { Card, EmptyState } from '../../components/ui';
 import PageHeader from '../../components/PageHeader';
-import { StatusRibbon } from '../../components/Roundel';
-import { PROJECT_STATUS, formatDateTime } from '../../utils/format';
+import { ProgressMeter, StatusRibbon } from '../../components/Roundel';
+import { PROJECT_STATUS, formatDate, formatPeso2 } from '../../utils/format';
 
-// The Barangay Chairman's Projects (view only): one row per approved project with its
-// name, status, schedule and checklist progress. View details opens the project page
-// (full details, liquidation files and checklist).
-const TABS = ['PLANNING', 'ONGOING', 'ON_HOLD'];
+// The Barangay Chairman's Projects (view only): the requests and projects still in progress.
+// Drafts stay with the SK Admin; closed projects are in Archives.
+const TABS = ['PENDING', 'FOR_REVISION', 'APPROVED', 'ONGOING'];
 
 export default function ChairmanProjects() {
   const [tab, setTab] = useState('');
@@ -24,10 +23,7 @@ export default function ChairmanProjects() {
 
   return (
     <div>
-      <PageHeader
-        title="Projects"
-        description="Approved SK projects and how far along they are. View only."
-      />
+      <PageHeader title="Projects" description="SK Project Requests and projects in progress. View only; decide on requests in Approvals." />
 
       <div className="mt-6 flex flex-wrap gap-2" role="group" aria-label="Filter projects by status">
         {[{ value: '', label: 'All' }, ...TABS.map((s) => ({ value: s, label: PROJECT_STATUS[s].label }))].map((opt) => {
@@ -44,7 +40,7 @@ export default function ChairmanProjects() {
               }`}
             >
               {opt.label}
-              <span className="ml-1.5 tabular font-normal opacity-80">{count}</span>
+              <span className="tabular ml-1.5 font-normal opacity-80">{count}</span>
             </button>
           );
         })}
@@ -54,65 +50,32 @@ export default function ChairmanProjects() {
         {isLoading ? (
           <p className="text-slate-600">Loading…</p>
         ) : projects.length === 0 ? (
-          <EmptyState title="No projects here" description="Projects appear here once a Project Request is approved." />
+          <EmptyState title="No projects here" description="Project Requests appear here once the SK Admin submits them." />
         ) : (
           <Card>
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-line">
               {projects.map((p) => (
-                <ProjectRow key={p.id} project={p} />
+                <li key={p.id} className="flex flex-col gap-4 px-5 py-4 md:flex-row md:items-center">
+                  <div className="min-w-0 flex-1">
+                    <StatusRibbon status={p.status} />
+                    <p className="mt-1.5 truncate font-display text-lg text-ink">{p.title}</p>
+                    <p className="text-sm text-slate-600">
+                      {p.startDate ? `${formatDate(p.startDate)} – ${formatDate(p.endDate)}` : 'Dates not set'} · {formatPeso2(p.estimatedCost)}
+                    </p>
+                  </div>
+                  {p.status === 'ONGOING' && <ProgressMeter value={p.progress} className="w-full md:w-56" />}
+                  <Link
+                    to={`/admin/projects/${p.id}`}
+                    className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-pine hover:underline"
+                  >
+                    View details <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" />
+                  </Link>
+                </li>
               ))}
             </ul>
           </Card>
         )}
       </div>
     </div>
-  );
-}
-
-function ProjectRow({ project }) {
-  const total = project.checklistTotal || 0;
-  const done = project.checklistDone || 0;
-  const pct = total ? Math.round((done / total) * 100) : 0;
-  return (
-    <li className="flex flex-col gap-4 px-5 py-4 md:flex-row md:items-center">
-      <div className="min-w-0 flex-1">
-        <StatusRibbon status={project.status} />
-        <p className="mt-1.5 truncate font-display text-lg text-ink">{project.title}</p>
-        <p className="text-sm text-slate-600">
-          {project.startDate && project.endDate
-            ? `${formatDateTime(project.startDate)} – ${formatDateTime(project.endDate)}`
-            : 'Schedule not set yet'}
-        </p>
-      </div>
-
-      {/* Progress from the checklist; without a checklist the status says it all. */}
-      {total > 0 && (
-        <div className="w-full md:w-56">
-          <div className="flex items-baseline justify-between text-sm">
-            <span className="font-semibold text-slate-700">Progress</span>
-            <span className="text-slate-600">
-              {done} of {total} done
-            </span>
-          </div>
-          <div
-            className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-200"
-            role="progressbar"
-            aria-valuenow={pct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label={`${project.title} checklist progress`}
-          >
-            <div className="h-full rounded-full bg-green-600" style={{ width: `${pct}%` }} />
-          </div>
-        </div>
-      )}
-
-      <Link
-        to={`/admin/projects/${project.id}`}
-        className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-pine hover:underline"
-      >
-        View details <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" />
-      </Link>
-    </li>
   );
 }

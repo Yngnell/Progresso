@@ -1,131 +1,78 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ClipboardCheck } from 'lucide-react';
 import { projectsApi } from '../../api/projects';
 import { StatusRibbon } from '../../components/Roundel';
-import { Card, EmptyState } from '../../components/ui';
+import { Button, Card, EmptyState } from '../../components/ui';
 import PageHeader from '../../components/PageHeader';
-import ProjectReviewPanel from '../../components/ProjectReviewPanel';
-import { formatDate, formatPeso } from '../../utils/format';
+import ProjectReviewForm from '../../components/ProjectReviewForm';
+import { formatDate, formatPeso2 } from '../../utils/format';
 
-const cardTitle = 'section-title';
-
-// Approvals (Barangay Chairman): the Project Requests waiting for a decision (Proposed).
-// Approve moves a request to Planning; Reject cancels it (Archives > Cancelled).
+// Approvals (Barangay Chairman): the Project Requests waiting for a decision (Pending).
+// Review opens Form 4: Approve, Return for Revision or Reject.
 export default function AdminApprovals() {
   const qc = useQueryClient();
-  const [notice, setNotice] = useState(null); // { ok, text }
+  const [notice, setNotice] = useState(null);
+  const [reviewing, setReviewing] = useState(null);
   const { data, isLoading } = useQuery({
-    queryKey: ['projects', 'proposals'],
-    queryFn: () => projectsApi.list({ status: 'PROPOSED' }),
+    queryKey: ['projects', 'pending'],
+    queryFn: () => projectsApi.list({ status: 'PENDING' }),
   });
   const requests = data?.projects || [];
 
-  const onDone = (_res, message) => {
+  const onDone = (_res, text) => {
+    setReviewing(null);
+    setNotice(text);
     qc.invalidateQueries({ queryKey: ['projects'] });
+    qc.invalidateQueries({ queryKey: ['abyip'] });
     qc.invalidateQueries({ queryKey: ['stats'] });
-    setNotice(message?.note ? { ok: true, text: message.note } : null);
   };
-  const onFail = (fallback) => (err) => setNotice({ ok: false, text: err?.response?.data?.message || fallback });
 
   return (
     <div>
       <PageHeader
         title="Approvals"
-        description="Project Requests waiting for your decision. Approve moves a request to Planning; Reject cancels it."
+        description="Project Requests waiting for your decision. Review each one: approve it, return it for revision, or reject it."
       />
-      {notice && (
-        <p className={`notice mt-4 ${notice.ok ? 'notice-ok' : 'notice-error'}`} role={notice.ok ? 'status' : 'alert'}>
-          {notice.text}
-        </p>
-      )}
+      {notice && <p className="notice notice-ok mt-4" role="status">{notice}</p>}
 
-      <div className="mt-6 space-y-6">
+      <div className="mt-6">
         {isLoading ? (
           <p className="text-slate-600">Loading…</p>
         ) : requests.length === 0 ? (
-          <EmptyState title="No Project Requests" description="New Project Requests from the SK appear here for approval." />
+          <EmptyState title="No requests to review" description="Project Requests submitted by the SK Admin appear here." />
         ) : (
-          requests.map((p) => <RequestCard key={p.id} project={p} onDone={onDone} onFail={onFail} />)
+          <Card>
+            <ul className="divide-y divide-line">
+              {requests.map((p) => (
+                <li key={p.id} className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center">
+                  <div className="min-w-0 flex-1">
+                    <StatusRibbon status={p.status} />
+                    <Link to={`/admin/projects/${p.id}`} className="mt-1.5 block truncate font-display text-lg text-ink hover:text-pine">
+                      {p.title}
+                    </Link>
+                    <p className="text-sm text-slate-600">
+                      {p.abyipItem ? `${p.abyipItem.name} · ` : ''}Submitted {formatDate(p.submittedAt || p.createdAt)}
+                      {p.reviews?.length ? ` · resubmitted after ${p.reviews.length} review${p.reviews.length === 1 ? '' : 's'}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 md:justify-end">
+                    <div className="text-right">
+                      <p className="text-[13px] text-slate-600">Estimated cost</p>
+                      <p className="font-semibold text-ink">{formatPeso2(p.estimatedCost)}</p>
+                    </div>
+                    <Button onClick={() => setReviewing(p.id)}>
+                      <ClipboardCheck size={16} aria-hidden="true" /> Review
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
         )}
       </div>
+      {reviewing && <ProjectReviewForm projectId={reviewing} onClose={() => setReviewing(null)} onDone={onDone} />}
     </div>
-  );
-}
-
-// One Project Request with its full details, then Approve / Reject.
-function RequestCard({ project, onDone, onFail }) {
-  const items = project.requestItems || [];
-  return (
-    <section aria-labelledby={`request-${project.id}`}>
-      <Card className="p-6">
-        <StatusRibbon status={project.status} />
-        <h2 id={`request-${project.id}`} className={`mt-2 ${cardTitle}`}>
-          {project.title}
-        </h2>
-        <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
-          {project.description || 'No description provided.'}
-        </p>
-
-        <div className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
-          <div>
-            <p className="font-semibold text-slate-600">Prepared by</p>
-            <p className="text-slate-700">
-              {project.proposedByName
-                ? `${project.proposedByName}${project.proposedByPosition ? ` (${project.proposedByPosition})` : ''}`
-                : project.createdBy?.name || '—'}
-            </p>
-          </div>
-          <div>
-            <p className="font-semibold text-slate-600">Submitted</p>
-            <p className="text-slate-700">{formatDate(project.createdAt)}</p>
-          </div>
-          <div>
-            <p className="font-semibold text-slate-600">Total budget</p>
-            <p className="font-semibold text-slate-800">{formatPeso(project.budget)}</p>
-          </div>
-        </div>
-
-        <h3 className="mt-5 text-sm font-semibold text-slate-600">Purchase requests</h3>
-        {items.length === 0 ? (
-          <p className="mt-1 text-sm text-slate-600">No purchase requests listed.</p>
-        ) : (
-          <div className="mt-1 overflow-x-auto">
-            <table className="table-notebook table-stack">
-              <thead>
-                <tr>
-                  <th className="py-2">No.</th>
-                  <th className="py-2">PR no.</th>
-                  <th className="py-2">Date of PR</th>
-                  <th className="py-2">Requested by</th>
-                  <th className="py-2 text-right">Estimated amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((r, i) => (
-                  <tr key={r.id}>
-                    <td data-label="No." className="py-2 text-slate-500">{i + 1}</td>
-                    <td data-label="PR no." className="py-2 text-slate-700">{r.prNo || '—'}</td>
-                    <td data-label="Date of PR" className="py-2 text-slate-500">{formatDate(r.prDate)}</td>
-                    <td data-label="Requested by" className="py-2 uppercase text-slate-700">{r.requestedBy || '—'}</td>
-                    <td data-label="Estimated amount" className="py-2 text-right font-medium text-slate-700">{formatPeso(r.amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-line">
-                  <td data-label="" className="py-2 font-semibold text-slate-700" colSpan={4}>
-                    Total
-                  </td>
-                  <td data-label="Total" className="py-2 text-right font-semibold text-slate-800">
-                    {formatPeso(items.reduce((s, r) => s + Number(r.amount || 0), 0))}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-        <ProjectReviewPanel project={project} onDone={onDone} onFail={onFail} inline />
-      </Card>
-    </section>
   );
 }

@@ -1,7 +1,7 @@
 const prisma = require('../prisma');
-const { completionInfo } = require('./projectController');
 const { markAbsentees } = require('../utils/absentees');
 const { overallBudget } = require('../utils/budget');
+const { STATUS_LABEL } = require('../utils/projectStatus');
 
 // Data behind the PDF and Excel exports (Dashboard and Attendance). Dates in the filters
 // are calendar days in Philippine time (YYYY-MM-DD).
@@ -110,22 +110,27 @@ const EVENT_SELECT = {
 async function projectSummary(projectId) {
   const p = await prisma.project.findUnique({
     where: { id: projectId },
-    include: { liquidationFiles: { select: { id: true, amount: true } }, checklistItems: { select: { done: true } } },
+    include: {
+      liquidationFiles: { select: { id: true } },
+      expenses: { select: { amount: true } },
+      abyipItem: { select: { name: true, year: true } },
+    },
   });
   if (!p) return null;
-  const info = completionInfo(p);
+  // Spending is the sum of the project's Form 6 expenses; the budget is its approved cost.
+  const spent = Math.round(p.expenses.reduce((s, e) => s + Number(e.amount || 0), 0) * 100) / 100;
   return {
     id: p.id,
     title: p.title,
     category: p.category,
     status: p.status,
-    budget: Number(p.budget || 0),
-    totalSpent: Math.round(p.liquidationFiles.reduce((s, f) => s + Number(f.amount || 0), 0) * 100) / 100,
-    remainingBudget:
-      Math.round((Number(p.budget || 0) - p.liquidationFiles.reduce((s, f) => s + Number(f.amount || 0), 0)) * 100) / 100,
-    liquidationCount: info.liquidationCount,
-    checklistDone: info.checklistDone,
-    checklistTotal: info.checklistTotal,
+    abyipItem: p.abyipItem ? `${p.abyipItem.name} (ABYIP ${p.abyipItem.year})` : null,
+    budget: Number(p.estimatedCost || 0),
+    totalSpent: spent,
+    remainingBudget: Math.round((Number(p.estimatedCost || 0) - spent) * 100) / 100,
+    progress: p.progress,
+    expenseCount: p.expenses.length,
+    fileCount: p.liquidationFiles.length,
     startDate: p.startDate,
     endDate: p.endDate,
     location: p.location,
@@ -155,14 +160,10 @@ async function dashboardReport(req, res, next) {
       const end = p.endDate ? new Date(p.endDate) : start;
       return (!range.to || start <= range.to) && (!range.from || end >= range.from);
     });
-    const byStatus = { Planned: 0, Ongoing: 0, 'On Hold': 0, Completed: 0, Cancelled: 0 };
+    const byStatus = { Draft: 0, Pending: 0, 'For Revision': 0, Approved: 0, Ongoing: 0, Completed: 0, Rejected: 0, Cancelled: 0 };
     inRange.forEach((p) => {
-      const s = p.status;
-      if (s === 'PROPOSED' || s === 'PLANNING') byStatus.Planned += 1;
-      else if (s === 'ONGOING') byStatus.Ongoing += 1;
-      else if (s === 'ON_HOLD') byStatus['On Hold'] += 1;
-      else if (s === 'COMPLETED') byStatus.Completed += 1;
-      else if (s === 'CANCELLED') byStatus.Cancelled += 1;
+      const label = STATUS_LABEL[p.status];
+      if (label in byStatus) byStatus[label] += 1;
     });
     const total = inRange.length;
 

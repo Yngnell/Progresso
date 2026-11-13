@@ -9,11 +9,14 @@ const MONTHS = [
 
 // A wall-calendar month grid: big condensed day numerals, Sundays in red, today
 // circled in the seal's gold and ink. Days with events show them as chips.
-// Props: year, month (0-11), events (array), onSelectDay(dateKey), selectedDay.
+// Props: year, month (0-11), events (array), onSelectDay(dateKey), selectedDay,
+// markers: project days [{ key, day: 'YYYY-MM-DD', kind: 'start' | 'end', title }] (Approved
+// and Ongoing projects' start and end dates).
 export default function MonthCalendar({
   year,
   month,
   events = [],
+  markers = [],
   onSelectDay,
   selectedDay,
 }) {
@@ -27,6 +30,12 @@ export default function MonthCalendar({
     const k = dayKey(new Date(e.startAt));
     if (!byDay[k]) byDay[k] = [];
     byDay[k].push(e);
+  });
+
+  const marksByDay = {};
+  markers.forEach((m) => {
+    if (!marksByDay[m.day]) marksByDay[m.day] = [];
+    marksByDay[m.day].push(m);
   });
 
   const cells = [];
@@ -55,6 +64,9 @@ export default function MonthCalendar({
           if (d === null) return <div key={`empty-${i}`} className="h-14 sm:h-24" />;
           const k = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
           const dayEvents = byDay[k] || [];
+          const dayMarks = marksByDay[k] || [];
+          const shownMarks = dayMarks.slice(0, Math.max(0, 2 - Math.min(dayEvents.length, 2)));
+          const hidden = dayEvents.length - Math.min(dayEvents.length, 2) + dayMarks.length - shownMarks.length;
           const isToday = k === todayK;
           const isSelected = k === selectedDay;
           const isSunday = (firstDay + d - 1) % 7 === 0;
@@ -64,7 +76,7 @@ export default function MonthCalendar({
               type="button"
               onClick={() => onSelectDay && onSelectDay(k)}
               aria-pressed={isSelected}
-              aria-label={`${MONTHS[month]} ${d}${dayEvents.length ? `, ${dayEvents.length} events` : ''}`}
+              aria-label={`${MONTHS[month]} ${d}${dayEvents.length ? `, ${dayEvents.length} events` : ''}${dayMarks.length ? `, ${dayMarks.length} project ${dayMarks.length === 1 ? 'date' : 'dates'}` : ''}`}
               className={`flex h-14 flex-col items-start rounded-lg border p-1 text-left transition-colors sm:h-24 sm:p-1.5 ${
                 isSelected
                   ? 'border-pine bg-pine-light'
@@ -84,10 +96,13 @@ export default function MonthCalendar({
               </span>
 
               {/* Phones: dots. Wider screens: the event titles. */}
-              {dayEvents.length > 0 && (
+              {dayEvents.length + dayMarks.length > 0 && (
                 <span className="mt-auto flex gap-0.5 sm:hidden" aria-hidden="true">
                   {dayEvents.slice(0, 3).map((e) => (
                     <span key={e.id} className="h-1.5 w-1.5 rounded-full bg-brand-600" />
+                  ))}
+                  {dayMarks.slice(0, 2).map((m) => (
+                    <span key={m.key} className="h-1.5 w-1.5 rounded-full bg-mustard" />
                   ))}
                 </span>
               )}
@@ -102,9 +117,18 @@ export default function MonthCalendar({
                     <span className="line-clamp-2 break-words">{e.title}</span>
                   </span>
                 ))}
-                {dayEvents.length > 2 && (
+                {shownMarks.map((m) => (
+                  <span
+                    key={m.key}
+                    className="w-full rounded bg-mustard-wash px-1 py-px text-xs font-medium text-mustard-text"
+                    title={`${m.kind === 'start' ? 'Starts' : 'Ends'}: ${m.title}`}
+                  >
+                    <span className="line-clamp-2 break-words">{m.kind === 'start' ? 'Starts' : 'Ends'}: {m.title}</span>
+                  </span>
+                ))}
+                {hidden > 0 && (
                   <span className="text-xs font-semibold text-slate-600">
-                    +{dayEvents.length - 2} more
+                    +{hidden} more
                   </span>
                 )}
               </div>
