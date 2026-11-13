@@ -1,8 +1,10 @@
+const path = require('path');
 const crypto = require('crypto');
 const prisma = require('../prisma');
 const { parsePhDate } = require('../utils/phTime');
 const { readReceipt, toReceiptFields, isReaderConfigured } = require('../utils/receiptReader');
-const { receiptPath, removeReceiptFile } = require('../middleware/upload');
+const { receiptPath, removeReceiptFile, photoPath } = require('../middleware/upload');
+const { fileBase, combinePdf, sendPdf, sendZip } = require('../utils/combineFiles');
 const { photosForProject } = require('./photoController');
 const { isStaff } = require('../utils/roles');
 
@@ -47,6 +49,10 @@ const includeOpts = {
     },
   },
   checklistItems: { orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }] },
+  prFiles: {
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, originalName: true, mimeType: true, uploadedByName: true, createdAt: true },
+  },
 };
 
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -90,7 +96,7 @@ function canSeeProposed(user) {
 }
 
 function stripInternal(project) {
-  const { deletionRequests, liquidationFiles, amountSpent, remainingBudget, receiptsWithoutAmount, receiptReading, ...rest } = project;
+  const { deletionRequests, liquidationFiles, amountSpent, remainingBudget, receiptsWithoutAmount, receiptReading, prFiles, ...rest } = project;
   return rest;
 }
 
@@ -489,6 +495,118 @@ async function deleteLiquidationFile(req, res, next) {
   }
 }
 
+// ---------- Purchase Request files (scanned or signed PR forms) ----------
+
+// POST /api/projects/:id/pr-files — SK Admin, while the project is open. multipart "files".
+async function addPrFiles(req, res, next) {
+  const files = req.files || [];
+  const discard = () => files.forEach((f) => removeReceiptFile(f.filename));
+  try {
+    const r = await loadOpen(req.params.id);
+    if (r.error) {
+      discard();
+      return fail(res, r.error);
+    }
+    if (files.length === 0) return res.status(400).json({ message: 'Choose at least one file to upload' });
+    await prisma.purchaseRequestFile.createMany({
+      data: files.map((f) => ({
+        projectId: req.params.id,
+        fileName: f.filename,
+        originalName: f.originalname,
+        mimeType: f.mimetype,
+        uploadedById: req.user.id,
+        uploadedByName: req.user.name,
+      })),
+    });
+    const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: includeOpts });
+    res.status(201).json({ project: withInfo(project) });
+  } catch (err) {
+    discard();
+    next(err);
+  }
+}
+
+// GET /api/projects/:id/pr-files/:fileId — SK side.
+async function getPrFile(req, res, next) {
+  try {
+    const file = await prisma.purchaseRequestFile.findUnique({ where: { id: req.params.fileId } });
+    if (!file || file.projectId !== req.params.id) return res.status(404).json({ message: 'File not found' });
+    res.type(file.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.originalName || 'purchase-request')}`);
+    res.sendFile(receiptPath(file.fileName), (err) => {
+      if (err && !res.headersSent) res.status(404).json({ message: 'The file is missing' });
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// DELETE /api/projects/:id/pr-files/:fileId — SK Admin, while the project is open.
+async function deletePrFile(req, res, next) {
+  try {
+    const r = await loadOpen(req.params.id);
+    if (r.error) return fail(res, r.error);
+    const file = await prisma.purchaseRequestFile.findUnique({ where: { id: req.params.fileId } });
+    if (!file || file.projectId !== req.params.id) return res.status(404).json({ message: 'File not found' });
+    await prisma.purchaseRequestFile.delete({ where: { id: file.id } });
+    removeReceiptFile(file.fileName);
+    const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: includeOpts });
+    res.json({ project: withInfo(project) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ---------- Downloads (SK side; also for archived and deleted projects, view only) ----------
+
+const NOTHING = 'No files to download.';
+
+// GET /api/projects/:id/download/receipt-liquidation — all receipts as one PDF, oldest first.
+// GET /api/projects/:id/download/purchase-request — all PR files as one PDF, oldest first.
+function downloadCombined(model, section) {
+  return async (req, res, next) => {
+    try {
+      const project = await prisma.project.findUnique({ where: { id: req.params.id }, select: { title: true } });
+      if (!project) return res.status(404).json({ message: 'Project not found' });
+      const files = await prisma[model].findMany({
+        where: { projectId: req.params.id },
+        orderBy: { createdAt: 'asc' },
+        select: { fileName: true, originalName: true },
+      });
+      if (files.length === 0) return res.status(404).json({ message: NOTHING });
+      const pdf = await combinePdf(files.map((f) => ({ path: receiptPath(f.fileName), originalName: f.originalName })));
+      sendPdf(res, pdf, `${fileBase(project.title)}_${section}.pdf`);
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+const downloadLiquidation = downloadCombined('liquidationFile', 'Receipt_Liquidation');
+const downloadPurchaseRequest = downloadCombined('purchaseRequestFile', 'Purchase_Request');
+
+// GET /api/projects/:id/download/pictures — every picture of the project as one ZIP.
+async function downloadPictures(req, res, next) {
+  try {
+    const project = await prisma.project.findUnique({ where: { id: req.params.id }, select: { title: true } });
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+    const photos = await prisma.photo.findMany({
+      where: { projectId: req.params.id },
+      orderBy: { createdAt: 'asc' },
+      select: { fileName: true },
+    });
+    if (photos.length === 0) return res.status(404).json({ message: NOTHING });
+    const base = fileBase(project.title);
+    const width = Math.max(2, String(photos.length).length);
+    const entries = photos.map((p, i) => ({
+      path: photoPath(p.fileName),
+      name: `${base}_Picture_${String(i + 1).padStart(width, '0')}${path.extname(p.fileName) || '.jpg'}`,
+    }));
+    await sendZip(res, entries, `${base}_Pictures.zip`);
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ---------- Checklist (Ongoing, optional) ----------
 
 async function projectWithInfo(id) {
@@ -773,6 +891,12 @@ module.exports = {
   addLiquidation,
   getLiquidationFile,
   updateLiquidationFile,
+  addPrFiles,
+  getPrFile,
+  deletePrFile,
+  downloadLiquidation,
+  downloadPurchaseRequest,
+  downloadPictures,
   deleteLiquidationFile,
   addChecklistItem,
   updateChecklistItem,

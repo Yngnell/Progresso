@@ -11,6 +11,7 @@ import PhotoGallery from '../../components/PhotoGallery';
 import DeletionRequestModal from '../../components/DeletionRequestModal';
 import ProjectReviewPanel from '../../components/ProjectReviewPanel';
 import ConfirmDialog, { useConfirm } from '../../components/ConfirmDialog';
+import DownloadButton from '../../components/DownloadButton';
 import { formatPeso, formatPeso2, formatDate, formatDateTime, toDateTimeLocal } from '../../utils/format';
 import { isAdmin, isManager, isWorker } from '../../utils/roles';
 
@@ -249,10 +250,20 @@ export default function AdminProjectDetail() {
             )}
           </Card>
 
-          {/* Purchase requests (the sheet filled in on the Project Request form) */}
-          {(project.requestItems || []).length > 0 && (
+          {/* Purchase requests (the sheet filled in on the Project Request form, and the
+              scanned or signed PR files) */}
+          {((project.requestItems || []).length > 0 || (project.prFiles || []).length > 0 || (isSkAdmin && !viewOnly)) && (
             <Card className="p-6">
-              <h2 className={cardTitle}>Purchase requests</h2>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <h2 className={cardTitle}>Purchase requests</h2>
+                <DownloadButton
+                  empty={(project.prFiles || []).length === 0}
+                  onDownload={() => projectsApi.downloadSection(project, 'purchase-request')}
+                  onError={(text) => onFail(text)(null)}
+                />
+              </div>
+              {(project.requestItems || []).length > 0 && (
+              <>
               <p className="mt-1 text-sm text-slate-600">The project budget is the total of these requests.</p>
               <table className="table-notebook table-stack mt-3">
                 <thead>
@@ -286,6 +297,9 @@ export default function AdminProjectDetail() {
                   </tr>
                 </tfoot>
               </table>
+              </>
+              )}
+              <PrFiles project={project} canEdit={isSkAdmin && !viewOnly} onDone={refresh} onFail={onFail} />
             </Card>
           )}
 
@@ -309,7 +323,14 @@ export default function AdminProjectDetail() {
 
           {/* Pictures (also shown on the public project page) */}
           <Card className="p-6">
-            <h2 className={cardTitle}>Pictures</h2>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <h2 className={cardTitle}>Pictures</h2>
+              <DownloadButton
+                empty={(project.photos || []).length === 0}
+                onDownload={() => projectsApi.downloadSection(project, 'pictures')}
+                onError={(text) => onFail(text)(null)}
+              />
+            </div>
             <p className="mt-1 mb-4 text-sm text-slate-600">
               Pictures of the work appear on the public project page so residents can see it.
               The uploader and the SK Admin can delete a picture.
@@ -663,7 +684,14 @@ function Liquidation({ project, canEdit, onDone, onFail }) {
   }
   return (
     <Card className="p-6">
-      <h2 className={cardTitle}>Receipt liquidation</h2>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h2 className={cardTitle}>Receipt liquidation</h2>
+        <DownloadButton
+          empty={files.length === 0}
+          onDownload={() => projectsApi.downloadSection(project, 'receipt-liquidation')}
+          onError={(text) => onFail(text)(null)}
+        />
+      </div>
       <p className="mt-1 text-sm text-slate-600">
         Receipts as JPG, PNG or PDF (up to 5 MB each). At least one file is required before the project can be
         marked as completed.
@@ -760,6 +788,93 @@ function Liquidation({ project, canEdit, onDone, onFail }) {
         />
       )}
     </Card>
+  );
+}
+
+// Scanned or signed Purchase Request forms (JPG, PNG or PDF), oldest first. The SK Admin adds
+// and removes them while the project is open; everyone on the SK side can view them.
+function PrFiles({ project, canEdit, onDone, onFail }) {
+  const [fileKey, setFileKey] = useState(0); // changing it clears the file input
+  const [ask, askDialog] = useConfirm();
+  const files = project.prFiles || [];
+  const upload = useMutation({
+    mutationFn: (list) => projectsApi.uploadPrFiles(project.id, list),
+    onSuccess: (res, list) => {
+      setFileKey((k) => k + 1);
+      onDone(res, { note: `${list.length} Purchase Request file${list.length === 1 ? '' : 's'} uploaded.` });
+    },
+    onError: (err) => {
+      setFileKey((k) => k + 1);
+      onFail('Could not upload the files')(err);
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (file) => projectsApi.deletePrFile(project.id, file.id),
+    onSuccess: (res, file) => onDone(res, { note: `"${file.originalName}" was deleted.` }),
+    onError: onFail('Could not delete the file'),
+  });
+  async function view(fileId) {
+    try {
+      await projectsApi.openPrFile(project.id, fileId);
+    } catch (err) {
+      onFail('Could not open the file. It may be missing.')(err);
+    }
+  }
+  return (
+    <div className="mt-5 border-t border-line pt-4">
+      <h3 className="text-sm font-semibold text-slate-700">Purchase Request files</h3>
+      <p className="mt-0.5 text-sm text-slate-600">The scanned or signed PR forms, as JPG, PNG or PDF (up to 5 MB each).</p>
+      {canEdit && (
+        <label className="btn btn-secondary mt-3 cursor-pointer px-3 py-1.5 text-sm focus-within:ring-2 focus-within:ring-brand-500">
+          <Upload size={16} strokeWidth={1.75} aria-hidden="true" />
+          {upload.isPending ? 'Uploading…' : 'Upload files'}
+          <input
+            key={fileKey}
+            type="file"
+            multiple
+            className="sr-only"
+            accept="image/jpeg,image/png,application/pdf"
+            aria-label="Upload Purchase Request files"
+            disabled={upload.isPending}
+            onChange={(e) => {
+              const list = [...(e.target.files || [])];
+              if (list.length > 0) upload.mutate(list);
+            }}
+          />
+        </label>
+      )}
+      {files.length === 0 ? (
+        <p className="mt-3 text-sm text-slate-600">No Purchase Request files uploaded yet.</p>
+      ) : (
+        <ul className="mt-3 divide-y divide-slate-100">
+          {files.map((f) => (
+            <li key={f.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+              <FileText size={18} strokeWidth={1.75} className="shrink-0 text-slate-500" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate font-medium text-slate-800" title={f.originalName}>
+                {f.originalName}
+              </span>
+              <span className="text-sm text-slate-500">{formatDate(f.createdAt)}</span>
+              <button type="button" className="text-sm font-semibold text-brand-700 hover:text-brand-800" onClick={() => view(f.id)}>
+                View
+              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-red-600 hover:text-red-700"
+                  disabled={remove.isPending}
+                  onClick={async () => {
+                    if (await ask(`Are you sure you want to delete "${f.originalName}"?`)) remove.mutate(f);
+                  }}
+                >
+                  Delete
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {askDialog}
+    </div>
   );
 }
 

@@ -26,7 +26,7 @@ const upload = multer({
   limits: { fileSize: MAX_SIZE, files: MAX_FILES },
   fileFilter: (_req, file, cb) => {
     if (!ALLOWED_TYPES[file.mimetype]) {
-      const err = new Error('Liquidation files must be JPG, PNG or PDF');
+      const err = new Error('Files must be JPG, PNG or PDF');
       err.status = 400;
       return cb(err);
     }

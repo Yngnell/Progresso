@@ -11,6 +11,12 @@ const {
   addLiquidation,
   getLiquidationFile,
   updateLiquidationFile,
+  addPrFiles,
+  getPrFile,
+  deletePrFile,
+  downloadLiquidation,
+  downloadPurchaseRequest,
+  downloadPictures,
   deleteLiquidationFile,
   addChecklistItem,
   updateChecklistItem,
@@ -60,6 +66,16 @@ router.post('/:id/complete', protect, requireSkAdmin, completeProject);
 router.post('/:id/hold', protect, requireSkAdmin, holdProject);
 router.post('/:id/resume', protect, requireSkAdmin, resumeProject);
 router.post('/:id/archive-hold', protect, requireSkAdmin, archiveHeldProject);
+
+// Purchase Request files (scanned or signed PR forms): the SK Admin adds and removes them.
+router.post('/:id/pr-files', protect, requireSkAdmin, liquidationUpload, addPrFiles);
+router.delete('/:id/pr-files/:fileId', protect, requireSkAdmin, deletePrFile);
+router.get('/:id/pr-files/:fileId', protect, requireStaff, getPrFile);
+
+// Downloads: receipts and PR files as one PDF each, pictures as one ZIP (the SK side).
+router.get('/:id/download/receipt-liquidation', protect, requireStaff, downloadLiquidation);
+router.get('/:id/download/purchase-request', protect, requireStaff, downloadPurchaseRequest);
+router.get('/:id/download/pictures', protect, requireStaff, downloadPictures);
 
 // Viewing a liquidation file: the SK side (also from Archives, view only).
 router.get('/:id/liquidation/:fileId', protect, requireStaff, getLiquidationFile);

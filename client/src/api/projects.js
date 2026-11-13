@@ -2,6 +2,18 @@
 // Project Request -> Proposed -> Planning -> Ongoing -> Completed (or Proposed -> Cancelled).
 import api from './axios';
 
+// The project name as a file name, the same way the server writes it:
+// "SK Basketball League 2026" -> "SK_Basketball_League_2026".
+export function downloadBase(title) {
+  const base = String(title || '')
+    .replace(/[\\/:*?"<>|#%&{}$!'@+`=]/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^[_.]+|[_.]+$/g, '')
+    .slice(0, 80);
+  return base || 'Project';
+}
+
 export const projectsApi = {
   // Active projects (Proposed, Planning, Ongoing, On Hold); { archive: 'completed' |
   // 'cancelled' | 'onhold' | 'deleted' } lists one tab of Archives.
@@ -37,6 +49,44 @@ export const projectsApi = {
       if (tab) tab.close();
       throw err;
     }
+  },
+  // Purchase Request files (scanned or signed PR forms): SK Admin adds and removes them.
+  uploadPrFiles: (id, files) => {
+    const formData = new FormData();
+    [...files].forEach((f) => formData.append('files', f));
+    return api.post(`/projects/${id}/pr-files`, formData).then((r) => r.data);
+  },
+  deletePrFile: (id, fileId) => api.delete(`/projects/${id}/pr-files/${fileId}`).then((r) => r.data),
+  openPrFile: async (id, fileId) => {
+    const tab = window.open('', '_blank'); // opened first so the browser allows the pop-up
+    try {
+      const res = await api.get(`/projects/${id}/pr-files/${fileId}`, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      if (tab) tab.location.href = url;
+      else window.location.href = url;
+    } catch (err) {
+      if (tab) tab.close();
+      throw err;
+    }
+  },
+  // Downloads of a section: 'receipt-liquidation' | 'purchase-request' (one PDF each) or
+  // 'pictures' (one ZIP). Saves the file as e.g. ProjectName_Receipt_Liquidation.pdf.
+  downloadSection: async (project, section) => {
+    const res = await api.get(`/projects/${project.id}/download/${section}`, { responseType: 'blob' });
+    const base = downloadBase(project.title);
+    const name = {
+      'receipt-liquidation': `${base}_Receipt_Liquidation.pdf`,
+      'purchase-request': `${base}_Purchase_Request.pdf`,
+      pictures: `${base}_Pictures.zip`,
+    }[section];
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
   },
   // SK Admin, Ongoing: the optional checklist
   addChecklistItem: (id, label) => api.post(`/projects/${id}/checklist`, { label }).then((r) => r.data),
