@@ -1,13 +1,14 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import OfficialAvatar from './OfficialAvatar';
 
-// The Sangguniang Kabataan Officials as a 3-level pyramid:
-//   top:    the SK Chairperson (centered)
-//   middle: the SK Secretary and the SK Treasurer (side by side)
-//   bottom: the SK Kagawads (side by side, wrapping to more rows when needed)
-// Every card is the same size. The connecting lines are drawn from the cards' real
-// positions (measured after layout), so they stay right when a row wraps or, on a phone,
-// when the levels stack. Used on the public SK Officials page and in Settings.
+// The Sangguniang Kabataan Officials as a 1-2-3-4 pyramid:
+//   row 1: the SK Chairperson (centered)
+//   row 2: the SK Secretary and the SK Treasurer (side by side)
+//   row 3 and 4: the SK Kagawads, 3 then 4 (more Kagawads continue with 5, 6, ...)
+// Every row is centered and joined to the row above. Every card is the same size. The
+// connecting lines are drawn from the cards' real positions (measured after layout), so they
+// stay right when a row wraps on a narrow screen or, on a phone, when the rows stack.
+// Used on the public SK Officials page and in Settings.
 
 const isChair = (o) => /chair/i.test(o.position || '');
 const isSecretary = (o) => /secretary/i.test(o.position || '');
@@ -16,8 +17,13 @@ const isTreasurer = (o) => /treasurer/i.test(o.position || '');
 export function pyramidLevels(officials) {
   const top = officials.filter(isChair);
   const middle = [...officials.filter(isSecretary), ...officials.filter((o) => !isSecretary(o) && isTreasurer(o))];
-  const bottom = officials.filter((o) => !isChair(o) && !isSecretary(o) && !isTreasurer(o));
-  return [top, middle, bottom].filter((level) => level.length > 0);
+  const kagawads = officials.filter((o) => !isChair(o) && !isSecretary(o) && !isTreasurer(o));
+  // The Kagawads fill rows of 3, then 4, then 5, ... so each row is one wider than the last.
+  const rows = [];
+  for (let start = 0, size = 3; start < kagawads.length; start += size, size += 1) {
+    rows.push(kagawads.slice(start, start + size));
+  }
+  return [top, middle, ...rows].filter((level) => level.length > 0);
 }
 
 function OfficialCard({ official }) {
