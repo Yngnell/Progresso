@@ -349,6 +349,11 @@ model LiquidationFile {
   mimeType       String
   uploadedById   String?
   uploadedByName String?
+  // What the receipt says: read by Claude when it is uploaded, or typed by the SK Admin.
+  amount         Decimal? @db.Decimal(12, 2)
+  receiptDate    DateTime?
+  storeName      String?
+  readStatus     String?  // PENDING (being read) | READ (read automatically) | FAILED (could not be read) | MANUAL (typed or corrected)
   createdAt      DateTime @default(now())
 
   @@index([projectId])

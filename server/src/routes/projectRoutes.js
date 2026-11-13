@@ -10,6 +10,7 @@ const {
   setSchedule,
   addLiquidation,
   getLiquidationFile,
+  updateLiquidationFile,
   deleteLiquidationFile,
   addChecklistItem,
   updateChecklistItem,
@@ -49,6 +50,7 @@ router.put('/:id/review', protect, restrictTo('CHAIRMAN'), reviewProject);
 // between: the SK Admin account only.
 router.put('/:id/schedule', protect, requireSkAdmin, setSchedule);
 router.post('/:id/liquidation', protect, requireSkAdmin, liquidationUpload, addLiquidation);
+router.put('/:id/liquidation/:fileId', protect, requireSkAdmin, updateLiquidationFile);
 router.delete('/:id/liquidation/:fileId', protect, requireSkAdmin, deleteLiquidationFile);
 router.post('/:id/checklist', protect, requireSkAdmin, addChecklistItem);
 router.put('/:id/checklist/:itemId', protect, requireSkAdmin, updateChecklistItem);

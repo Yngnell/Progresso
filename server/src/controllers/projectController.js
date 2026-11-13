@@ -1,5 +1,7 @@
+const crypto = require('crypto');
 const prisma = require('../prisma');
 const { parsePhDate } = require('../utils/phTime');
+const { readReceipt, toReceiptFields, isReaderConfigured } = require('../utils/receiptReader');
 const { receiptPath, removeReceiptFile } = require('../middleware/upload');
 const { photosForProject } = require('./photoController');
 const { isStaff } = require('../utils/roles');
@@ -32,10 +34,34 @@ const includeOpts = {
   requestItems: { orderBy: { displayOrder: 'asc' } },
   liquidationFiles: {
     orderBy: { createdAt: 'asc' },
-    select: { id: true, originalName: true, mimeType: true, uploadedByName: true, createdAt: true },
+    select: {
+      id: true,
+      originalName: true,
+      mimeType: true,
+      uploadedByName: true,
+      createdAt: true,
+      amount: true,
+      receiptDate: true,
+      storeName: true,
+      readStatus: true,
+    },
   },
   checklistItems: { orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }] },
 };
+
+const round2 = (n) => Math.round(n * 100) / 100;
+
+// Receipt amounts: what was spent so far and what goes back (budget - spent).
+function liquidationTotals(project) {
+  const files = project.liquidationFiles || [];
+  const spent = round2(files.reduce((sum, f) => sum + (f.amount == null ? 0 : Number(f.amount)), 0));
+  return {
+    amountSpent: spent,
+    amountToRefund: round2(Number(project.budget || 0) - spent),
+    receiptsWithoutAmount: files.filter((f) => f.amount == null).length,
+    receiptReading: isReaderConfigured(),
+  };
+}
 
 // What still stands between an Ongoing project and "Project Completed".
 function completionInfo(project) {
@@ -54,7 +80,7 @@ function completionInfo(project) {
   };
 }
 
-const withInfo = (project) => ({ ...project, ...completionInfo(project) });
+const withInfo = (project) => ({ ...project, ...completionInfo(project), ...liquidationTotals(project) });
 
 // The SK side (admin, chairman, officials) sees everything; the public never sees
 // proposals or rejected projects, and never the liquidation files.
@@ -63,7 +89,7 @@ function canSeeProposed(user) {
 }
 
 function stripInternal(project) {
-  const { deletionRequests, liquidationFiles, ...rest } = project;
+  const { deletionRequests, liquidationFiles, amountSpent, amountToRefund, receiptsWithoutAmount, receiptReading, ...rest } = project;
   return rest;
 }
 
@@ -340,7 +366,25 @@ async function setSchedule(req, res, next) {
 
 // ---------- Receipt liquidation (Ongoing) ----------
 
+// Reads new receipts one at a time in the background and saves what each says. A receipt that
+// cannot be read is marked FAILED for the SK Admin to type; nothing here fails the upload.
+async function readReceiptsLater(files) {
+  for (const f of files) {
+    let fields;
+    try {
+      fields = toReceiptFields(await readReceipt(receiptPath(f.fileName), f.mimeType));
+    } catch (err) {
+      console.error('Receipt reading failed:', err.message);
+      fields = { readStatus: 'FAILED' };
+    }
+    // Skip it if the file was deleted, or the SK Admin typed the amount, while it was being read.
+    await prisma.liquidationFile.updateMany({ where: { id: f.id, readStatus: 'PENDING' }, data: fields }).catch(() => {});
+  }
+}
+
 // POST /api/projects/:id/liquidation — SK Admin. multipart "files" (JPG, PNG or PDF, many).
+// When receipt reading is set up (ANTHROPIC_API_KEY), each receipt is read by Claude after the
+// upload (PENDING until then); otherwise the SK Admin types the amounts.
 async function addLiquidation(req, res, next) {
   const files = req.files || [];
   const discard = () => files.forEach((f) => removeReceiptFile(f.filename));
@@ -351,16 +395,19 @@ async function addLiquidation(req, res, next) {
       return fail(res, r.error);
     }
     if (files.length === 0) return res.status(400).json({ message: 'Choose at least one file to upload' });
-    await prisma.liquidationFile.createMany({
-      data: files.map((f) => ({
-        projectId: req.params.id,
-        fileName: f.filename,
-        originalName: f.originalname,
-        mimeType: f.mimetype,
-        uploadedById: req.user.id,
-        uploadedByName: req.user.name,
-      })),
-    });
+    const reading = isReaderConfigured();
+    const rows = files.map((f) => ({
+      id: crypto.randomUUID(),
+      projectId: req.params.id,
+      fileName: f.filename,
+      originalName: f.originalname,
+      mimeType: f.mimetype,
+      uploadedById: req.user.id,
+      uploadedByName: req.user.name,
+      readStatus: reading ? 'PENDING' : null,
+    }));
+    await prisma.liquidationFile.createMany({ data: rows });
+    if (reading) readReceiptsLater(rows).catch((err) => console.error('Receipt reading failed:', err.message));
     const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: includeOpts });
     res.status(201).json({ project: withInfo(project) });
   } catch (err) {
@@ -381,6 +428,41 @@ async function getLiquidationFile(req, res, next) {
     res.sendFile(receiptPath(file.fileName), (err) => {
       if (err && !res.headersSent) res.status(404).json({ message: 'The file is missing' });
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PUT /api/projects/:id/liquidation/:fileId — SK Admin, while Ongoing. { amount, receiptDate?, storeName? }
+// Types or corrects what a receipt says.
+async function updateLiquidationFile(req, res, next) {
+  try {
+    const r = await loadAtStage(req.params.id, 'ONGOING', 'Changing a receipt');
+    if (r.error) return fail(res, r.error);
+    const file = await prisma.liquidationFile.findUnique({ where: { id: req.params.fileId } });
+    if (!file || file.projectId !== req.params.id) {
+      return res.status(404).json({ message: 'File not found' });
+    }
+    const amount = Number(req.body?.amount);
+    if (req.body?.amount === '' || req.body?.amount == null || !Number.isFinite(amount) || amount < 0) {
+      return res.status(400).json({ message: 'Enter the receipt amount as a number that is not negative' });
+    }
+    let receiptDate = null;
+    if (req.body?.receiptDate) {
+      receiptDate = new Date(`${String(req.body.receiptDate).slice(0, 10)}T00:00:00+08:00`);
+      if (Number.isNaN(receiptDate.getTime())) return res.status(400).json({ message: 'Enter a valid receipt date' });
+    }
+    await prisma.liquidationFile.update({
+      where: { id: file.id },
+      data: {
+        amount: round2(amount),
+        receiptDate,
+        storeName: String(req.body?.storeName || '').trim().slice(0, 120) || null,
+        readStatus: 'MANUAL',
+      },
+    });
+    const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: includeOpts });
+    res.json({ project: withInfo(project) });
   } catch (err) {
     next(err);
   }
@@ -689,6 +771,7 @@ module.exports = {
   setSchedule,
   addLiquidation,
   getLiquidationFile,
+  updateLiquidationFile,
   deleteLiquidationFile,
   addChecklistItem,
   updateChecklistItem,
