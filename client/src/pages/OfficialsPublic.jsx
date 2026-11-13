@@ -1,10 +1,11 @@
-import OfficialAvatar from '../components/OfficialAvatar';
 import { useQuery } from '@tanstack/react-query';
 import { officialsApi } from '../api/officials';
-import { Card, EmptyState } from '../components/ui';
-import { formatDate } from '../utils/format';
+import { EmptyState } from '../components/ui';
 import PageHeader from '../components/PageHeader';
+import OfficialsPyramid from '../components/OfficialsPyramid';
 
+// The Sangguniang Kabataan Officials, as a pyramid: the SK Chairperson, then the SK
+// Secretary and SK Treasurer, then the SK Kagawads.
 export default function OfficialsPublic() {
   const { data, isLoading } = useQuery({
     queryKey: ['officials', 'active'],
@@ -15,8 +16,8 @@ export default function OfficialsPublic() {
   return (
     <div className="mx-auto max-w-content px-4 py-10 sm:px-8">
       <PageHeader
-        title="Barangay Officials"
-        description="Meet the Sangguniang Kabataan serving our community."
+        title="Sangguniang Kabataan Officials"
+        description="Meet the SK Officials serving our community."
       />
 
       <div className="mt-8">
@@ -24,31 +25,11 @@ export default function OfficialsPublic() {
           <p className="text-slate-600">Loading…</p>
         ) : officials.length === 0 ? (
           <EmptyState
-            title="No officials listed yet"
-            description="The officials directory will appear here once published."
+            title="No SK Officials listed yet"
+            description="The SK Officials will appear here once they are added."
           />
         ) : (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {officials.map((o) => (
-              <Card key={o.id} className="flex flex-col items-center p-6 text-center">
-                <OfficialAvatar
-                  official={o}
-                  className="h-20 w-20 ring-[3px] ring-ink"
-                  letterClass="font-display text-4xl font-bold text-brand-800"
-                />
-                <h3 className="mt-4 text-lg font-bold text-slate-900">{o.name}</h3>
-                <p className="font-semibold text-brand-700">{o.position}</p>
-                {o.committee && <p className="mt-1 text-sm text-slate-600">{o.committee}</p>}
-                {o.termStart && (
-                  <p className="mt-3 text-sm text-slate-600">
-                    Term: {formatDate(o.termStart)}
-                    {o.termEnd ? ` – ${formatDate(o.termEnd)}` : ' – present'}
-                  </p>
-                )}
-                {o.contact && <p className="mt-1 text-sm text-slate-600">{o.contact}</p>}
-              </Card>
-            ))}
-          </div>
+          <OfficialsPyramid officials={officials} />
         )}
       </div>
     </div>

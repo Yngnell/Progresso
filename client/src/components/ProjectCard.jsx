@@ -63,7 +63,7 @@ export function ProjectCard({ project, footer, to, notice }) {
       <dl className="mt-4 border-t border-slate-100 px-5 py-4">
         <div>
           <dt className="text-sm text-slate-600">Budget</dt>
-          <dd className="font-display text-xl text-slate-900">
+          <dd className="font-number text-xl text-slate-900">
             {formatPeso(project.budget)}
           </dd>
         </div>

@@ -108,6 +108,9 @@ model Official {
   termStart    DateTime?
   termEnd      DateTime?
   bio          String?
+  // Optional photo shown on the officials cards (stored in uploads/photos); none = the initial.
+  photoFile    String?
+  photoType    String?
   displayOrder Int       @default(0)
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())

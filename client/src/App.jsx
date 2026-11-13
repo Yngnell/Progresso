@@ -16,7 +16,6 @@ import MeetingQrList from './pages/MeetingQrList';
 import ProjectsPublic from './pages/ProjectsPublic';
 import ProjectDetailPublic from './pages/ProjectDetailPublic';
 import OfficialsPublic from './pages/OfficialsPublic';
-import EventsPublic from './pages/EventsPublic';
 
 import Dashboard from './pages/admin/Dashboard';
 import AdminProjects from './pages/admin/AdminProjects';
@@ -37,7 +36,8 @@ export default function App() {
         <Route path="/projects" element={<ProjectsPublic />} />
         <Route path="/projects/:id" element={<ProjectDetailPublic />} />
         <Route path="/officials" element={<OfficialsPublic />} />
-        <Route path="/events" element={<EventsPublic />} />
+        {/* Events are no longer on the public site: old links go to the home page. */}
+        <Route path="/events" element={<Navigate to="/" replace />} />
         <Route
           path="/attendance-qr"
           element={

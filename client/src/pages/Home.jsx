@@ -3,13 +3,9 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight } from 'lucide-react';
 import { officialsApi } from '../api/officials';
-import { eventsApi } from '../api/events';
 import { projectsApi } from '../api/projects';
-import { EVENT_TYPE, formatDateTime } from '../utils/format';
-import { Button, Card, Badge } from '../components/ui';
+import { Button, Card } from '../components/ui';
 import { StageSteps, StatusRibbon } from '../components/Roundel';
-import EventTypeIcon from '../components/EventTypeIcon';
-import DateTile from '../components/DateTile';
 
 // Opening: what the site is for on the left, the proof on the right. The panel lists
 // real projects with their stage, so a resident sees the system working at once.
@@ -125,64 +121,26 @@ export default function Home() {
     queryKey: ['officials', 'active'],
     queryFn: () => officialsApi.list({ active: 'true' }),
   });
-  const { data: eventsData } = useQuery({
-    queryKey: ['events', 'home'],
-    queryFn: () => eventsApi.list({ upcoming: 'true' }),
-  });
   const { data: projectsData, isLoading: projectsLoading } = useQuery({
     queryKey: ['projects', 'home'],
     queryFn: () => projectsApi.list({ status: 'ONGOING' }),
   });
 
   const officials = (officialsData?.officials || []).slice(0, 4);
-  const upcomingEvents = (eventsData?.events || []).slice(0, 3);
   const ongoing = (projectsData?.projects || []).slice(0, 3);
 
   return (
     <div>
       <Hero projects={ongoing} loading={projectsLoading} />
 
-      {/* Upcoming events */}
-      <section className="mx-auto max-w-content px-4 py-12 sm:px-8">
-        <SectionHead
-          title="Upcoming Events"
-          subtitle="Meetings, sessions, and activities."
-          to="/events"
-        />
-        {upcomingEvents.length > 0 ? (
-          <div className="space-y-3">
-            {upcomingEvents.map((e) => {
-              const t = EVENT_TYPE[e.type] || { label: e.type };
-              const date = new Date(e.startAt);
-              return (
-                <Card key={e.id} className="flex items-center gap-4 p-4">
-                  <DateTile date={date} />
-                  <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-2 truncate font-medium text-ink">
-                      <EventTypeIcon type={e.type} className="text-pine" />
-                      <span className="truncate">{e.title}</span>
-                    </p>
-                    <p className="text-sm text-slate-600">{formatDateTime(e.startAt)}</p>
-                  </div>
-                  <Badge tone={t.tone} className="hidden sm:inline-flex">
-                    {t.label}
-                  </Badge>
-                </Card>
-              );
-            })}
-          </div>
-        ) : (
-          <Card className="p-6 text-slate-600">No upcoming events scheduled. Check back soon.</Card>
-        )}
-      </section>
-
-      {/* Officials preview */}
-      <section className="border-t border-line">
+      {/* SK Officials preview */}
+      <section>
         <div className="mx-auto max-w-content px-4 py-12 sm:px-8">
           <SectionHead
-            title="Meet the Officials"
+            title="Meet the SK Officials"
             subtitle="Your Sangguniang Kabataan council."
             to="/officials"
+            linkLabel="View all SK Officials"
           />
           {officials.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

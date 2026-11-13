@@ -96,7 +96,7 @@ export function StatusDonut({ data = [], colors, labels }) {
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="font-display text-4xl leading-none text-slate-900">
+          <span className="font-number text-4xl leading-none text-slate-900">
             {total}
           </span>
           <span className="text-sm text-slate-600">{total === 1 ? 'project' : 'projects'}</span>
@@ -111,7 +111,7 @@ export function StatusDonut({ data = [], colors, labels }) {
               aria-hidden="true"
             />
             <span className="truncate text-sm font-medium">{labels[d.status]}</span>
-            <span className="ml-auto font-display text-lg leading-none text-slate-900">
+            <span className="font-number ml-auto text-lg leading-none text-slate-900">
               {d.count}
             </span>
           </li>

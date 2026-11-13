@@ -5,9 +5,11 @@ import { settingsApi } from '../../api/settings';
 import { Badge, Button, Input, Modal } from '../ui';
 import { Notice, Section, checkImage, errorText } from './shared';
 import { useConfirm } from '../ConfirmDialog';
+import OfficialAvatar from '../OfficialAvatar';
+import OfficialsPyramid from '../OfficialsPyramid';
 
 // Settings → System (SK Admin only): SK information and logo (printed on the PDF exports)
-// and the SK officials list. The attendance QR defaults are in Meetings.
+// and the Sangguniang Kabataan Officials (pyramid, list and photos). The attendance QR defaults are in Meetings.
 export default function SystemTab() {
   const { data } = useQuery({ queryKey: ['settings'], queryFn: settingsApi.get });
   const settings = data?.settings;
@@ -128,8 +130,8 @@ function SkInfoSection({ settings }) {
 
 const POSITIONS = ['SK Chairperson', 'SK Secretary', 'SK Treasurer', 'SK Kagawad'];
 
-// The SK officials: the names in the meeting attendance dropdown and on the public
-// Officials page. They have no login accounts. Officials are never deleted (their
+// The Sangguniang Kabataan Officials: the names in the meeting attendance dropdown and on
+// the public SK Officials page. They have no login accounts. Officials are never deleted (their
 // attendance stays); one who left is set inactive and leaves the dropdown.
 function OfficialsSection() {
   const qc = useQueryClient();
@@ -145,7 +147,14 @@ function OfficialsSection() {
     setMsg({ ok: true, text });
   };
   const save = useMutation({
-    mutationFn: ({ id, body }) => (id ? settingsApi.updateOfficial(id, body) : settingsApi.createOfficial(body)),
+    // Saves the name/position, then the photo (a new one, or removing it).
+    mutationFn: async ({ id, body, photoFile, removePhoto }) => {
+      const res = id ? await settingsApi.updateOfficial(id, body) : await settingsApi.createOfficial(body);
+      const oid = res.official.id;
+      if (photoFile) await settingsApi.uploadOfficialPhoto(oid, photoFile);
+      else if (removePhoto) await settingsApi.removeOfficialPhoto(oid);
+      return res;
+    },
     onSuccess: (_res, vars) => {
       refresh(vars.okText);
       setEditing(null);
@@ -155,8 +164,8 @@ function OfficialsSection() {
 
   return (
     <Section
-      title="SK officials"
-      description="The names shown in the meeting attendance dropdown and on the public Officials page. Inactive officials are left out of the dropdown; their attendance records stay."
+      title="Sangguniang Kabataan Officials"
+      description="The names and photos shown in the meeting attendance dropdown and on the public SK Officials page. Inactive officials are left out of both; their attendance records stay."
       actions={
         <Button variant="accent" onClick={() => setEditing({})}>
           <Plus size={18} strokeWidth={2} aria-hidden="true" />
@@ -168,6 +177,13 @@ function OfficialsSection() {
       {isLoading ? (
         <p className="text-sm text-slate-600">Loading…</p>
       ) : (
+        <>
+        {/* The active officials as they appear on the public SK Officials page */}
+        {officials.some((o) => o.isActive) && (
+          <div className="mb-6 overflow-hidden rounded-card border border-line bg-paper px-4 py-6">
+            <OfficialsPyramid officials={officials.filter((o) => o.isActive)} />
+          </div>
+        )}
         <div className="-mx-5 overflow-x-auto sm:mx-0">
           <table className="table-notebook table-stack">
             <thead>
@@ -181,7 +197,12 @@ function OfficialsSection() {
             <tbody>
               {officials.map((o) => (
                 <tr key={o.id} className={o.isActive ? '' : 'bg-slate-50 text-slate-500'}>
-                  <td data-label="Name" className="px-5 py-3 font-semibold text-slate-900 sm:px-3">{o.name}</td>
+                  <td data-label="Name" className="px-5 py-3 font-semibold text-slate-900 sm:px-3">
+                    <span className="inline-flex items-center gap-2">
+                      <OfficialAvatar official={o} className="h-8 w-8" letterClass="text-sm font-semibold text-pine" />
+                      {o.name}
+                    </span>
+                  </td>
                   <td data-label="Position" className="px-3 py-3">{o.position}</td>
                   <td data-label="Status" className="px-3 py-3">
                     <Badge tone={o.isActive ? 'green' : 'slate'}>{o.isActive ? 'Active' : 'Inactive'}</Badge>
@@ -221,12 +242,13 @@ function OfficialsSection() {
             </tbody>
           </table>
         </div>
+        </>
       )}
       <OfficialModal
         official={editing}
         busy={save.isPending}
         onClose={() => setEditing(null)}
-        onSave={async (body) => {
+        onSave={async ({ photoFile, removePhoto, ...body }) => {
           const q = editing?.id
             ? 'Are you sure you want to save the changes to this official?'
             : 'Are you sure you want to add this official?';
@@ -234,6 +256,8 @@ function OfficialsSection() {
           save.mutate({
             id: editing?.id,
             body,
+            photoFile,
+            removePhoto,
             okText: editing?.id ? 'The official was updated.' : `${body.name} was added.`,
           });
         }}
@@ -243,14 +267,29 @@ function OfficialsSection() {
   );
 }
 
-// Add an official, or change one's name and position.
+// Add an official, or change one's name, position and photo.
 function OfficialModal({ official, busy, onClose, onSave }) {
   const [name, setName] = useState('');
   const [position, setPosition] = useState('');
+  const [photoFile, setPhotoFile] = useState(null); // a new photo to upload
+  const [removePhoto, setRemovePhoto] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [photoProblem, setPhotoProblem] = useState('');
   useEffect(() => {
     setName(official?.name || '');
     setPosition(official?.position || (official ? 'SK Kagawad' : ''));
+    setPhotoFile(null);
+    setRemovePhoto(false);
+    setPhotoProblem('');
   }, [official]);
+  useEffect(() => {
+    if (!photoFile) return setPreview(null);
+    const url = URL.createObjectURL(photoFile);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photoFile]);
+  // What the card will show: the new photo, the saved one, or the initial.
+  const shown = { ...(official || {}), name: name || official?.name, hasPhoto: Boolean(official?.hasPhoto) && !removePhoto };
   const adding = official && !official.id;
   return (
     <Modal
@@ -263,7 +302,7 @@ function OfficialModal({ official, busy, onClose, onSave }) {
           <Button
             variant="primary"
             disabled={busy || !name.trim() || !position.trim()}
-            onClick={() => onSave({ name: name.trim(), position: position.trim() })}
+            onClick={() => onSave({ name: name.trim(), position: position.trim(), photoFile, removePhoto })}
           >
             {busy ? 'Saving…' : 'Save'}
           </Button>
@@ -273,6 +312,52 @@ function OfficialModal({ official, busy, onClose, onSave }) {
       <div className="space-y-4">
         <Input label="Full name" value={name} onChange={(e) => setName(e.target.value)} required />
         <PositionField value={position} onChange={setPosition} />
+        <div>
+          <p className="label">Photo (optional)</p>
+          <div className="flex flex-wrap items-center gap-4">
+            {preview ? (
+              <img src={preview} alt="New photo" className="h-20 w-20 rounded-full object-cover ring-2 ring-line" />
+            ) : (
+              <OfficialAvatar official={shown} className="h-20 w-20 ring-2 ring-line" letterClass="font-display text-3xl text-pine" />
+            )}
+            <div className="flex flex-wrap gap-2">
+              <label className="btn btn-secondary cursor-pointer px-3 py-1.5 text-sm focus-within:ring-2 focus-within:ring-brand-500">
+                <ImageUp size={16} strokeWidth={1.75} aria-hidden="true" />
+                {official?.hasPhoto || photoFile ? 'Change photo' : 'Upload photo'}
+                <input
+                  type="file"
+                  className="sr-only"
+                  accept="image/jpeg,image/png,image/webp"
+                  aria-label="Official photo"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!file) return;
+                    const problem = checkImage(file);
+                    setPhotoProblem(problem || '');
+                    if (problem) return;
+                    setPhotoFile(file);
+                    setRemovePhoto(false);
+                  }}
+                />
+              </label>
+              {(photoFile || (official?.hasPhoto && !removePhoto)) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (photoFile) setPhotoFile(null);
+                    else setRemovePhoto(true);
+                  }}
+                >
+                  Remove photo
+                </Button>
+              )}
+            </div>
+          </div>
+          <p className="mt-1 text-[13px] text-slate-600">JPG, PNG or WEBP, up to 5 MB. Without a photo the card shows the first letter of the name.</p>
+          {photoProblem && <p className="mt-1 text-sm font-medium text-red-600" role="alert">{photoProblem}</p>}
+        </div>
       </div>
     </Modal>
   );

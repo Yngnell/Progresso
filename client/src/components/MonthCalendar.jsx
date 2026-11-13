@@ -72,7 +72,7 @@ export default function MonthCalendar({
               }`}
             >
               <span
-                className={`flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-1 font-display text-base leading-none ${
+                className={`flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-1 font-number text-base leading-none ${
                   isToday
                     ? 'bg-pine text-white'
                     : isSunday

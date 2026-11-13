@@ -757,15 +757,15 @@ function Liquidation({ project, canEdit, onDone, onFail }) {
         <dl className="mt-4 grid gap-3 border-t border-line pt-4 text-sm sm:grid-cols-3">
           <div>
             <dt className="text-slate-600">Budget</dt>
-            <dd className="font-display text-lg text-slate-900">{formatPeso2(project.budget)}</dd>
+            <dd className="font-number text-lg text-slate-900">{formatPeso2(project.budget)}</dd>
           </div>
           <div>
             <dt className="text-slate-600">Total spent</dt>
-            <dd className="font-display text-lg text-slate-900">{formatPeso2(project.amountSpent)}</dd>
+            <dd className="font-number text-lg text-slate-900">{formatPeso2(project.amountSpent)}</dd>
           </div>
           <div>
             <dt className="text-slate-600">Remaining Budget</dt>
-            <dd className={`font-display text-lg ${project.remainingBudget < 0 ? 'text-red-700' : 'text-slate-900'}`}>
+            <dd className={`font-number text-lg ${project.remainingBudget < 0 ? 'text-red-700' : 'text-slate-900'}`}>
               {formatPeso2(project.remainingBudget)}
             </dd>
           </div>

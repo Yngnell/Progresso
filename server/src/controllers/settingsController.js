@@ -115,7 +115,13 @@ async function getLogo(req, res, next) {
 // The names in the attendance dropdown and on the public Officials page. The SK officials
 // have no login accounts; the SK Admin adds, renames and sets them inactive here.
 
-const OFFICIAL_FIELDS = { id: true, name: true, position: true, isActive: true, displayOrder: true };
+const OFFICIAL_FIELDS = { id: true, name: true, position: true, isActive: true, displayOrder: true, photoFile: true, updatedAt: true };
+
+// What the client needs about the photo: whether there is one, and a version for the cache.
+// The stored file name stays on the server.
+function officialOut({ photoFile, updatedAt, ...o }) {
+  return { ...o, hasPhoto: Boolean(photoFile), photoVersion: new Date(updatedAt).getTime() };
+}
 
 // GET /api/settings/officials — the SK officials.
 async function listOfficials(req, res, next) {
@@ -124,7 +130,7 @@ async function listOfficials(req, res, next) {
       select: OFFICIAL_FIELDS,
       orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
     });
-    res.json({ officials });
+    res.json({ officials: officials.map(officialOut) });
   } catch (err) {
     next(err);
   }
@@ -153,7 +159,7 @@ async function createOfficial(req, res, next) {
     if (error) return res.status(400).json({ message: error });
     data.displayOrder = await prisma.official.count();
     const official = await prisma.official.create({ data, select: OFFICIAL_FIELDS });
-    res.status(201).json({ official });
+    res.status(201).json({ official: officialOut(official) });
   } catch (err) {
     next(err);
   }
@@ -168,7 +174,46 @@ async function updateOfficial(req, res, next) {
     const { data, error } = officialData(req.body, false);
     if (error) return res.status(400).json({ message: error });
     const official = await prisma.official.update({ where: { id: existing.id }, data, select: OFFICIAL_FIELDS });
-    res.json({ official });
+    res.json({ official: officialOut(official) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/settings/officials/:id/photo — SK Admin. multipart "photo" (JPG, PNG or WEBP).
+async function uploadOfficialPhoto(req, res, next) {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'Choose a photo to upload' });
+    const existing = await prisma.official.findUnique({ where: { id: req.params.id }, select: { id: true, photoFile: true } });
+    if (!existing) {
+      removePhotoFile(req.file.filename);
+      return res.status(404).json({ message: 'Official not found' });
+    }
+    const official = await prisma.official.update({
+      where: { id: existing.id },
+      data: { photoFile: req.file.filename, photoType: req.file.mimetype },
+      select: OFFICIAL_FIELDS,
+    });
+    if (existing.photoFile) removePhotoFile(existing.photoFile);
+    res.json({ official: officialOut(official) });
+  } catch (err) {
+    if (req.file) removePhotoFile(req.file.filename);
+    next(err);
+  }
+}
+
+// DELETE /api/settings/officials/:id/photo — back to the initial.
+async function removeOfficialPhoto(req, res, next) {
+  try {
+    const existing = await prisma.official.findUnique({ where: { id: req.params.id }, select: { id: true, photoFile: true } });
+    if (!existing) return res.status(404).json({ message: 'Official not found' });
+    const official = await prisma.official.update({
+      where: { id: existing.id },
+      data: { photoFile: null, photoType: null },
+      select: OFFICIAL_FIELDS,
+    });
+    if (existing.photoFile) removePhotoFile(existing.photoFile);
+    res.json({ official: officialOut(official) });
   } catch (err) {
     next(err);
   }
@@ -183,4 +228,7 @@ module.exports = {
   listOfficials,
   createOfficial,
   updateOfficial,
+  uploadOfficialPhoto,
+  removeOfficialPhoto,
+  officialOut,
 };

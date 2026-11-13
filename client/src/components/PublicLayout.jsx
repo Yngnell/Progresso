@@ -7,8 +7,7 @@ import { Button } from './ui';
 const publicLinks = [
   { to: '/', label: 'Home', end: true },
   { to: '/projects', label: 'Projects' },
-  { to: '/officials', label: 'Officials' },
-  { to: '/events', label: 'Events' },
+  { to: '/officials', label: 'SK Officials' },
 ];
 
 // The seal and the SK's name, used in the header and the footer.

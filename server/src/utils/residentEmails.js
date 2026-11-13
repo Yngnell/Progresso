@@ -28,15 +28,8 @@ function when(date) {
 // One resident-facing item per alert: { title, message, link, linkText }.
 // Returns null for alerts that must not go to the public (e.g. an archived project).
 function publicLine(n) {
-  if (n.event) {
-    const where = n.event.location ? ` at ${n.event.location}` : '';
-    return {
-      title: n.type === 'EVENT_1H' ? `Starting soon: ${n.event.title}` : `Coming up: ${n.event.title}`,
-      message: `${n.event.title} is on ${when(n.event.startAt)}${where}.`,
-      link: `${APP_URL()}/events`,
-      linkText: 'See the events',
-    };
-  }
+  // Events are no longer on the public site, so residents are not emailed about them.
+  if (n.event) return null;
   const p = n.project;
   if (!p || p.archivedAt || p.approvalState !== 'APPROVED') return null;
   const link = `${APP_URL()}/projects/${p.id}`;

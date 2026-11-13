@@ -124,6 +124,7 @@ module.exports = {
   removeReceiptFile,
   photoUpload,
   logoUpload: singleImage('logo'),
+  officialPhotoUpload: singleImage('photo'),
   photoPath,
   removePhotoFile,
   MAX_PHOTOS,

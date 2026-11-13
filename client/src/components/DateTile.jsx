@@ -9,7 +9,7 @@ export default function DateTile({ date, className = '' }) {
       <span className="text-[13px] font-medium uppercase leading-none tracking-wider text-clay-text">
         {d.toLocaleDateString('en-PH', { month: 'short' })}
       </span>
-      <span className="mt-1 font-display text-2xl leading-none text-ink">{d.getDate()}</span>
+      <span className="font-number mt-1 text-2xl leading-none text-ink">{d.getDate()}</span>
     </div>
   );
 }

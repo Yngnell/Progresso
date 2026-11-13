@@ -134,7 +134,7 @@ export default function AdminAttendance() {
           ].map(([label, value]) => (
             <div key={label} className="bg-panel p-4">
               <dt className="section-label">{label}</dt>
-              <dd className="font-display text-4xl text-slate-900">{value}</dd>
+              <dd className="font-number text-4xl text-slate-900">{value}</dd>
             </div>
           ))}
         </dl>

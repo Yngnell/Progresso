@@ -75,7 +75,7 @@ export default function AdminEventDetail() {
         {Object.entries(ATTENDANCE_STATUS).map(([key, v]) => (
           <div key={key} className="bg-panel p-4">
             <dt className="section-label">{v.label}</dt>
-            <dd className="font-display text-4xl text-slate-900">{counts[key] || 0}</dd>
+            <dd className="font-number text-4xl text-slate-900">{counts[key] || 0}</dd>
           </div>
         ))}
       </dl>

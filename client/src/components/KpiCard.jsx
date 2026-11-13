@@ -13,7 +13,7 @@ export default function KpiCard({ label, value, note, meter, tone = 'azure' }) {
   return (
     <Card className="p-5">
       <p className="section-label">{label}</p>
-      <p className="mt-3 font-display text-[40px] leading-none text-ink">{value}</p>
+      <p className="font-number mt-3 text-[36px] leading-none text-ink">{value}</p>
       {pct != null && (
         <div
           className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-100"

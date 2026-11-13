@@ -27,7 +27,7 @@ export default function Unsubscribe() {
   return (
     <AuthShell
       title="Stop update emails"
-      description="You will no longer get news, event and project emails from the SK."
+      description="You will no longer get news and project emails from the SK."
     >
       {state === 'done' ? (
         <p className="rounded-lg bg-green-50 px-3 py-2.5 font-medium text-green-800" role="status">

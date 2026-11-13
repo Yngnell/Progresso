@@ -21,4 +21,11 @@ export const settingsApi = {
   createOfficial: (data) => api.post('/settings/officials', data).then((r) => r.data),
   // { name?, position?, isActive? }
   updateOfficial: (id, data) => api.put(`/settings/officials/${id}`, data).then((r) => r.data),
+  // An official's photo (JPG, PNG or WEBP): upload replaces it, remove goes back to the initial.
+  uploadOfficialPhoto: (id, file) => {
+    const form = new FormData();
+    form.append('photo', file);
+    return api.post(`/settings/officials/${id}/photo`, form).then((r) => r.data);
+  },
+  removeOfficialPhoto: (id) => api.delete(`/settings/officials/${id}/photo`).then((r) => r.data),
 };

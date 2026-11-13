@@ -74,7 +74,7 @@ export default function EventQrCheckin() {
             {status.key === 'open' && (
               <p className="mt-1 text-center text-slate-700">
                 Closes at {formatTime(qr.validUntil)} ·{' '}
-                <span className="font-display text-2xl text-clay-text">{minutesLeft} min</span> left
+                <span className="font-number text-2xl text-clay-text">{minutesLeft} min</span> left
               </p>
             )}
             {status.key !== 'open' && (

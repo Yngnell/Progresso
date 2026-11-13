@@ -47,6 +47,14 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+  /* Big numbers (counts, amounts, dates): the plain body font, semibold, with digits of
+     equal width, so figures are simple and easy to read. Used instead of the serif. */
+  .font-number {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: -0.01em;
+  }
   /* One keyboard focus ring everywhere */
   :focus-visible {
     outline: 2px solid var(--pine);

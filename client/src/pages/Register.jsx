@@ -127,7 +127,7 @@ export default function Register() {
             checked={form.receiveUpdates}
             onChange={(e) => setForm({ ...form, receiveUpdates: e.target.checked })}
           />
-          <span>I would like to receive news, events and project updates by email.</span>
+          <span>I would like to receive news and project updates by email.</span>
         </label>
         <Button
           type="submit"

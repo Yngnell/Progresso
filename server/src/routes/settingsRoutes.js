@@ -10,10 +10,12 @@ const {
   listOfficials,
   createOfficial,
   updateOfficial,
+  uploadOfficialPhoto,
+  removeOfficialPhoto,
 } = require('../controllers/settingsController');
 const { protect } = require('../middleware/auth');
 const { requireSkAdmin } = require('../utils/roles');
-const { logoUpload } = require('../middleware/upload');
+const { logoUpload, officialPhotoUpload } = require('../middleware/upload');
 
 // Public: the SK name, term and logo (printed on reports)
 router.get('/', readSettings);
@@ -26,5 +28,7 @@ router.delete('/logo', protect, requireSkAdmin, removeLogo);
 router.get('/officials', protect, requireSkAdmin, listOfficials);
 router.post('/officials', protect, requireSkAdmin, createOfficial);
 router.put('/officials/:id', protect, requireSkAdmin, updateOfficial);
+router.post('/officials/:id/photo', protect, requireSkAdmin, officialPhotoUpload, uploadOfficialPhoto);
+router.delete('/officials/:id/photo', protect, requireSkAdmin, removeOfficialPhoto);
 
 module.exports = router;
