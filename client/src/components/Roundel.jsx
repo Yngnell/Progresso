@@ -67,8 +67,8 @@ function stepOf(status) {
   }
 }
 
-// Soft colour of each step's label badge: Request gray, Review blue, Approved teal,
-// Ongoing orange, Completed green. A process stopped at a step shows a red badge there.
+// Soft colour of the current step's label badge: Request gray, Review blue, Approved teal,
+// Ongoing orange, Completed green (the other steps stay plain). A stopped process is red there.
 const STAGE_BADGE = {
   DRAFT: 'bg-slate-100 text-slate-700 ring-slate-200',
   PENDING: 'bg-blue-50 text-blue-700 ring-blue-200',
@@ -76,6 +76,7 @@ const STAGE_BADGE = {
   ONGOING: 'bg-orange-50 text-orange-700 ring-orange-200',
   COMPLETED: 'bg-green-50 text-green-700 ring-green-200',
   STOPPED: 'bg-red-50 text-red-700 ring-red-200',
+  OTHER: 'bg-transparent text-slate-500 ring-line', // every step but the current one
 };
 
 // The five steps as a row: done (sage), current (pine), stopped (clay) and still to come.
@@ -94,14 +95,14 @@ export function StageSteps({ status, showLabels = true, badges = false, classNam
         </div>
         <ol className="mt-2.5 flex flex-wrap gap-x-2 gap-y-2" aria-label={label}>
           {STAGES.map((s, i) => {
-            const here = i === index && !finished;
-            const reached = finished || i <= index;
-            const tone = here && stopped ? STAGE_BADGE.STOPPED : STAGE_BADGE[s];
+            // Only the step the project is on now gets its colour (a completed project is on Completed).
+            const here = i === index;
+            const tone = here ? (stopped ? STAGE_BADGE.STOPPED : STAGE_BADGE[s]) : STAGE_BADGE.OTHER;
             return (
               <li
                 key={s}
                 aria-current={here ? 'step' : undefined}
-                className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 ring-1 ring-inset ${tone} ${reached ? '' : 'opacity-60'}`}
+                className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 ring-1 ring-inset ${tone}`}
               >
                 {here && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />}
                 {here && stopped ? stopped : STAGE_LABEL[s]}
