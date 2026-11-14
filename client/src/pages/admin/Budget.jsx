@@ -5,6 +5,9 @@ import PageHeader from '../../components/PageHeader';
 import KpiCard from '../../components/KpiCard';
 import ReadOnlyField from '../../components/ReadOnlyField';
 import { Button, Card, EmptyState, Input, Modal, Select, Textarea } from '../../components/ui';
+import ExportMenu from '../../components/ExportMenu';
+import { settingsApi } from '../../api/settings';
+import { exportAbyipExcel, exportAbyipPdf, exportBudgetsExcel, exportBudgetsPdf } from '../../utils/reportExport';
 import { budgetApi, errorMessage, fieldErrors } from '../../api/budget';
 import { useAuth } from '../../context/AuthContext';
 import { isAdmin } from '../../utils/roles';
@@ -26,7 +29,6 @@ export default function Budget() {
 
   const budgetsQ = useQuery({ queryKey: ['budgets'], queryFn: budgetApi.listBudgets });
   const budgets = budgetsQ.data?.budgets || [];
-  const fundSources = budgetsQ.data?.fundSources || {};
 
   // The years to choose from: every year with a budget, and this year.
   const years = useMemo(
@@ -49,6 +51,20 @@ export default function Budget() {
   const centers = itemsQ.data?.centers || [];
   const quarters = itemsQ.data?.quarters || ['Q1', 'Q2', 'Q3', 'Q4'];
   const yearBudget = budgets.find((b) => b.year === year);
+
+  // Export of the ABYIP items of the chosen year, or of the annual budgets (PDF or Excel).
+  async function exportAbyip(kind) {
+    const { settings } = await settingsApi.get();
+    const args = { year, items, settings, user };
+    if (kind === 'pdf') await exportAbyipPdf(args);
+    else await exportAbyipExcel(args);
+  }
+  async function exportBudgets(kind) {
+    const { settings } = await settingsApi.get();
+    const args = { budgets, settings, user };
+    if (kind === 'pdf') await exportBudgetsPdf(args);
+    else await exportBudgetsExcel(args);
+  }
 
   function saved(text) {
     setNotice({ ok: true, text });
@@ -111,7 +127,7 @@ export default function Budget() {
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-3">
-            <KpiCard label={`SK budget ${year}`} value={formatPeso2(yearBudget.totalBudget)} note={fundSources[yearBudget.fundSource]} />
+            <KpiCard label={`SK budget ${year}`} value={formatPeso2(yearBudget.totalBudget)} />
             <KpiCard
               label="Allotted to ABYIP items"
               value={formatPeso2(summary?.allotted ?? yearBudget.allotted)}
@@ -128,6 +144,7 @@ export default function Budget() {
           <Card className="overflow-hidden">
             <div className="card-head flex flex-wrap items-center justify-between gap-3 px-5 py-4">
               <h2 className="section-title">ABYIP items {year}</h2>
+              <ExportMenu onExport={exportAbyip} disabled={itemsQ.isLoading || !items.length} />
             </div>
             {itemsQ.isLoading ? (
               <p className="px-5 py-4 text-slate-600">Loading…</p>
@@ -143,8 +160,9 @@ export default function Budget() {
       )}
 
       <Card className="overflow-hidden">
-        <div className="card-head px-5 py-4">
+        <div className="card-head flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <h2 className="section-title">Annual budgets</h2>
+          <ExportMenu onExport={exportBudgets} disabled={budgetsQ.isLoading || !budgets.length} />
         </div>
         {!budgets.length ? (
           <p className="px-5 py-6 text-slate-600">No annual budget recorded yet.</p>
@@ -155,9 +173,7 @@ export default function Budget() {
                 <tr>
                   <th>Year</th>
                   <th className="text-right">Total SK budget</th>
-                  <th>Fund source</th>
                   <th className="text-right">Unallotted</th>
-                  <th>Remarks</th>
                   {canEdit && <th className="w-px"><span className="sr-only">Edit</span></th>}
                 </tr>
               </thead>
@@ -166,9 +182,7 @@ export default function Budget() {
                   <tr key={b.id}>
                     <td className="font-medium">{b.year}</td>
                     <td className="whitespace-nowrap text-right">{formatPeso2(b.totalBudget)}</td>
-                    <td>{fundSources[b.fundSource] || b.fundSource}</td>
                     <td className="whitespace-nowrap text-right">{formatPeso2(b.unallotted)}</td>
-                    <td className="max-w-xs text-slate-600">{b.remarks || '—'}</td>
                     {canEdit && (
                       <td>
                         <Button variant="ghost" size="sm" onClick={() => setBudgetForm(b)} aria-label={`Edit the ${b.year} budget`}>
@@ -187,7 +201,6 @@ export default function Budget() {
       {budgetForm && (
         <BudgetForm
           budget={budgetForm}
-          fundSources={fundSources}
           onClose={() => setBudgetForm(null)}
           onSaved={(b, isNew) => {
             setBudgetForm(null);
@@ -259,13 +272,11 @@ function ItemsTable({ items, canEdit, onEdit }) {
 }
 
 // Annual Budget. One record per year; the year cannot change once saved.
-function BudgetForm({ budget, fundSources, onClose, onSaved }) {
+function BudgetForm({ budget, onClose, onSaved }) {
   const isNew = !budget.id;
   const [form, setForm] = useState({
     year: budget.year ?? THIS_YEAR,
     totalBudget: budget.totalBudget ?? '',
-    fundSource: budget.fundSource ?? '',
-    remarks: budget.remarks ?? '',
   });
   const [errors, setErrors] = useState({});
   const [error, setError] = useState(null);
@@ -281,7 +292,6 @@ function BudgetForm({ budget, fundSources, onClose, onSaved }) {
     const y = Number(form.year);
     if (!Number.isInteger(y) || y < 2000 || y > 2100) e.year = 'Enter a valid year';
     if (form.totalBudget === '' || !(Number(form.totalBudget) > 0)) e.totalBudget = 'The total SK budget must be above zero';
-    if (!form.fundSource) e.fundSource = 'Choose the fund source';
     return e;
   }
 
@@ -334,14 +344,6 @@ function BudgetForm({ budget, fundSources, onClose, onSaved }) {
           onChange={set('totalBudget')}
           error={errors.totalBudget}
         />
-        <Select
-          label="Fund source"
-          value={form.fundSource}
-          onChange={set('fundSource')}
-          error={errors.fundSource}
-          options={[{ value: '', label: 'Choose…' }, ...Object.entries(fundSources).map(([value, label]) => ({ value, label }))]}
-        />
-        <Textarea label="Remarks (optional)" rows={3} maxLength={500} value={form.remarks} onChange={set('remarks')} />
       </form>
       {askDialog}
     </Modal>

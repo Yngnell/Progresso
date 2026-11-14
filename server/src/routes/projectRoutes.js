@@ -19,7 +19,6 @@ const {
   completeProject,
   cancelProject,
   downloadLiquidation,
-  downloadPurchaseRequest,
   requestDeletion,
   withdrawDeletion,
   listDeletionRequests,
@@ -56,7 +55,7 @@ router.patch('/:id/start', protect, requireSkAdmin, startProject);
 router.post('/:id/expenses', protect, requireSkAdmin, projectFiles(['receipt']), addExpense);
 router.delete('/:id/expenses/:expenseId', protect, requireSkAdmin, deleteExpense);
 // File Upload
-router.post('/:id/files', protect, requireSkAdmin, projectFiles(['file']), addFile);
+router.post('/:id/files', protect, requireSkAdmin, projectFiles(['file'], { office: true }), addFile);
 router.delete('/:id/files/:fileId', protect, requireSkAdmin, deleteFile);
 router.get('/:id/files/:fileId', protect, requireStaff, getFile);
 router.get('/:id/liquidation/:fileId', protect, requireStaff, getFile); // older links
@@ -66,9 +65,8 @@ router.patch('/:id/complete', protect, requireSkAdmin, projectFiles(['report', '
 // Cancellation
 router.patch('/:id/cancel', protect, requireSkAdmin, cancelProject);
 
-// Downloads: receipts and PR files as one PDF each (the SK side).
+// Download: the receipts and the liquidation report as one PDF (the SK side).
 router.get('/:id/download/receipt-liquidation', protect, requireStaff, downloadLiquidation);
-router.get('/:id/download/purchase-request', protect, requireStaff, downloadPurchaseRequest);
 
 // Deletion: requested by the SK Admin, decided by the Barangay Chairman (who can restore).
 // No direct DELETE /:id: removal only happens through an approved deletion request.

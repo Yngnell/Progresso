@@ -1,6 +1,5 @@
 const prisma = require('../prisma');
 const {
-  FUND_SOURCES,
   CENTERS,
   QUARTERS,
   round2,
@@ -35,11 +34,11 @@ function readBudget(body, { requireYear }) {
   if (total === null) errors.totalBudget = 'The total SK budget is required';
   else if (total <= 0) errors.totalBudget = 'The total SK budget must be above zero';
   else data.totalBudget = total;
-  if (!FUND_SOURCES[body.fundSource]) errors.fundSource = 'Choose the fund source';
-  else data.fundSource = body.fundSource;
-  data.remarks = String(body.remarks || '').trim().slice(0, 500) || null;
   return { data, errors };
 }
+
+// The fund source and remarks are no longer used; older budgets still have them in the database.
+const budgetOut = ({ fundSource, remarks, ...b }) => b;
 
 // GET /api/budgets — every year's budget with its allotted and unallotted amounts.
 async function listBudgets(req, res, next) {
@@ -48,9 +47,9 @@ async function listBudgets(req, res, next) {
     const result = [];
     for (const b of budgets) {
       const s = await yearSummary(b.year);
-      result.push({ ...b, totalBudget: s.total, allotted: s.allotted, unallotted: s.unallotted });
+      result.push({ ...budgetOut(b), totalBudget: s.total, allotted: s.allotted, unallotted: s.unallotted });
     }
-    res.json({ budgets: result, fundSources: FUND_SOURCES });
+    res.json({ budgets: result });
   } catch (err) {
     next(err);
   }
@@ -65,7 +64,7 @@ async function createBudget(req, res, next) {
       return invalid(res, { year: `A budget for ${data.year} already exists. Edit it instead.` });
     }
     const budget = await prisma.annualBudget.create({ data });
-    res.status(201).json({ budget });
+    res.status(201).json({ budget: budgetOut(budget) });
   } catch (err) {
     next(err);
   }
@@ -83,7 +82,7 @@ async function updateBudget(req, res, next) {
       return invalid(res, { totalBudget: `The ABYIP items of ${existing.year} already allot ${peso(s.allotted)}; the total cannot be lower.` });
     }
     const budget = await prisma.annualBudget.update({ where: { id: existing.id }, data });
-    res.json({ budget });
+    res.json({ budget: budgetOut(budget) });
   } catch (err) {
     next(err);
   }

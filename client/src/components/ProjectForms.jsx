@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ScanText } from 'lucide-react';
+import { Camera, ScanText } from 'lucide-react';
 import { Button, Input, Modal, Select, Textarea } from './ui';
 import ReadOnlyField from './ReadOnlyField';
-import { projectsApi, checkFile, FILE_ACCEPT, RECEIPT_ACCEPT } from '../api/projects';
+import CameraCapture, { canUseLiveCamera, toJpeg } from './CameraCapture';
+import { projectsApi, checkFile, detectDocumentType, FILE_ACCEPT, RECEIPT_ACCEPT } from '../api/projects';
 import { errorMessage, fieldErrors } from '../api/budget';
 import { formatPeso2, phDayOf, phToday } from '../utils/format';
 
@@ -196,20 +197,37 @@ export function ExpenseForm({ project, categories = [], receiptReading, onClose,
 }
 
 // ---------- File Upload ----------
-// One project document: its type and the file (PDF, DOCX, JPG or PNG, up to 10 MB).
-export function FileForm({ project, documentTypes, onClose, onDone }) {
-  const types = Object.entries(documentTypes).filter(([value]) => value !== 'LIQUIDATION');
-  const [documentType, setDocumentType] = useState('');
+// One project document: a file (image, PDF, Word or Excel, up to 10 MB) or a photo from the camera.
+// The document type is set by the system from the file and shown read-only.
+export function FileForm({ project, onClose, onDone }) {
   const [file, setFile] = useState(null);
+  const [fromCamera, setFromCamera] = useState(false);
+  const [camera, setCamera] = useState(null); // null, or { photo } while the camera panel is open
+  const [cameraNote, setCameraNote] = useState(null);
+  const [inputKey, setInputKey] = useState(0); // clears the file box when a camera photo is used
+  const nativeCamera = useRef(null);
   const [errors, setErrors] = useState({});
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const detected = detectDocumentType(file);
+
+  function choose(f, camera = false) {
+    setFile(f);
+    setFromCamera(camera);
+    setErrors((x) => ({ ...x, file: f ? checkFile(f) || undefined : undefined }));
+  }
+
+  function takePhoto() {
+    setCameraNote(null);
+    // Without the live camera (a phone on plain http), open the phone's camera app right away.
+    if (!canUseLiveCamera()) nativeCamera.current?.click();
+    else setCamera({ photo: null });
+  }
 
   function submit(e) {
     e.preventDefault();
     const e2 = {};
-    if (!documentType) e2.documentType = 'Choose the document type';
-    if (!file) e2.file = 'Choose the file to upload';
+    if (!file) e2.file = 'Choose the file to upload, or take a photo';
     else if (checkFile(file)) e2.file = checkFile(file);
     setErrors(e2);
     if (Object.keys(e2).length) return;
@@ -218,7 +236,7 @@ export function FileForm({ project, documentTypes, onClose, onDone }) {
       setErrors,
       setError,
       fallback: 'The file could not be uploaded. Try again.',
-      action: () => projectsApi.addFile(project.id, { file, documentType }),
+      action: () => projectsApi.addFile(project.id, { file }),
       onDone: (res) => onDone(res, `“${file.name}” was added to the project files.`),
     });
   }
@@ -227,27 +245,64 @@ export function FileForm({ project, documentTypes, onClose, onDone }) {
     <FormModal name="File Upload" id="file-form" busy={busy} saveLabel="Upload file" onClose={onClose} error={error}>
       <form id="file-form" onSubmit={submit} noValidate className="space-y-4">
         <ReadOnlyField label="Project" value={project.title} />
-        <Select
-          label="Document type"
-          value={documentType}
-          onChange={(e) => {
-            setDocumentType(e.target.value);
-            setErrors((x) => ({ ...x, documentType: undefined }));
-          }}
-          error={errors.documentType}
-          options={[{ value: '', label: 'Choose…' }, ...types.map(([value, label]) => ({ value, label }))]}
-        />
-        <FileInput
-          id="project-file"
-          label="File"
-          accept={FILE_ACCEPT}
-          onChange={(f) => {
-            setFile(f);
-            setErrors((x) => ({ ...x, file: f ? checkFile(f) || undefined : undefined }));
-          }}
-          error={errors.file}
-          hint="PDF, DOCX, JPG or PNG, up to 10 MB."
-        />
+        <div>
+          <FileInput
+            key={inputKey}
+            id="project-file"
+            label="File"
+            accept={FILE_ACCEPT}
+            onChange={(f) => {
+              setCamera(null);
+              choose(f);
+            }}
+            error={errors.file}
+            hint="An image (JPG or PNG), PDF, Word or Excel file, up to 10 MB."
+          />
+          <input
+            ref={nativeCamera}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) toJpeg(f).then((photo) => setCamera({ photo }), () => setCameraNote('This picture could not be read. Take it again, or upload a file instead.'));
+            }}
+          />
+          {!camera && (
+            <Button size="sm" variant="secondary" className="mt-2" onClick={takePhoto}>
+              <Camera size={16} aria-hidden="true" /> Take Photo
+            </Button>
+          )}
+          {cameraNote && <p className="mt-2 text-[13px] text-clay-text" role="alert">{cameraNote}</p>}
+        </div>
+        {camera && (
+          <CameraCapture
+            initialPhoto={camera.photo}
+            onUse={(photo) => {
+              setCamera(null);
+              setInputKey((k) => k + 1);
+              choose(photo, true);
+            }}
+            onCancel={() => setCamera(null)}
+            onError={(text) => {
+              setCamera(null);
+              setCameraNote(text);
+            }}
+          />
+        )}
+        {file && fromCamera && <ReadOnlyField label="Photo" value={file.name} hint="Taken with the camera." />}
+        {file && (
+          <ReadOnlyField
+            label="Document type"
+            value={detected ? detected.label : 'Not supported'}
+            tone={detected ? undefined : 'bad'}
+            hint="Set by the system from the file."
+          />
+        )}
       </form>
     </FormModal>
   );

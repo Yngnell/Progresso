@@ -598,23 +598,15 @@ function Files({ project, documentTypes, canDelete, canUpload, ask, onDone, onFa
     <Card className="p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h2 className="section-title">Files</h2>
-        <div className="flex flex-wrap items-start gap-2">
-          {canUpload && (
-            <Button size="sm" onClick={() => setUploading(true)}>
-              <Upload size={16} aria-hidden="true" /> Upload file
-            </Button>
-          )}
-          <DownloadButton
-            label="Purchase requests"
-            empty={!files.some((f) => f.documentType === 'PURCHASE_REQUEST' && !/wordprocessingml/.test(f.mimeType))}
-            onDownload={() => projectsApi.downloadSection(project, 'purchase-request')}
-          />
-        </div>
+        {canUpload && (
+          <Button size="sm" onClick={() => setUploading(true)}>
+            <Upload size={16} aria-hidden="true" /> Upload file
+          </Button>
+        )}
       </div>
       {uploading && (
         <FileForm
           project={project}
-          documentTypes={documentTypes}
           onClose={() => setUploading(false)}
           onDone={(res, text) => {
             setUploading(false);

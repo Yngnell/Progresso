@@ -8,11 +8,6 @@ const prisma = require('../prisma');
 //       - the spent amount of its Cancelled projects (sum of their expenses)
 //   Remaining balance of a project  = its approved (estimated) cost - the sum of its expenses
 
-const FUND_SOURCES = {
-  BARANGAY_GENERAL_FUND_10: '10% of Barangay General Fund',
-  SUPPLEMENTAL: 'Supplemental budget',
-  OTHER: 'Other source',
-};
 const CENTERS = [
   'Education', 'Health', 'Sports', 'Environment', 'Active Citizenship', 'Economic Empowerment',
   'Social Inclusion and Equity', 'Peace Building and Security', 'Governance', 'Global Mobility', 'Agriculture',
@@ -108,7 +103,6 @@ async function projectMoney(project) {
 }
 
 module.exports = {
-  FUND_SOURCES,
   CENTERS,
   QUARTERS,
   EXPENSE_CATEGORIES,

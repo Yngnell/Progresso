@@ -106,42 +106,56 @@ function removePhotoFile(fileName) {
 
 // ---------- Project files (Forms 3, 6, 7 and 8) ----------
 // One module for every project document: kept with the receipts (never public) and served
-// only through the authenticated file route. PDF, DOCX, JPG and PNG, up to 10 MB each.
+// only through the authenticated file route. PDF, DOCX, JPG and PNG, up to 10 MB each
+// (File Upload also takes DOC, XLS and XLSX).
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const DOC = 'application/msword';
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const XLS = 'application/vnd.ms-excel';
 const PROJECT_FILE_TYPES = { 'application/pdf': '.pdf', [DOCX]: '.docx', 'image/jpeg': '.jpg', 'image/png': '.png' };
+// File Upload also takes older Word files and Excel spreadsheets.
+const OFFICE_FILE_TYPES = { ...PROJECT_FILE_TYPES, [DOC]: '.doc', [XLSX]: '.xlsx', [XLS]: '.xls' };
 const PROJECT_FILE_MAX = 10 * 1024 * 1024;
 
-// Some browsers send a Word file as a generic type; the .docx name decides then.
-function projectFileType(file) {
-  if (PROJECT_FILE_TYPES[file.mimetype]) return file.mimetype;
-  const generic = ['application/octet-stream', 'application/zip', 'application/x-zip-compressed', ''];
-  if (generic.includes(file.mimetype || '') && /.docx$/i.test(file.originalname || '')) return DOCX;
-  return null;
+// Some browsers send an Office file as a generic type; the file name decides then.
+const BY_NAME = [[/\.docx$/i, DOCX], [/\.doc$/i, DOC], [/\.xlsx$/i, XLSX], [/\.xls$/i, XLS]];
+function fileType(file, types) {
+  if (types[file.mimetype]) return file.mimetype;
+  const generic = ['application/octet-stream', 'application/zip', 'application/x-zip-compressed', 'application/x-ole-storage', ''];
+  if (!generic.includes(file.mimetype || '')) return null;
+  const hit = BY_NAME.find(([re]) => re.test(file.originalname || ''));
+  return hit && types[hit[1]] ? hit[1] : null;
 }
 
-const projectFileUploader = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, RECEIPT_DIR),
-    filename: (_req, file, cb) => cb(null, crypto.randomUUID() + (PROJECT_FILE_TYPES[projectFileType(file)] || '')),
-  }),
-  limits: { fileSize: PROJECT_FILE_MAX, files: 2 },
-  fileFilter: (_req, file, cb) => {
-    const type = projectFileType(file);
-    if (!type) {
-      const err = new Error('Files must be PDF, DOCX, JPG or PNG');
-      err.status = 400;
-      return cb(err);
-    }
-    file.mimetype = type;
-    cb(null, true);
-  },
-});
+function makeProjectUploader(types, allowed) {
+  return multer({
+    storage: multer.diskStorage({
+      destination: (_req, _file, cb) => cb(null, RECEIPT_DIR),
+      filename: (_req, file, cb) => cb(null, crypto.randomUUID() + (types[fileType(file, types)] || '')),
+    }),
+    limits: { fileSize: PROJECT_FILE_MAX, files: 2 },
+    fileFilter: (_req, file, cb) => {
+      const type = fileType(file, types);
+      if (!type) {
+        const err = new Error(`This file type is not supported. Upload ${allowed}.`);
+        err.status = 400;
+        return cb(err);
+      }
+      file.mimetype = type;
+      cb(null, true);
+    },
+  });
+}
+const projectFileUploader = makeProjectUploader(PROJECT_FILE_TYPES, 'a PDF, DOCX, JPG or PNG file');
+const officeFileUploader = makeProjectUploader(OFFICE_FILE_TYPES, 'an image (JPG or PNG), PDF, Word or Excel file');
 
 // Reads the named single-file fields, e.g. projectFiles(['file']) or
 // projectFiles(['report', 'liquidation']). The files arrive in req.files[field][0].
-function projectFiles(fields) {
-  const handler = projectFileUploader.fields(fields.map((name) => ({ name, maxCount: 1 })));
+// { office: true } also accepts DOC, XLS and XLSX (File Upload).
+function projectFiles(fields, { office = false } = {}) {
+  const uploader = office ? officeFileUploader : projectFileUploader;
+  const handler = uploader.fields(fields.map((name) => ({ name, maxCount: 1 })));
   return (req, res, next) => {
     handler(req, res, (err) => {
       if (!err) return next();

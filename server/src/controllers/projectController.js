@@ -22,17 +22,32 @@ const MIN_REASON_LENGTH = 10;
 
 const ACTIVE = ['DRAFT', 'PENDING', 'FOR_REVISION', 'APPROVED', 'ONGOING'];
 const PUBLIC = ['APPROVED', 'ONGOING', 'COMPLETED'];
-// File Upload document types. LIQUIDATION is added by Completion only.
+// Document types of the project files. File Upload sets one from the file itself (IMAGE, PDF,
+// WORD, EXCEL); an expense's receipt is RECEIPT and Completion adds REPORT and LIQUIDATION.
+// The others were chosen by hand before and stay so older files keep their label.
 const DOCUMENT_TYPES = {
+  IMAGE: 'Image',
+  PDF: 'PDF Document',
+  WORD: 'Word Document',
+  EXCEL: 'Excel Spreadsheet',
+  RECEIPT: 'Receipt',
+  REPORT: 'Report',
+  LIQUIDATION: 'Liquidation',
   SK_RESOLUTION: 'SK Resolution',
   ACTIVITY_DESIGN: 'Activity design',
   PURCHASE_REQUEST: 'Purchase request',
-  RECEIPT: 'Receipt',
   PHOTO: 'Photo',
-  REPORT: 'Report',
-  LIQUIDATION: 'Liquidation',
 };
-const UPLOAD_TYPES = ['SK_RESOLUTION', 'ACTIVITY_DESIGN', 'PURCHASE_REQUEST', 'RECEIPT', 'PHOTO', 'REPORT'];
+// The document type of an uploaded file, from its checked file type (see middleware/upload.js).
+const TYPE_OF_FILE = {
+  'image/jpeg': 'IMAGE',
+  'image/png': 'IMAGE',
+  'application/pdf': 'PDF',
+  'application/msword': 'WORD',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'WORD',
+  'application/vnd.ms-excel': 'EXCEL',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'EXCEL',
+};
 // Files can be added or removed while the project is being drafted, after a decision to go
 // ahead, and while it runs; not while the Barangay Chairman is reviewing it, and not once closed.
 const FILE_OPEN = ['DRAFT', 'FOR_REVISION', 'APPROVED', 'ONGOING'];
@@ -557,8 +572,8 @@ async function deleteExpense(req, res, next) {
 
 // ---------- File Upload ----------
 
-// POST /api/projects/:id/files — SK Admin. multipart: "file" (PDF, DOCX, JPG or PNG, up to
-// 10 MB) and documentType.
+// POST /api/projects/:id/files — SK Admin. multipart: "file" (an image, PDF, Word or Excel file,
+// up to 10 MB; a camera photo is a JPG). The document type is set from the file, not chosen.
 async function addFile(req, res, next) {
   const files = uploadedFiles(req);
   const discard = () => files.forEach((f) => removeReceiptFile(f.filename));
@@ -567,8 +582,9 @@ async function addFile(req, res, next) {
     if (!project) return discard();
     const errors = {};
     const file = req.files?.file?.[0];
+    const documentType = file && TYPE_OF_FILE[file.mimetype];
     if (!file) errors.file = 'Choose the file to upload';
-    if (!UPLOAD_TYPES.includes(req.body.documentType)) errors.documentType = 'Choose the document type';
+    else if (!documentType) errors.file = 'This file type is not supported. Upload an image (JPG or PNG), PDF, Word or Excel file.';
     if (Object.keys(errors).length) {
       discard();
       return invalid(res, errors);
@@ -581,7 +597,7 @@ async function addFile(req, res, next) {
         mimeType: file.mimetype,
         uploadedById: req.user.id,
         uploadedByName: req.user.name,
-        documentType: req.body.documentType,
+        documentType,
       },
     });
     await sendProject(res, project.id, 201);
@@ -748,8 +764,7 @@ async function cancelProject(req, res, next) {
 const NOTHING = 'No files to download.';
 
 // GET /api/projects/:id/download/receipt-liquidation — receipts and the liquidation report, one PDF.
-// GET /api/projects/:id/download/purchase-request — the purchase request files, one PDF.
-// Word files cannot be joined into a PDF, so they are left out of these downloads.
+// Word files cannot be joined into a PDF, so they are left out of this download.
 function downloadCombined(types, section) {
   return async (req, res, next) => {
     try {
@@ -769,7 +784,6 @@ function downloadCombined(types, section) {
   };
 }
 const downloadLiquidation = downloadCombined(['RECEIPT', 'LIQUIDATION'], 'Receipt_Liquidation');
-const downloadPurchaseRequest = downloadCombined(['PURCHASE_REQUEST'], 'Purchase_Request');
 
 
 // ---------- Deletion requests (the Deleted tab of Archives) ----------
@@ -939,7 +953,6 @@ module.exports = {
   completeProject,
   cancelProject,
   downloadLiquidation,
-  downloadPurchaseRequest,
   requestDeletion,
   withdrawDeletion,
   listDeletionRequests,

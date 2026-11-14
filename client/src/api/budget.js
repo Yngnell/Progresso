@@ -2,7 +2,7 @@
 import api from './axios';
 
 export const budgetApi = {
-  // { budgets: [{ id, year, totalBudget, fundSource, remarks, allotted, unallotted }], fundSources }
+  // { budgets: [{ id, year, totalBudget, allotted, unallotted }] }
   listBudgets: () => api.get('/budgets').then((r) => r.data),
   createBudget: (data) => api.post('/budgets', data).then((r) => r.data),
   updateBudget: (id, data) => api.put(`/budgets/${id}`, data).then((r) => r.data),

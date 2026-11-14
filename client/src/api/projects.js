@@ -15,15 +15,37 @@ export function downloadBase(title) {
   return base || 'Project';
 }
 
-// Files accepted by the project file module.
-export const FILE_ACCEPT = '.pdf,.docx,.jpg,.jpeg,.png';
+// Files accepted by the project file module. File Upload also takes Word and Excel files.
+export const FILE_ACCEPT = '.jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx';
 export const RECEIPT_ACCEPT = '.pdf,.jpg,.jpeg,.png';
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+// The document type File Upload gives a file, from its extension and file type (the server
+// decides the same way). null when the file type is not supported.
+const DOCUMENT_TYPE_BY_EXT = [
+  [/\.(jpe?g|png)$/i, ['image/jpeg', 'image/png'], 'IMAGE', 'Image'],
+  [/\.pdf$/i, ['application/pdf'], 'PDF', 'PDF Document'],
+  [/\.docx?$/i, ['application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], 'WORD', 'Word Document'],
+  [/\.xlsx?$/i, ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'], 'EXCEL', 'Excel Spreadsheet'],
+];
+const GENERIC_TYPES = ['', 'application/octet-stream', 'application/zip', 'application/x-zip-compressed'];
+export function detectDocumentType(file) {
+  if (!file) return null;
+  const hit = DOCUMENT_TYPE_BY_EXT.find(([re]) => re.test(file.name || ''));
+  if (!hit) return null;
+  const [, types, value, label] = hit;
+  if (!types.includes(file.type) && !GENERIC_TYPES.includes(file.type || '')) return null;
+  return { value, label };
+}
+
 // A message when a chosen file cannot be uploaded, else null.
 export function checkFile(file, { receipt = false } = {}) {
   if (!file) return null;
-  const ok = receipt ? /\.(pdf|jpe?g|png)$/i : /\.(pdf|docx|jpe?g|png)$/i;
-  if (!ok.test(file.name)) return receipt ? 'Choose a PDF, JPG or PNG file.' : 'Choose a PDF, DOCX, JPG or PNG file.';
+  if (receipt) {
+    if (!/\.(pdf|jpe?g|png)$/i.test(file.name)) return 'Choose a PDF, JPG or PNG file.';
+  } else if (!detectDocumentType(file)) {
+    return 'This file type is not supported. Upload an image (JPG or PNG), PDF, Word or Excel file.';
+  }
   if (file.size > MAX_FILE_BYTES) return 'The file must be 10 MB or smaller.';
   return null;
 }
@@ -55,7 +77,7 @@ export const projectsApi = {
   deleteExpense: (id, expenseId) => api.delete(`/projects/${id}/expenses/${expenseId}`).then((r) => r.data),
   // Claude reads a receipt to prefill the Expense form: { readable, total, date, storeName, category }
   readReceipt: (file) => api.post('/projects/receipt-read', form({ file })).then((r) => r.data),
-  // File Upload: { file, documentType }
+  // File Upload: { file }. The server sets the document type from the file.
   addFile: (id, fields) => api.post(`/projects/${id}/files`, form(fields)).then((r) => r.data),
   deleteFile: (id, fileId) => api.delete(`/projects/${id}/files/${fileId}`).then((r) => r.data),
   // Completion
@@ -77,14 +99,13 @@ export const projectsApi = {
       throw err;
     }
   },
-  // Downloads of a section: 'receipt-liquidation' | 'purchase-request' (one PDF each).
+  // Download of a section: 'receipt-liquidation' (one PDF).
   // Saves the file as e.g. ProjectName_Receipt_Liquidation.pdf.
   downloadSection: async (project, section) => {
     const res = await api.get(`/projects/${project.id}/download/${section}`, { responseType: 'blob' });
     const base = downloadBase(project.title);
     const name = {
       'receipt-liquidation': `${base}_Receipt_Liquidation.pdf`,
-      'purchase-request': `${base}_Purchase_Request.pdf`,
     }[section];
     const url = URL.createObjectURL(res.data);
     const a = document.createElement('a');
