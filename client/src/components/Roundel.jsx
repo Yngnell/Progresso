@@ -67,13 +67,51 @@ function stepOf(status) {
   }
 }
 
+// Soft colour of each step's label badge: Request gray, Review blue, Approved teal,
+// Ongoing orange, Completed green. A process stopped at a step shows a red badge there.
+const STAGE_BADGE = {
+  DRAFT: 'bg-slate-100 text-slate-700 ring-slate-200',
+  PENDING: 'bg-blue-50 text-blue-700 ring-blue-200',
+  APPROVED: 'bg-teal-50 text-teal-700 ring-teal-200',
+  ONGOING: 'bg-orange-50 text-orange-700 ring-orange-200',
+  COMPLETED: 'bg-green-50 text-green-700 ring-green-200',
+  STOPPED: 'bg-red-50 text-red-700 ring-red-200',
+};
+
 // The five steps as a row: done (sage), current (pine), stopped (clay) and still to come.
-// showLabels={false} gives the compact bar.
-export function StageSteps({ status, showLabels = true, className = '' }) {
+// showLabels={false} gives the compact bar. badges puts the step names under the bar as
+// coloured badges (one line each, evenly spaced; they continue on a second line on narrow cards).
+export function StageSteps({ status, showLabels = true, badges = false, className = '' }) {
   const { index, stopped, done: finished } = stepOf(status);
   const label = stopped
     ? `${stopped} at the ${STAGE_LABEL[STAGES[index]]} step`
     : `Step ${index + 1} of ${STAGES.length}: ${STAGE_LABEL[STAGES[index]]}`;
+  if (badges) {
+    return (
+      <div className={`w-full ${className}`}>
+        <div aria-hidden="true">
+          <StageSteps status={status} showLabels={false} />
+        </div>
+        <ol className="mt-2.5 flex flex-wrap gap-x-2 gap-y-2" aria-label={label}>
+          {STAGES.map((s, i) => {
+            const here = i === index && !finished;
+            const reached = finished || i <= index;
+            const tone = here && stopped ? STAGE_BADGE.STOPPED : STAGE_BADGE[s];
+            return (
+              <li
+                key={s}
+                aria-current={here ? 'step' : undefined}
+                className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-4 ring-1 ring-inset ${tone} ${reached ? '' : 'opacity-60'}`}
+              >
+                {here && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />}
+                {here && stopped ? stopped : STAGE_LABEL[s]}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    );
+  }
   return (
     <ol className={`flex w-full items-start ${className}`} aria-label={label}>
       {STAGES.map((s, i) => {
