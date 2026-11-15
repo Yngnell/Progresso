@@ -33,10 +33,16 @@ const PUBLIC = ['APPROVED', 'ONGOING', 'COMPLETED'];
 // file keeps its format (IMAGE, PDF, WORD, EXCEL). An expense's receipt is RECEIPT, and Completion
 // adds REPORT and LIQUIDATION.
 const DOCUMENT_TYPES = {
-  PURCHASE_REQUEST: 'Purchase request',
   SK_RESOLUTION: 'SK Resolution',
   ACTIVITY_DESIGN: 'Activity design',
+  PURCHASE_REQUEST: 'Purchase request',
+  CANVASS: 'Canvass / Abstract of Canvass',
+  PURCHASE_ORDER: 'Purchase order',
+  DISBURSEMENT_VOUCHER: 'Disbursement voucher',
   RECEIPT: 'Receipt',
+  DELIVERY_RECEIPT: 'Delivery receipt',
+  INSPECTION_REPORT: 'Inspection and Acceptance Report',
+  ATTENDANCE_SHEET: 'Attendance sheet',
   PHOTO: 'Photo',
   REPORT: 'Report',
   LIQUIDATION: 'Liquidation',
