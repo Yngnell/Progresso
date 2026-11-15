@@ -6,8 +6,7 @@ import { Button } from './ui';
 //   empty:      no files yet: the button is disabled and says so
 //   onDownload: async; makes and saves the file. While it runs the button shows "Preparing…".
 //   onError:    gets a readable message if the download fails
-//   alignEnd:   the button sits at the right edge, with its note to its left
-export default function DownloadButton({ empty, onDownload, onError, label = 'Download', alignEnd = false }) {
+export default function DownloadButton({ empty, onDownload, onError, label = 'Download' }) {
   const [busy, setBusy] = useState(false);
   async function run() {
     setBusy(true);
@@ -20,7 +19,7 @@ export default function DownloadButton({ empty, onDownload, onError, label = 'Do
     }
   }
   return (
-    <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 ${alignEnd ? 'flex-row-reverse' : ''}`}>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <Button size="sm" variant="secondary" disabled={empty || busy} onClick={run} aria-busy={busy}>
         {busy ? (
           <Loader2 size={16} strokeWidth={2} className="animate-spin" aria-hidden="true" />
