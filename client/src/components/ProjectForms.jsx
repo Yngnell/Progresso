@@ -199,7 +199,7 @@ export function ExpenseForm({ project, categories = [], receiptReading, onClose,
 // ---------- File Upload ----------
 // One project document: a file (image, PDF, Word or Excel, up to 10 MB) or a photo from the camera.
 // The document type is set by the system from the file and shown read-only.
-export function FileForm({ project, onClose, onDone }) {
+export function FileForm({ project, documentTypes = {}, onClose, onDone }) {
   const [file, setFile] = useState(null);
   const [fromCamera, setFromCamera] = useState(false);
   const [camera, setCamera] = useState(null); // null, or { photo } while the camera panel is open
@@ -209,12 +209,49 @@ export function FileForm({ project, onClose, onDone }) {
   const [errors, setErrors] = useState({});
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const detected = detectDocumentType(file);
+  const [docType, setDocType] = useState(''); // the detected type, which the SK Admin can change
+  const [reading, setReading] = useState(false);
+  const [readNote, setReadNote] = useState(null);
+  const readRun = useRef(0);
+  const format = detectDocumentType(file); // null when the file type is not supported
+
+  // The system reads the chosen file and says what kind of document it is.
+  async function readType(f) {
+    const run = ++readRun.current;
+    const fallback = detectDocumentType(f)?.value || '';
+    setDocType('');
+    setReadNote(null);
+    setReading(true);
+    try {
+      const r = await projectsApi.readDocument(f);
+      if (run !== readRun.current) return;
+      setDocType(r.documentType || fallback);
+      setReadNote(
+        r.source === 'read'
+          ? 'Detected by the system. Check it, and change it if it is wrong.'
+          : r.source === 'name'
+            ? 'Taken from the file name. Change it if it is wrong.'
+            : 'The kind of document could not be told. Choose it if you know it.'
+      );
+    } catch {
+      if (run !== readRun.current) return;
+      setDocType(fallback);
+      setReadNote('The kind of document could not be told. Choose it if you know it.');
+    } finally {
+      if (run === readRun.current) setReading(false);
+    }
+  }
 
   function choose(f, camera = false) {
     setFile(f);
     setFromCamera(camera);
-    setErrors((x) => ({ ...x, file: f ? checkFile(f) || undefined : undefined }));
+    const problem = f ? checkFile(f) : null;
+    setErrors((x) => ({ ...x, file: problem || undefined }));
+    readRun.current += 1;
+    setReading(false);
+    setDocType('');
+    setReadNote(null);
+    if (f && !problem) readType(f);
   }
 
   function takePhoto() {
@@ -236,7 +273,7 @@ export function FileForm({ project, onClose, onDone }) {
       setErrors,
       setError,
       fallback: 'The file could not be uploaded. Try again.',
-      action: () => projectsApi.addFile(project.id, { file }),
+      action: () => projectsApi.addFile(project.id, { file, documentType: reading ? undefined : docType || undefined }),
       onDone: (res) => onDone(res, `“${file.name}” was added to the project files.`),
     });
   }
@@ -295,13 +332,29 @@ export function FileForm({ project, onClose, onDone }) {
           />
         )}
         {file && fromCamera && <ReadOnlyField label="Photo" value={file.name} hint="Taken with the camera." />}
-        {file && (
-          <ReadOnlyField
-            label="Document type"
-            value={detected ? detected.label : 'Not supported'}
-            tone={detected ? undefined : 'bad'}
-            hint="Set by the system from the file."
-          />
+        {file && !format && <ReadOnlyField label="Document type" value="Not supported" tone="bad" />}
+        {file && format && (
+          <div>
+            <Select
+              label="Document type"
+              value={docType}
+              disabled={reading}
+              onChange={(e) => {
+                setDocType(e.target.value);
+                setReadNote(null);
+              }}
+              options={[
+                { value: '', label: reading ? 'Detecting the document type…' : 'Choose…' },
+                ...Object.entries(documentTypes).map(([value, label]) => ({ value, label })),
+              ]}
+            />
+            {reading && (
+              <p className="mt-1 inline-flex items-center gap-1.5 text-[13px] text-slate-600" role="status">
+                <ScanText size={14} aria-hidden="true" /> Detecting the document type…
+              </p>
+            )}
+            {!reading && readNote && <p className="mt-1 text-[13px] text-slate-600" role="status">{readNote}</p>}
+          </div>
         )}
       </form>
     </FormModal>

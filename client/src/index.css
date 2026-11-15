@@ -238,6 +238,43 @@
     background: var(--pine-light);
   }
 
+  /* ---- Sheet: a spreadsheet-like table (gridlines, sticky header) ---- */
+  .sheet {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .sheet thead th {
+    @apply sticky top-0 z-10 whitespace-nowrap px-3 py-2.5 text-left text-[12px] font-semibold uppercase;
+    letter-spacing: 0.05em;
+    background: var(--paper);
+    color: var(--ink-soft);
+    border-bottom: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+  }
+  .sheet tbody td {
+    @apply px-3 py-2 align-top;
+    border-bottom: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+  }
+  .sheet th:last-child,
+  .sheet td:last-child {
+    border-right: 0;
+  }
+  .sheet tbody tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--paper) 55%, transparent);
+  }
+  .sheet tbody tr:hover td {
+    background: var(--pine-light);
+  }
+  .sheet-btn {
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-control;
+    color: var(--pine);
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .sheet-btn:hover {
+    background: var(--pine-light);
+  }
+
   /* ---- Notices: success sage, error clay ---- */
   .notice {
     @apply rounded-control px-4 py-3 text-[15px];

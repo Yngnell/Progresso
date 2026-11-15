@@ -77,7 +77,25 @@ export const projectsApi = {
   deleteExpense: (id, expenseId) => api.delete(`/projects/${id}/expenses/${expenseId}`).then((r) => r.data),
   // Claude reads a receipt to prefill the Expense form: { readable, total, date, storeName, category }
   readReceipt: (file) => api.post('/projects/receipt-read', form({ file })).then((r) => r.data),
-  // File Upload: { file }. The server sets the document type from the file.
+  // What kind of document a file is (Claude reads it; nothing is saved):
+  // { documentType, label, source: 'read' | 'name' | 'format' }
+  readDocument: (file) => api.post('/projects/document-read', form({ file })).then((r) => r.data),
+  // Every file of the projects the user may see: { files, documentTypes } (the Files page)
+  listFiles: () => api.get('/projects/files').then((r) => r.data),
+  // Saves one project file under its original name.
+  downloadFile: async (id, fileId, name) => {
+    const res = await api.get(`/projects/${id}/files/${fileId}`, { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name || 'file';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  },
+  // File Upload: { file, documentType? }. documentType is the type the SK Admin confirmed;
+  // without it the server detects the type itself.
   addFile: (id, fields) => api.post(`/projects/${id}/files`, form(fields)).then((r) => r.data),
   deleteFile: (id, fileId) => api.delete(`/projects/${id}/files/${fileId}`).then((r) => r.data),
   // Completion

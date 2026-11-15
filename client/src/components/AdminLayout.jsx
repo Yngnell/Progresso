@@ -5,6 +5,7 @@ import {
   Archive,
   CalendarDays,
   ClipboardCheck,
+  Files,
   FolderKanban,
   LayoutDashboard,
   ListChecks,
@@ -40,6 +41,8 @@ const groups = [
     links: [
       // Completed, cancelled and deleted projects (view only)
       { to: '/admin/archive', label: 'Archives', Icon: Archive },
+      // Every project file in one sortable table (the Barangay Chairman only)
+      { to: '/admin/files', label: 'Files', Icon: Files, roles: ['CHAIRMAN'] },
       { to: '/admin/attendance', label: 'Attendance', Icon: ListChecks, roles: ['ADMIN'] },
     ],
   },

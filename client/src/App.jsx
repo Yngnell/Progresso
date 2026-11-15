@@ -28,6 +28,7 @@ import AdminAttendance from './pages/admin/AdminAttendance';
 import Settings from './pages/admin/Settings';
 import Budget from './pages/admin/Budget';
 import ProjectRequestForm from './pages/admin/ProjectRequestForm';
+import ChairmanFiles from './pages/admin/ChairmanFiles';
 
 export default function App() {
   return (
@@ -112,6 +113,15 @@ export default function App() {
           element={
             <ProtectedRoute roles={['ADMIN']}>
               <ProjectRequestForm />
+            </ProtectedRoute>
+          }
+        />
+        {/* Files: every project file in one table, the Barangay Chairman only */}
+        <Route
+          path="files"
+          element={
+            <ProtectedRoute roles={['CHAIRMAN']}>
+              <ChairmanFiles />
             </ProtectedRoute>
           }
         />

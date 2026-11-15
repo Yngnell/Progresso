@@ -10,6 +10,8 @@ const {
   reviewProject,
   startProject,
   readReceiptFile,
+  readDocumentFile,
+  listAllFiles,
   addExpense,
   deleteExpense,
   addFile,
@@ -40,6 +42,10 @@ router.get('/deletion-requests', protect, restrictTo('ADMIN', 'CHAIRMAN'), listD
 router.put('/deletion-requests/:requestId/review', protect, restrictTo('CHAIRMAN'), reviewDeletion);
 // Expense helper: Claude reads a receipt to prefill the form (nothing is saved).
 router.post('/receipt-read', protect, requireSkAdmin, projectFiles(['file']), readReceiptFile);
+// File Upload helper: says what kind of document a file is (nothing is saved).
+router.post('/document-read', protect, requireSkAdmin, projectFiles(['file'], { office: true }), readDocumentFile);
+// Every file of the projects the user may see (the Barangay Chairman's Files page).
+router.get('/files', protect, requireStaff, listAllFiles);
 
 router.get('/:id', optionalAuth, getProject);
 

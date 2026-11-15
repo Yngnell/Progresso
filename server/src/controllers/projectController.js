@@ -1,5 +1,11 @@
 const prisma = require('../prisma');
 const { readReceipt, isReaderConfigured } = require('../utils/receiptReader');
+const {
+  readDocumentType,
+  guessFromName,
+  isDocumentReaderConfigured,
+  READABLE: READABLE_DOCUMENTS,
+} = require('../utils/documentReader');
 const { receiptPath, removeReceiptFile, uploadedFiles } = require('../middleware/upload');
 const { fileBase, combinePdf, sendPdf } = require('../utils/combineFiles');
 const { isStaff } = require('../utils/roles');
@@ -22,22 +28,26 @@ const MIN_REASON_LENGTH = 10;
 
 const ACTIVE = ['DRAFT', 'PENDING', 'FOR_REVISION', 'APPROVED', 'ONGOING'];
 const PUBLIC = ['APPROVED', 'ONGOING', 'COMPLETED'];
-// Document types of the project files. File Upload sets one from the file itself (IMAGE, PDF,
-// WORD, EXCEL); an expense's receipt is RECEIPT and Completion adds REPORT and LIQUIDATION.
-// The others were chosen by hand before and stay so older files keep their label.
+// Document types of the project files. File Upload detects what a file is (a purchase request,
+// an SK resolution, ...) with Claude, and the SK Admin can correct it; when it cannot be told, the
+// file keeps its format (IMAGE, PDF, WORD, EXCEL). An expense's receipt is RECEIPT, and Completion
+// adds REPORT and LIQUIDATION.
 const DOCUMENT_TYPES = {
+  PURCHASE_REQUEST: 'Purchase request',
+  SK_RESOLUTION: 'SK Resolution',
+  ACTIVITY_DESIGN: 'Activity design',
+  RECEIPT: 'Receipt',
+  PHOTO: 'Photo',
+  REPORT: 'Report',
+  LIQUIDATION: 'Liquidation',
+  OTHER: 'Other document',
   IMAGE: 'Image',
   PDF: 'PDF Document',
   WORD: 'Word Document',
   EXCEL: 'Excel Spreadsheet',
-  RECEIPT: 'Receipt',
-  REPORT: 'Report',
-  LIQUIDATION: 'Liquidation',
-  SK_RESOLUTION: 'SK Resolution',
-  ACTIVITY_DESIGN: 'Activity design',
-  PURCHASE_REQUEST: 'Purchase request',
-  PHOTO: 'Photo',
 };
+// The types the SK Admin can choose on File Upload (all of the above).
+const UPLOAD_TYPES = Object.keys(DOCUMENT_TYPES);
 // The document type of an uploaded file, from its checked file type (see middleware/upload.js).
 const TYPE_OF_FILE = {
   'image/jpeg': 'IMAGE',
@@ -582,13 +592,15 @@ async function addFile(req, res, next) {
     if (!project) return discard();
     const errors = {};
     const file = req.files?.file?.[0];
-    const documentType = file && TYPE_OF_FILE[file.mimetype];
     if (!file) errors.file = 'Choose the file to upload';
-    else if (!documentType) errors.file = 'This file type is not supported. Upload an image (JPG or PNG), PDF, Word or Excel file.';
+    else if (!TYPE_OF_FILE[file.mimetype]) errors.file = 'This file type is not supported. Upload an image (JPG or PNG), PDF, Word or Excel file.';
     if (Object.keys(errors).length) {
       discard();
       return invalid(res, errors);
     }
+    // The type the SK Admin confirmed on the form, or else the one the system detects.
+    const chosen = String(req.body.documentType || '');
+    const documentType = UPLOAD_TYPES.includes(chosen) ? chosen : (await detectDocumentType(file)).documentType;
     await prisma.liquidationFile.create({
       data: {
         projectId: project.id,
@@ -603,6 +615,61 @@ async function addFile(req, res, next) {
     await sendProject(res, project.id, 201);
   } catch (err) {
     discard();
+    next(err);
+  }
+}
+
+// What kind of document an uploaded file is: Claude reads images and PDFs; a clear file name
+// tells the kind of a Word or Excel file; otherwise the file keeps its format type.
+// Returns { documentType, source: 'read' | 'name' | 'format' }.
+async function detectDocumentType(file) {
+  if (READABLE_DOCUMENTS.includes(file.mimetype) && isDocumentReaderConfigured()) {
+    try {
+      const kind = await readDocumentType(receiptPath(file.filename), file.mimetype);
+      if (DOCUMENT_TYPES[kind]) return { documentType: kind, source: 'read' };
+    } catch (err) {
+      console.error('Document reading failed:', err.message);
+    }
+  }
+  const byName = guessFromName(file.originalname);
+  if (byName) return { documentType: byName, source: 'name' };
+  return { documentType: TYPE_OF_FILE[file.mimetype], source: 'format' };
+}
+
+// POST /api/projects/document-read — SK Admin. multipart "file". Says what kind of document the
+// file is, so File Upload can show it before saving; nothing is saved and the file is removed.
+async function readDocumentFile(req, res, next) {
+  const files = uploadedFiles(req);
+  try {
+    const file = req.files?.file?.[0];
+    if (!file) return res.status(400).json({ message: 'Choose the file to read' });
+    const result = await detectDocumentType(file);
+    res.json({ ...result, label: DOCUMENT_TYPES[result.documentType] });
+  } catch (err) {
+    next(err);
+  } finally {
+    files.forEach((f) => removeReceiptFile(f.filename));
+  }
+}
+
+// GET /api/projects/files — SK side (the Barangay Chairman's Files page). Every file of the
+// projects the user may see (no drafts for the Barangay Chairman; deleted projects included),
+// newest first, with its project. Filtering and sorting are done on the page.
+async function listAllFiles(req, res, next) {
+  try {
+    const files = await prisma.liquidationFile.findMany({
+      where: { project: visibleWhere(req.user) },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        ...FILE_FIELDS,
+        project: { select: { id: true, title: true, status: true, archivedAt: true } },
+      },
+    });
+    res.json({
+      files: files.map((f) => ({ ...f, project: { ...f.project, statusLabel: STATUS_LABEL[f.project.status] || f.project.status } })),
+      documentTypes: DOCUMENT_TYPES,
+    });
+  } catch (err) {
     next(err);
   }
 }
@@ -944,6 +1011,8 @@ module.exports = {
   reviewProject,
   startProject,
   readReceiptFile,
+  readDocumentFile,
+  listAllFiles,
   addExpense,
   deleteExpense,
   addFile,

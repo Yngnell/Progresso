@@ -607,6 +607,7 @@ function Files({ project, documentTypes, canDelete, canUpload, ask, onDone, onFa
       {uploading && (
         <FileForm
           project={project}
+          documentTypes={documentTypes}
           onClose={() => setUploading(false)}
           onDone={(res, text) => {
             setUploading(false);
