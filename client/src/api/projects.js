@@ -99,6 +99,18 @@ export const projectsApi = {
       throw err;
     }
   },
+  // Saves one project file under its original name.
+  downloadFile: async (id, fileId, name) => {
+    const res = await api.get(`/projects/${id}/files/${fileId}`, { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name || 'file';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  },
   // Download of a section: 'receipt-liquidation' (one PDF).
   // Saves the file as e.g. ProjectName_Receipt_Liquidation.pdf.
   downloadSection: async (project, section) => {

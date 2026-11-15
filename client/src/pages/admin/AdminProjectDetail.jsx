@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Ban, CircleCheck, ClipboardCheck, FileText, Pencil, Play, Receipt, Send, Trash2, Upload, X } from 'lucide-react';
-import { projectsApi } from '../../api/projects';
+import { ArrowLeft, Ban, CircleCheck, ClipboardCheck, Download, FileText, Pencil, Play, Receipt, Send, Trash2, Upload, X } from 'lucide-react';
+import { downloadBase, projectsApi } from '../../api/projects';
+import { settingsApi } from '../../api/settings';
+import { exportProjectDetailsPdf } from '../../utils/reportExport';
+import { latestFile, projectStages, valueText } from '../../utils/projectStages';
 import { useAuth } from '../../context/AuthContext';
 import OverflowMenu from '../../components/OverflowMenu';
 import { StageSteps, StatusRibbon } from '../../components/Roundel';
@@ -349,114 +352,43 @@ function ReceiptsDownload({ project, onError, alignEnd = false }) {
 
 // The whole project for the Barangay Chairman (opened from Projects and from Archives), from
 // the request to its completion, in one table: Field and Details, one detail per row, each
-// stage under its own heading row. The downloads are under the table on the right.
+// stage under its own heading row. Every file can be opened or downloaded from the table, and
+// the downloads of the project are under the table on the right.
 function DetailsTable({ project, documentTypes, onFail }) {
-  const approved = ['APPROVED', 'ONGOING', 'COMPLETED', 'CANCELLED'].includes(project.status);
-  const reviews = [...(project.reviews || [])].reverse(); // oldest first
-  const breakdown = project.budgetRows || [];
-  const expenses = project.expenses || [];
-  const files = project.liquidationFiles || [];
+  const { user } = useAuth();
+  const stages = projectStages(project, documentTypes);
+  const failed = (fallback) => (msg) => onFail(msg || fallback)();
   const open = (fileId) => projectsApi.openFile(project.id, fileId).catch(onFail('The file could not be opened.'));
-  const fileLink = (fileId, name) => (
-    <button type="button" className="text-left font-medium text-pine hover:underline" onClick={() => open(fileId)}>
-      {name}
-    </button>
+  const save = (fileId, name) => projectsApi.downloadFile(project.id, fileId, name).catch(onFail('The file could not be downloaded.'));
+  const fileLine = (it) => (
+    <span className="inline-flex flex-wrap items-center gap-x-1.5">
+      {it.before}
+      <button type="button" className="text-left font-medium text-pine hover:underline" onClick={() => open(it.fileId)}>
+        {it.fileName}
+      </button>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 rounded-control px-1.5 py-0.5 text-[13px] font-medium text-slate-600 ring-1 ring-inset ring-line hover:bg-pine-light hover:text-pine"
+        onClick={() => save(it.fileId, it.fileName)}
+        aria-label={`Download ${it.fileName}`}
+      >
+        <Download size={13} strokeWidth={2} aria-hidden="true" /> Download
+      </button>
+      {it.after}
+    </span>
   );
-  const list = (items) => <ul className="space-y-1.5">{items.map((it, i) => <li key={i}>{it}</li>)}</ul>;
-
-  const stages = [];
-  stages.push(['Project Request', [
-    ['Project Name', project.title],
-    ['Status', project.archivedAt ? `${project.statusLabel} (deleted)` : project.statusLabel],
-    ['ABYIP Program', project.abyipItem ? `${project.abyipItem.name} (ABYIP ${project.abyipItem.year})` : null],
-    ['Category', project.category || project.abyipItem?.center],
-    ['Description', project.description],
-    ['Objectives', project.objectives],
-    ['Venue', project.location],
-    ['Target Participants', project.targetParticipants],
-    ['Start Date', project.startDate ? formatDate(project.startDate) : null],
-    ['End Date', project.endDate ? formatDate(project.endDate) : null],
-    ['Budget Breakdown', breakdown.length
-      ? list(breakdown.map((r) => `${r.item}: ${Number(r.quantity).toLocaleString('en-PH')} × ${formatPeso2(r.unitCost)} = ${formatPeso2(r.total)}`))
-      : null],
-    ['Estimated Cost', formatPeso2(project.estimatedCost)],
-    ['Proposed By', project.proposedByName || project.createdBy?.name],
-    ['Date Submitted', project.submittedAt ? formatDate(project.submittedAt) : null],
-  ]]);
-
-  const reviewRows = reviews.length
-    ? reviews.map((r, i) => [
-        reviews.length > 1 ? `Decision ${i + 1}` : 'Decision',
-        `${DECISION[r.decision]?.label || r.decision} by ${r.reviewer?.name || 'the Barangay Chairman'} on ${formatDate(r.reviewedAt)}${r.remarks ? `\nRemarks: ${r.remarks}` : ''}`,
-      ])
-    : [['Decision', project.status === 'DRAFT' ? 'Not submitted yet.' : 'No decision yet.']];
-  if (!approved && project.abyipRemaining != null) reviewRows.push(['ABYIP Program Balance', formatPeso2(project.abyipRemaining)]);
-  stages.push(['Review', reviewRows]);
-
-  if (approved || project.approvedAt) {
-    stages.push(['Approval', [
-      ['Date Approved', project.approvedAt ? formatDate(project.approvedAt) : null],
-      ['Approved Cost', formatPeso2(project.approvedCost)],
-    ]]);
-  }
-
-  if (['ONGOING', 'COMPLETED', 'CANCELLED'].includes(project.status) || expenses.length) {
-    const left = project.status === 'COMPLETED' ? 'Unused Amount (returned)' : project.status === 'CANCELLED' ? 'Unspent Amount (returned)' : 'Remaining Budget';
-    stages.push(['Implementation', [
-      ['Date Started', project.startedAt ? formatDate(project.startedAt) : null],
-      ['Expenses', expenses.length
-        ? list(expenses.map((e) => (
-            <>
-              {formatDate(e.date)} · {e.fileId ? fileLink(e.fileId, e.item) : e.item}
-              {e.category ? ` · ${e.category}` : ''}{e.supplier ? ` · ${e.supplier}` : ''} · <span className="font-semibold">{formatPeso2(e.amount)}</span>
-            </>
-          )))
-        : 'No expenses recorded yet.'],
-      ['Amount Spent', formatPeso2(project.amountSpent)],
-      [left, formatPeso2(project.remainingBudget)],
-    ]]);
-  }
-
-  stages.push(['Files', [
-    ['Project Files', files.length
-      ? list(files.map((f) => (
-          <>
-            {fileLink(f.id, f.originalName)}
-            <span className="text-slate-600"> · {documentTypes[f.documentType] || f.documentType} · {formatDate(f.createdAt)}</span>
-          </>
-        )))
-      : 'No files yet.'],
-  ]]);
-
-  if (project.status === 'REJECTED') {
-    const last = reviews[reviews.length - 1];
-    stages.push(['Rejection', [
-      ['Date Rejected', formatDate(project.reviewedAt || last?.reviewedAt)],
-      ['Reason for Rejection', project.reviewRemarks || last?.remarks],
-    ]]);
-  }
-  if (project.status === 'COMPLETED') {
-    stages.push(['Completion', [
-      ['Date Completed', formatDate(project.completedAt)],
-      ['Actual End Date', formatDate(project.actualEndDate)],
-      ['Actual Participants', project.actualParticipants],
-      ['Accomplishment Summary', project.accomplishmentSummary],
-    ]]);
-  }
-  if (project.status === 'CANCELLED') {
-    stages.push(['Cancellation', [
-      ['Date Cancelled', formatDate(project.cancelDate || project.cancelledAt)],
-      ['Reason for Cancellation', project.cancelReason],
-    ]]);
-  }
-  if (project.archivedAt) {
-    stages.push(['Deletion', [
-      ['Date Deleted', formatDate(project.archivedAt)],
-      ['Reason for Deletion', project.archivedReason],
-    ]]);
-  }
-
-  const empty = (v) => v === null || v === undefined || v === '';
+  const show = (value) => {
+    if (value === null || value === undefined || value === '') return '—';
+    if (!Array.isArray(value)) return value;
+    return (
+      <ul className="space-y-1.5">
+        {value.map((it, i) => <li key={i}>{it.fileId ? fileLine(it) : it.text}</li>)}
+      </ul>
+    );
+  };
+  const report = latestFile(project, 'REPORT');
+  const liquidation = latestFile(project, 'LIQUIDATION');
+  const completed = project.status === 'COMPLETED';
   return (
     <Card className="overflow-hidden">
       <div className="card-head px-6 py-4">
@@ -486,15 +418,48 @@ function DetailsTable({ project, documentTypes, onFail }) {
                   <th scope="row" className="border-b border-line bg-slate-100 px-4 py-3 text-left align-top font-semibold text-ink">
                     {field}
                   </th>
-                  <td className="whitespace-pre-wrap break-words text-slate-800">{empty(value) ? '—' : value}</td>
+                  <td className="whitespace-pre-wrap break-words text-slate-800">{show(value)}</td>
                 </tr>
               ))}
             </tbody>
           ))}
         </table>
       </div>
-      <div className="flex justify-end border-t border-line px-6 py-4">
-        <ReceiptsDownload project={project} alignEnd onError={(msg) => onFail(msg || 'The receipts could not be downloaded.')()} />
+      <div className="flex flex-wrap items-start justify-end gap-2 border-t border-line px-6 py-4" aria-label="Downloads">
+        <DownloadButton
+          label="Project details"
+          onDownload={async () => {
+            const { settings } = await settingsApi.get();
+            await exportProjectDetailsPdf({
+              project,
+              stages,
+              valueText,
+              fileName: `${downloadBase(project.title)}_Project_Details.pdf`,
+              settings,
+              user,
+            });
+          }}
+          onError={failed('The project details could not be downloaded.')}
+        />
+        {completed && (
+          <>
+            <DownloadButton
+              label="Accomplishment report"
+              empty={!report}
+              alignEnd
+              onDownload={() => projectsApi.downloadFile(project.id, report.id, report.originalName)}
+              onError={failed('The accomplishment report could not be downloaded.')}
+            />
+            <DownloadButton
+              label="Liquidation report"
+              empty={!liquidation}
+              alignEnd
+              onDownload={() => projectsApi.downloadFile(project.id, liquidation.id, liquidation.originalName)}
+              onError={failed('The liquidation report could not be downloaded.')}
+            />
+          </>
+        )}
+        <ReceiptsDownload project={project} alignEnd onError={failed('The receipts could not be downloaded.')} />
       </div>
     </Card>
   );
