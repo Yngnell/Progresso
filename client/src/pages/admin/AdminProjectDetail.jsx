@@ -180,20 +180,21 @@ export default function AdminProjectDetail() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
-          <Summary project={project} />
+          {isChairman ? <DetailsTable project={project} onFail={fail} /> : <Summary project={project} />}
           <Breakdown project={project} />
           {(shows(['ONGOING', 'COMPLETED', 'CANCELLED']) || project.expenses?.length > 0) && (
             <RecordExpenses
               project={project}
               meta={data}
               canRecord={isSkAdmin && !deleted && project.status === 'ONGOING'}
+              showDownload={!isChairman}
               ask={ask}
               onDone={refresh}
               onFail={fail}
             />
           )}
-          {project.status === 'COMPLETED' && <Completion project={project} />}
-          {project.status === 'CANCELLED' && <Cancellation project={project} />}
+          {!isChairman && project.status === 'COMPLETED' && <Completion project={project} />}
+          {!isChairman && project.status === 'CANCELLED' && <Cancellation project={project} />}
           <Files
             project={project}
             documentTypes={documentTypes}
@@ -328,6 +329,96 @@ function Field({ label, children }) {
   );
 }
 
+// The "Receipts" download: the receipts and the liquidation report of the project as one PDF.
+function ReceiptsDownload({ project, onError, alignEnd = false }) {
+  return (
+    <DownloadButton
+      label="Receipts"
+      empty={!(project.liquidationFiles || []).some((f) => ['RECEIPT', 'LIQUIDATION'].includes(f.documentType) && f.mimeType !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')}
+      onDownload={() => projectsApi.downloadSection(project, 'receipt-liquidation')}
+      onError={onError}
+      alignEnd={alignEnd}
+    />
+  );
+}
+
+// The project details for the Barangay Chairman (opened from Projects and from Archives):
+// one detail per row, Field and Details, with the downloads under the table on the right.
+function DetailsTable({ project, onFail }) {
+  const approved = ['APPROVED', 'ONGOING', 'COMPLETED', 'CANCELLED'].includes(project.status);
+  const lastReview = (project.reviews || [])[0];
+  const rows = [
+    ['Project Name', project.title],
+    ['ABYIP Program', project.abyipItem ? `${project.abyipItem.name} (ABYIP ${project.abyipItem.year})` : null],
+    ['Category', project.category || project.abyipItem?.center],
+    ['Description', project.description],
+    ['Objectives', project.objectives],
+    ['Venue', project.location],
+    ['Target Participants', project.targetParticipants],
+    [approved ? 'Budget (approved cost)' : 'Budget (estimated cost)', formatPeso2(approved ? project.approvedCost : project.estimatedCost)],
+    ['Start Date', project.startDate ? formatDate(project.startDate) : null],
+    ['End Date', project.endDate ? formatDate(project.endDate) : null],
+    ['Status', project.archivedAt ? `${project.statusLabel} (deleted)` : project.statusLabel],
+    ['Proposed By', project.proposedByName || project.createdBy?.name],
+    ['Date Submitted', project.submittedAt ? formatDate(project.submittedAt) : null],
+  ];
+  if (project.approvedAt) rows.push(['Date Approved', formatDate(project.approvedAt)]);
+  if (project.status === 'REJECTED') {
+    rows.push(['Date Rejected', formatDate(project.reviewedAt || lastReview?.reviewedAt)]);
+    rows.push(['Reason for Rejection', project.reviewRemarks || lastReview?.remarks]);
+  }
+  if (project.status === 'COMPLETED') {
+    rows.push(['Date Completed', formatDate(project.completedAt)]);
+    rows.push(['Actual End Date', formatDate(project.actualEndDate)]);
+    rows.push(['Actual Participants', project.actualParticipants]);
+    rows.push(['Accomplishment Summary', project.accomplishmentSummary]);
+  }
+  if (project.status === 'CANCELLED') {
+    rows.push(['Date Cancelled', formatDate(project.cancelDate || project.cancelledAt)]);
+    rows.push(['Reason for Cancellation', project.cancelReason]);
+  }
+  if (project.archivedAt) {
+    rows.push(['Date Deleted', formatDate(project.archivedAt)]);
+    rows.push(['Reason for Deletion', project.archivedReason]);
+  }
+  return (
+    <Card className="overflow-hidden">
+      <div className="card-head px-6 py-4">
+        <h2 className="section-title">Project Details</h2>
+      </div>
+      <div className="relative overflow-x-auto">
+        <table className="table-notebook min-w-[30rem] table-fixed">
+          <colgroup>
+            <col className="w-44 sm:w-52" />
+            <col />
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Field</th>
+              <th scope="col">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([field, value]) => (
+              <tr key={field}>
+                <th scope="row" className="border-b border-line bg-slate-100 px-4 py-3 text-left align-top font-semibold text-ink">
+                  {field}
+                </th>
+                <td className="whitespace-pre-wrap break-words text-slate-800">
+                  {value === null || value === undefined || value === '' ? '—' : value}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex justify-end border-t border-line px-6 py-4">
+        <ReceiptsDownload project={project} alignEnd onError={(msg) => onFail(msg || 'The receipts could not be downloaded.')()} />
+      </div>
+    </Card>
+  );
+}
+
 function Summary({ project }) {
   return (
     <Card className="p-6">
@@ -458,7 +549,7 @@ function Reviews({ project }) {
 }
 
 // Record Expenses: the button to record one (SK Admin, while Ongoing) and the expenses recorded.
-function RecordExpenses({ project, meta, canRecord, ask, onDone, onFail }) {
+function RecordExpenses({ project, meta, canRecord, showDownload = true, ask, onDone, onFail }) {
   const list = project.expenses || [];
   const canRemove = canRecord;
   const [recording, setRecording] = useState(false);
@@ -477,11 +568,7 @@ function RecordExpenses({ project, meta, canRecord, ask, onDone, onFail }) {
               <Receipt size={16} aria-hidden="true" /> Record expense
             </Button>
           )}
-          <DownloadButton
-            label="Receipts"
-            empty={!(project.liquidationFiles || []).some((f) => ['RECEIPT', 'LIQUIDATION'].includes(f.documentType) && f.mimeType !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')}
-            onDownload={() => projectsApi.downloadSection(project, 'receipt-liquidation')}
-          />
+          {showDownload && <ReceiptsDownload project={project} />}
         </div>
       </div>
       {recording && (
