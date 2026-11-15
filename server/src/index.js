@@ -21,7 +21,8 @@ const errorHandler = require('./middleware/error');
 const app = express();
 
 // Middleware
-app.use(cors());
+// Content-Disposition carries a file's name; the page reads it to save Word and Excel files.
+app.use(cors({ exposedHeaders: ['Content-Disposition'] }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -51,8 +52,8 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`SK Monitoring API running on http://localhost:${PORT}`);
 
-  // Progress is computed on the fly, so milestones and approaching end dates are
-  // checked on a timer: once at start-up and then every 10 minutes.
+  // Meeting reminders and projects about to end are checked on a timer: once at
+  // start-up and then every 10 minutes.
   const runSync = () => {
     syncNotifications({ force: true }).catch((err) =>
       console.error('Notification check failed:', err.message)

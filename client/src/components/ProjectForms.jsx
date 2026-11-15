@@ -80,8 +80,30 @@ export function ExpenseForm({ project, categories = [], receiptReading, onClose,
   const [busy, setBusy] = useState(false);
   const [reading, setReading] = useState(false);
   const [readNote, setReadNote] = useState(null); // { ok, text }
+  const [fromCamera, setFromCamera] = useState(false);
+  const [camera, setCamera] = useState(null); // null, or { photo } while the camera panel is open
+  const [cameraNote, setCameraNote] = useState(null);
+  const [inputKey, setInputKey] = useState(0); // clears the file box when a camera photo is used
+  const nativeCamera = useRef(null);
   const remaining = project.remainingBudget;
   const receiptProblem = receipt ? checkFile(receipt, { receipt: true }) : null;
+
+  // A receipt from the file box or the camera: check it, then read it right away.
+  function chooseReceipt(f, photo = false) {
+    setReceipt(f);
+    setFromCamera(photo);
+    setReadNote(null);
+    const problem = f ? checkFile(f, { receipt: true }) : null;
+    setErrors((x) => ({ ...x, receipt: problem || undefined }));
+    if (f && !problem && receiptReading) readReceipt(f);
+  }
+
+  function takePhoto() {
+    setCameraNote(null);
+    // Without the live camera (a phone on plain http), open the phone's camera app right away.
+    if (!canUseLiveCamera()) nativeCamera.current?.click();
+    else setCamera({ photo: null });
+  }
   const set = (k) => (e) => {
     const v = e.target.value;
     setForm((f) => ({ ...f, [k]: v }));
@@ -152,19 +174,55 @@ export function ExpenseForm({ project, categories = [], receiptReading, onClose,
       <form id="expense-form" onSubmit={submit} noValidate className="space-y-4">
         <div>
           <FileInput
+            key={inputKey}
             id="expense-receipt"
             label="Receipt"
             accept={RECEIPT_ACCEPT}
             onChange={(f) => {
-              setReceipt(f);
-              setReadNote(null);
-              const problem = f ? checkFile(f, { receipt: true }) : null;
-              setErrors((x) => ({ ...x, receipt: problem || undefined }));
-              if (f && !problem && receiptReading) readReceipt(f);
+              setCamera(null);
+              chooseReceipt(f);
             }}
             error={errors.receipt}
             hint="PDF, JPG or PNG, up to 10 MB. It is kept in the project files."
           />
+          <input
+            ref={nativeCamera}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) toJpeg(f).then((photo) => setCamera({ photo }), () => setCameraNote('This picture could not be read. Take it again, or upload the receipt file instead.'));
+            }}
+          />
+          {!camera && (
+            <Button size="sm" variant="secondary" className="mt-2" onClick={takePhoto}>
+              <Camera size={16} aria-hidden="true" /> Take Photo
+            </Button>
+          )}
+          {cameraNote && <p className="mt-2 text-[13px] text-clay-text" role="alert">{cameraNote}</p>}
+          {camera && (
+            <div className="mt-3">
+              <CameraCapture
+                initialPhoto={camera.photo}
+                onUse={(photo) => {
+                  setCamera(null);
+                  setInputKey((k) => k + 1);
+                  chooseReceipt(photo, true);
+                }}
+                onCancel={() => setCamera(null)}
+                onError={(text) => {
+                  setCamera(null);
+                  setCameraNote(text.replace('Upload a file instead.', 'Upload the receipt file instead.').replace('or upload a file instead.', 'or upload the receipt file instead.'));
+                }}
+              />
+            </div>
+          )}
+          {receipt && fromCamera && <p className="mt-2 text-[13px] text-slate-600">Photo: {receipt.name}</p>}
           {reading && (
             <p className="mt-2 inline-flex items-center gap-1.5 text-[13px] text-slate-600" role="status">
               <ScanText size={14} aria-hidden="true" /> Reading the receipt…

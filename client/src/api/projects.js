@@ -50,6 +50,29 @@ export function checkFile(file, { receipt = false } = {}) {
   return null;
 }
 
+// Saves a downloaded file to the computer under the given name.
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// The file name the server sends: Content-Disposition: inline; filename*=UTF-8''Name%20of%20file.docx
+function nameFromDisposition(header) {
+  const m = /filename\*=UTF-8''([^;]+)/i.exec(header || '') || /filename="?([^";]+)"?/i.exec(header || '');
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
+}
+
 const form = (fields) => {
   const fd = new FormData();
   Object.entries(fields).forEach(([k, v]) => {
@@ -85,14 +108,7 @@ export const projectsApi = {
   // Saves one project file under its original name.
   downloadFile: async (id, fileId, name) => {
     const res = await api.get(`/projects/${id}/files/${fileId}`, { responseType: 'blob' });
-    const url = URL.createObjectURL(res.data);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name || 'file';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    saveBlob(res.data, name || nameFromDisposition(res.headers?.['content-disposition']) || 'file');
   },
   // File Upload: { file, documentType? }. documentType is the type the SK Admin confirmed;
   // without it the server detects the type itself.
@@ -105,10 +121,18 @@ export const projectsApi = {
   cancel: (id, data) => api.patch(`/projects/${id}/cancel`, data).then((r) => r.data),
 
   // The files need the login token, so they are fetched and opened from a blob URL.
+  // A PDF or picture opens in a new tab; a Word or Excel file cannot be shown in a tab, so it is
+  // saved under its own name instead (a tab would download it with a random name).
   openFile: async (id, fileId) => {
     const tab = window.open('', '_blank'); // opened first so the browser allows the pop-up
     try {
       const res = await api.get(`/projects/${id}/files/${fileId}`, { responseType: 'blob' });
+      const type = res.data.type || res.headers?.['content-type'] || '';
+      if (!/^(application\/pdf|image\/)/.test(type)) {
+        if (tab) tab.close();
+        saveBlob(res.data, nameFromDisposition(res.headers?.['content-disposition']) || 'file');
+        return;
+      }
       const url = URL.createObjectURL(res.data);
       if (tab) tab.location.href = url;
       else window.location.href = url;

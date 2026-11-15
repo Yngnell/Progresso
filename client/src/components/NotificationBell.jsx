@@ -33,8 +33,9 @@ function timeAgo(iso) {
   return `${Math.round(hours / 24)} d ago`;
 }
 
-// Bell with an unread badge and a dropdown list. Alerts: progress milestones
-// (50%, 75%, 90%), projects that are about to end, and calendar events starting soon.
+// Bell with an unread badge and a dropdown list. Alerts: meetings starting soon (a day and an
+// hour before) and projects about to end (three days and a day before). Older kinds, such as
+// progress milestones, still show with their own icon.
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -104,8 +105,8 @@ export default function NotificationBell() {
             <div className="max-h-[60vh] overflow-y-auto sm:max-h-96">
               {notifications.length === 0 ? (
                 <p className="px-4 py-8 text-center text-sm text-slate-600">
-                  No notifications yet. You will be alerted at 50%, 75% and 90% progress, and when
-                  a project is about to end.
+                  No notifications yet. You will be alerted a day and an hour before a meeting
+                  starts, and three days and a day before a project ends.
                 </p>
               ) : (
                 notifications.map((n) => {

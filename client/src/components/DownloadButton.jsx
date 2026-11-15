@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { Button } from './ui';
 
-// "Download" for one section of a project (receipts, Purchase Request files, pictures).
+// "Download" for one section of a project (e.g. the receipts as one PDF).
 //   empty:      no files yet: the button is disabled and says so
 //   onDownload: async; makes and saves the file. While it runs the button shows "Preparing…".
 //   onError:    gets a readable message if the download fails

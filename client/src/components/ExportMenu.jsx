@@ -37,7 +37,7 @@ export default function ExportMenu({ onExport, disabled = false, label = 'Export
 
   const items = [
     { kind: 'pdf', label: 'PDF', note: 'For printing and signing', Icon: FileText },
-    { kind: 'excel', label: 'Excel', note: 'One sheet per section', Icon: FileSpreadsheet },
+    { kind: 'excel', label: 'Excel', note: 'Spreadsheet file', Icon: FileSpreadsheet },
   ];
 
   return (
