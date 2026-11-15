@@ -178,23 +178,27 @@ export default function AdminProjectDetail() {
         />
       )}
 
+      {isChairman ? (
+        <div className="mt-6">
+          <DetailsTable project={project} documentTypes={documentTypes} onFail={fail} />
+        </div>
+      ) : (
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
-          {isChairman ? <DetailsTable project={project} onFail={fail} /> : <Summary project={project} />}
+          <Summary project={project} />
           <Breakdown project={project} />
           {(shows(['ONGOING', 'COMPLETED', 'CANCELLED']) || project.expenses?.length > 0) && (
             <RecordExpenses
               project={project}
               meta={data}
               canRecord={isSkAdmin && !deleted && project.status === 'ONGOING'}
-              showDownload={!isChairman}
               ask={ask}
               onDone={refresh}
               onFail={fail}
             />
           )}
-          {!isChairman && project.status === 'COMPLETED' && <Completion project={project} />}
-          {!isChairman && project.status === 'CANCELLED' && <Cancellation project={project} />}
+          {project.status === 'COMPLETED' && <Completion project={project} />}
+          {project.status === 'CANCELLED' && <Cancellation project={project} />}
           <Files
             project={project}
             documentTypes={documentTypes}
@@ -211,6 +215,7 @@ export default function AdminProjectDetail() {
           <Reviews project={project} />
         </div>
       </div>
+      )}
       {askDialog}
     </div>
   );
@@ -342,45 +347,116 @@ function ReceiptsDownload({ project, onError, alignEnd = false }) {
   );
 }
 
-// The project details for the Barangay Chairman (opened from Projects and from Archives):
-// one detail per row, Field and Details, with the downloads under the table on the right.
-function DetailsTable({ project, onFail }) {
+// The whole project for the Barangay Chairman (opened from Projects and from Archives), from
+// the request to its completion, in one table: Field and Details, one detail per row, each
+// stage under its own heading row. The downloads are under the table on the right.
+function DetailsTable({ project, documentTypes, onFail }) {
   const approved = ['APPROVED', 'ONGOING', 'COMPLETED', 'CANCELLED'].includes(project.status);
-  const lastReview = (project.reviews || [])[0];
-  const rows = [
+  const reviews = [...(project.reviews || [])].reverse(); // oldest first
+  const breakdown = project.budgetRows || [];
+  const expenses = project.expenses || [];
+  const files = project.liquidationFiles || [];
+  const open = (fileId) => projectsApi.openFile(project.id, fileId).catch(onFail('The file could not be opened.'));
+  const fileLink = (fileId, name) => (
+    <button type="button" className="text-left font-medium text-pine hover:underline" onClick={() => open(fileId)}>
+      {name}
+    </button>
+  );
+  const list = (items) => <ul className="space-y-1.5">{items.map((it, i) => <li key={i}>{it}</li>)}</ul>;
+
+  const stages = [];
+  stages.push(['Project Request', [
     ['Project Name', project.title],
+    ['Status', project.archivedAt ? `${project.statusLabel} (deleted)` : project.statusLabel],
     ['ABYIP Program', project.abyipItem ? `${project.abyipItem.name} (ABYIP ${project.abyipItem.year})` : null],
     ['Category', project.category || project.abyipItem?.center],
     ['Description', project.description],
     ['Objectives', project.objectives],
     ['Venue', project.location],
     ['Target Participants', project.targetParticipants],
-    [approved ? 'Budget (approved cost)' : 'Budget (estimated cost)', formatPeso2(approved ? project.approvedCost : project.estimatedCost)],
     ['Start Date', project.startDate ? formatDate(project.startDate) : null],
     ['End Date', project.endDate ? formatDate(project.endDate) : null],
-    ['Status', project.archivedAt ? `${project.statusLabel} (deleted)` : project.statusLabel],
+    ['Budget Breakdown', breakdown.length
+      ? list(breakdown.map((r) => `${r.item}: ${Number(r.quantity).toLocaleString('en-PH')} × ${formatPeso2(r.unitCost)} = ${formatPeso2(r.total)}`))
+      : null],
+    ['Estimated Cost', formatPeso2(project.estimatedCost)],
     ['Proposed By', project.proposedByName || project.createdBy?.name],
     ['Date Submitted', project.submittedAt ? formatDate(project.submittedAt) : null],
-  ];
-  if (project.approvedAt) rows.push(['Date Approved', formatDate(project.approvedAt)]);
+  ]]);
+
+  const reviewRows = reviews.length
+    ? reviews.map((r, i) => [
+        reviews.length > 1 ? `Decision ${i + 1}` : 'Decision',
+        `${DECISION[r.decision]?.label || r.decision} by ${r.reviewer?.name || 'the Barangay Chairman'} on ${formatDate(r.reviewedAt)}${r.remarks ? `\nRemarks: ${r.remarks}` : ''}`,
+      ])
+    : [['Decision', project.status === 'DRAFT' ? 'Not submitted yet.' : 'No decision yet.']];
+  if (!approved && project.abyipRemaining != null) reviewRows.push(['ABYIP Program Balance', formatPeso2(project.abyipRemaining)]);
+  stages.push(['Review', reviewRows]);
+
+  if (approved || project.approvedAt) {
+    stages.push(['Approval', [
+      ['Date Approved', project.approvedAt ? formatDate(project.approvedAt) : null],
+      ['Approved Cost', formatPeso2(project.approvedCost)],
+    ]]);
+  }
+
+  if (['ONGOING', 'COMPLETED', 'CANCELLED'].includes(project.status) || expenses.length) {
+    const left = project.status === 'COMPLETED' ? 'Unused Amount (returned)' : project.status === 'CANCELLED' ? 'Unspent Amount (returned)' : 'Remaining Budget';
+    stages.push(['Implementation', [
+      ['Date Started', project.startedAt ? formatDate(project.startedAt) : null],
+      ['Expenses', expenses.length
+        ? list(expenses.map((e) => (
+            <>
+              {formatDate(e.date)} · {e.fileId ? fileLink(e.fileId, e.item) : e.item}
+              {e.category ? ` · ${e.category}` : ''}{e.supplier ? ` · ${e.supplier}` : ''} · <span className="font-semibold">{formatPeso2(e.amount)}</span>
+            </>
+          )))
+        : 'No expenses recorded yet.'],
+      ['Amount Spent', formatPeso2(project.amountSpent)],
+      [left, formatPeso2(project.remainingBudget)],
+    ]]);
+  }
+
+  stages.push(['Files', [
+    ['Project Files', files.length
+      ? list(files.map((f) => (
+          <>
+            {fileLink(f.id, f.originalName)}
+            <span className="text-slate-600"> · {documentTypes[f.documentType] || f.documentType} · {formatDate(f.createdAt)}</span>
+          </>
+        )))
+      : 'No files yet.'],
+  ]]);
+
   if (project.status === 'REJECTED') {
-    rows.push(['Date Rejected', formatDate(project.reviewedAt || lastReview?.reviewedAt)]);
-    rows.push(['Reason for Rejection', project.reviewRemarks || lastReview?.remarks]);
+    const last = reviews[reviews.length - 1];
+    stages.push(['Rejection', [
+      ['Date Rejected', formatDate(project.reviewedAt || last?.reviewedAt)],
+      ['Reason for Rejection', project.reviewRemarks || last?.remarks],
+    ]]);
   }
   if (project.status === 'COMPLETED') {
-    rows.push(['Date Completed', formatDate(project.completedAt)]);
-    rows.push(['Actual End Date', formatDate(project.actualEndDate)]);
-    rows.push(['Actual Participants', project.actualParticipants]);
-    rows.push(['Accomplishment Summary', project.accomplishmentSummary]);
+    stages.push(['Completion', [
+      ['Date Completed', formatDate(project.completedAt)],
+      ['Actual End Date', formatDate(project.actualEndDate)],
+      ['Actual Participants', project.actualParticipants],
+      ['Accomplishment Summary', project.accomplishmentSummary],
+    ]]);
   }
   if (project.status === 'CANCELLED') {
-    rows.push(['Date Cancelled', formatDate(project.cancelDate || project.cancelledAt)]);
-    rows.push(['Reason for Cancellation', project.cancelReason]);
+    stages.push(['Cancellation', [
+      ['Date Cancelled', formatDate(project.cancelDate || project.cancelledAt)],
+      ['Reason for Cancellation', project.cancelReason],
+    ]]);
   }
   if (project.archivedAt) {
-    rows.push(['Date Deleted', formatDate(project.archivedAt)]);
-    rows.push(['Reason for Deletion', project.archivedReason]);
+    stages.push(['Deletion', [
+      ['Date Deleted', formatDate(project.archivedAt)],
+      ['Reason for Deletion', project.archivedReason],
+    ]]);
   }
+
+  const empty = (v) => v === null || v === undefined || v === '';
   return (
     <Card className="overflow-hidden">
       <div className="card-head px-6 py-4">
@@ -389,7 +465,7 @@ function DetailsTable({ project, onFail }) {
       <div className="relative overflow-x-auto">
         <table className="table-notebook min-w-[30rem] table-fixed">
           <colgroup>
-            <col className="w-44 sm:w-52" />
+            <col className="w-44 sm:w-56" />
             <col />
           </colgroup>
           <thead>
@@ -398,18 +474,23 @@ function DetailsTable({ project, onFail }) {
               <th scope="col">Details</th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map(([field, value]) => (
-              <tr key={field}>
-                <th scope="row" className="border-b border-line bg-slate-100 px-4 py-3 text-left align-top font-semibold text-ink">
-                  {field}
+          {stages.map(([stage, rows]) => (
+            <tbody key={stage}>
+              <tr>
+                <th colSpan={2} scope="colgroup" className="border-b border-line bg-pine-light px-4 py-2.5 text-left font-display text-[17px] font-normal text-pine-dark">
+                  {stage}
                 </th>
-                <td className="whitespace-pre-wrap break-words text-slate-800">
-                  {value === null || value === undefined || value === '' ? '—' : value}
-                </td>
               </tr>
-            ))}
-          </tbody>
+              {rows.map(([field, value]) => (
+                <tr key={field}>
+                  <th scope="row" className="border-b border-line bg-slate-100 px-4 py-3 text-left align-top font-semibold text-ink">
+                    {field}
+                  </th>
+                  <td className="whitespace-pre-wrap break-words text-slate-800">{empty(value) ? '—' : value}</td>
+                </tr>
+              ))}
+            </tbody>
+          ))}
         </table>
       </div>
       <div className="flex justify-end border-t border-line px-6 py-4">
@@ -549,7 +630,7 @@ function Reviews({ project }) {
 }
 
 // Record Expenses: the button to record one (SK Admin, while Ongoing) and the expenses recorded.
-function RecordExpenses({ project, meta, canRecord, showDownload = true, ask, onDone, onFail }) {
+function RecordExpenses({ project, meta, canRecord, ask, onDone, onFail }) {
   const list = project.expenses || [];
   const canRemove = canRecord;
   const [recording, setRecording] = useState(false);
@@ -568,7 +649,7 @@ function RecordExpenses({ project, meta, canRecord, showDownload = true, ask, on
               <Receipt size={16} aria-hidden="true" /> Record expense
             </Button>
           )}
-          {showDownload && <ReceiptsDownload project={project} />}
+          <ReceiptsDownload project={project} />
         </div>
       </div>
       {recording && (
