@@ -30,10 +30,18 @@ function when(date) {
 function publicLine(n) {
   // Events are no longer on the public site, so residents are not emailed about them.
   if (n.event) return null;
+  // Alerts meant for one side of the SK (a request to review, a decision) never reach residents.
+  if (n.audience && n.audience !== 'PUBLIC') return null;
   const p = n.project;
   // Only projects the public can see (approved, ongoing or completed) reach residents.
   if (!p || p.archivedAt || !['APPROVED', 'ONGOING', 'COMPLETED'].includes(p.status)) return null;
   const link = `${APP_URL()}/projects/${p.id}`;
+  if (n.type === 'PROJECT_APPROVED' && ['APPROVED', 'ONGOING'].includes(p.status)) {
+    return { title: n.title, message: n.message, link, linkText: 'See the project' };
+  }
+  if (n.type === 'PROJECT_COMPLETED' && p.status === 'COMPLETED') {
+    return { title: n.title, message: n.message, link, linkText: 'See what was accomplished' };
+  }
   if (n.type === 'ENDING_3D' || n.type === 'ENDING_1D') {
     return {
       title: `${p.title} is wrapping up`,
@@ -92,11 +100,17 @@ function subscribers() {
 }
 
 let emailing = false;
+// Set when a new alert arrives during a run: one more run follows, so it is not left waiting.
+let again = false;
 
 // Emails the new project and event alerts to residents. Each resident gets one email per
 // run, and only about alerts created after they opted in.
 async function sendPendingViewerEmails() {
-  if (emailing || !isMailConfigured()) return 0;
+  if (!isMailConfigured()) return 0;
+  if (emailing) {
+    again = true;
+    return 0;
+  }
   emailing = true;
   try {
     const pending = await prisma.notification.findMany({
@@ -116,10 +130,13 @@ async function sendPendingViewerEmails() {
 
     // Only what is still ahead: a meeting that has not started, a project still running.
     const now = new Date();
+    // News for residents (a project approved or completed) is sent as it is; publicLine checks it.
     const upcoming = pending.filter((n) =>
-      n.event
-        ? new Date(n.event.startAt) > now
-        : Boolean(n.project && n.project.status === 'ONGOING' && !n.project.holdArchivedAt && n.project.endDate && new Date(n.project.endDate) > now)
+      n.type === 'PROJECT_APPROVED' || n.type === 'PROJECT_COMPLETED'
+        ? true
+        : n.event
+          ? new Date(n.event.startAt) > now
+          : Boolean(n.project && n.project.status === 'ONGOING' && !n.project.holdArchivedAt && n.project.endDate && new Date(n.project.endDate) > now)
     );
 
     let sent = 0;
@@ -144,6 +161,10 @@ async function sendPendingViewerEmails() {
     return sent;
   } finally {
     emailing = false;
+    if (again) {
+      again = false;
+      sendPendingViewerEmails().catch((err) => console.error('Email retry failed:', err.message));
+    }
   }
 }
 

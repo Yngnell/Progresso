@@ -31,7 +31,7 @@ function evaluateProject(project, now = new Date()) {
       alerts.push({
         type: 'ENDING_1D',
         title: `Ending within a day: ${project.title}`,
-        message: `${project.title} ends on ${when(project.endDate)}. Upload the receipt liquidation and finish the checklist before marking it as completed.`,
+        message: `${project.title} ends on ${when(project.endDate)}. Record the last expenses, then complete it with the accomplishment and liquidation reports.`,
       });
     } else if (left <= 72 * HOUR) {
       const days = Math.ceil(left / (24 * HOUR));
@@ -126,9 +126,34 @@ const APP_URL = () => (process.env.APP_URL || 'http://localhost:5173').replace(/
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
 const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ESCAPES[c]);
 
-// Only alerts about something still to come are emailed: a meeting about to start, or
-// an ongoing project about to end. (Older kinds such as progress milestones stay in the bell.)
-const EMAIL_TYPES = ['EVENT_1H', 'EVENT_1D', 'ENDING_1D', 'ENDING_3D'];
+// Reminders are emailed while what they are about is still ahead: a meeting about to start,
+// or an ongoing project about to end. (Older kinds such as progress milestones stay in the bell.)
+const REMINDER_TYPES = ['EVENT_1H', 'EVENT_1D', 'ENDING_1D', 'ENDING_3D'];
+// News about a Project Request, for one side only (see notifyProject).
+const NEWS_TYPES = ['REQUEST_SUBMITTED', 'DECISION_APPROVE', 'DECISION_RETURN', 'DECISION_REJECT'];
+const EMAIL_TYPES = [...REMINDER_TYPES, ...NEWS_TYPES];
+
+// Who an alert is for: null = the whole SK side, CHAIRMAN or ADMIN = that side only,
+// PUBLIC = residents' email only (never in the staff bell).
+const AUDIENCE_OF_ROLE = { CHAIRMAN: 'CHAIRMAN', ADMIN: 'ADMIN', OFFICIAL: 'ADMIN' };
+const audienceOf = (role) => AUDIENCE_OF_ROLE[role] || null;
+const reaches = (alert, role) => alert.audience === null || alert.audience === audienceOf(role);
+
+// Creates an alert about a project right away (a request submitted, a decision, a project
+// approved or completed). A newer alert of the same kind replaces the older one, so it shows
+// again as unread. Never throws: a failed alert must not undo the action that caused it.
+async function notifyProject(projectId, { type, title, message, audience = null }) {
+  try {
+    await prisma.notification.deleteMany({ where: { projectId, type } });
+    await prisma.notification.create({ data: { projectId, type, title, message, audience } });
+    sendPendingEmails().catch((err) => console.error('Alert email failed:', err.message));
+    require('./residentEmails')
+      .sendPendingViewerEmails()
+      .catch((err) => console.error('Resident email failed:', err.message));
+  } catch (err) {
+    console.error('Project alert failed:', err.message);
+  }
+}
 
 // Where an alert's button leads. The SK Admin opens the meeting or the project itself; the
 // Barangay Chairman has no Meetings page, so a meeting alert opens the Dashboard (which lists
@@ -148,6 +173,10 @@ const KIND = {
   EVENT_1D: { text: 'Meeting · coming up', color: '#1F4D3A' },
   ENDING_1D: { text: 'Project · ends within a day', color: '#A9502C' },
   ENDING_3D: { text: 'Project · ending soon', color: '#8A5F12' },
+  REQUEST_SUBMITTED: { text: 'Project Request · to review', color: '#8A5F12' },
+  DECISION_APPROVE: { text: 'Project Request · approved', color: '#1F4D3A' },
+  DECISION_RETURN: { text: 'Project Request · returned', color: '#A9502C' },
+  DECISION_REJECT: { text: 'Project Request · rejected', color: '#A9502C' },
 };
 
 // Builds one email that lists every given alert, for one kind of account (role decides the
@@ -207,9 +236,14 @@ function buildDigest(alerts, { role = 'ADMIN' } = {}) {
 // Alerts older than this are never emailed, so a delay never dumps old news into an inbox.
 const EMAIL_WINDOW_MS = 6 * 60 * 60 * 1000;
 let emailing = false;
+// Set when a new alert arrives during a run: one more run follows, so it is not left waiting.
+let again = false;
 
-// True while the meeting or project the alert is about is still ahead.
+// True while the alert is still worth an email: news is (a request only while it waits for
+// the decision); a reminder while the meeting or project it is about is still ahead.
 function stillUpcoming(n, now) {
+  if (n.type === 'REQUEST_SUBMITTED') return Boolean(n.project && n.project.status === 'PENDING' && !n.project.archivedAt);
+  if (NEWS_TYPES.includes(n.type)) return Boolean(n.project && !n.project.archivedAt);
   if (n.event) return new Date(n.event.startAt) > now;
   if (n.project) {
     return (
@@ -229,14 +263,18 @@ function stillUpcoming(n, now) {
 // old news is never emailed. Alerts are marked only after sending; if the mail service fails
 // they are retried on the next check. Does nothing until mail is set up.
 async function sendPendingEmails() {
-  if (emailing || !isMailConfigured()) return 0;
+  if (!isMailConfigured()) return 0;
+  if (emailing) {
+    again = true;
+    return 0;
+  }
   emailing = true;
   try {
     const now = new Date();
     const pending = await prisma.notification.findMany({
       where: {
         emailedAt: null,
-        audience: null,
+        OR: [{ audience: null }, { audience: { in: ['ADMIN', 'CHAIRMAN'] } }],
         createdAt: { gt: new Date(now.getTime() - EMAIL_WINDOW_MS) },
       },
       include: {
@@ -261,8 +299,11 @@ async function sendPendingEmails() {
         return true;
       });
       if (targets.length === 0) return 0; // no accounts to send to: keep them for later
+      // Each account gets only the alerts meant for its side.
       for (const u of targets) {
-        const { subject, text, html } = buildDigest(toSend, { role: u.role });
+        const mine = toSend.filter((a) => reaches(a, u.role));
+        if (mine.length === 0) continue;
+        const { subject, text, html } = buildDigest(mine, { role: u.role });
         await sendMail({ to: u.email.trim(), subject, text, html });
       }
     }
@@ -273,7 +314,11 @@ async function sendPendingEmails() {
     return toSend.length;
   } finally {
     emailing = false;
+    if (again) {
+      again = false;
+      sendPendingEmails().catch((err) => console.error('Email retry failed:', err.message));
+    }
   }
 }
 
-module.exports = { evaluateProject, evaluateEvent, syncNotifications, buildDigest, sendPendingEmails };
+module.exports = { evaluateProject, evaluateEvent, syncNotifications, buildDigest, sendPendingEmails, notifyProject, audienceOf };

@@ -9,6 +9,7 @@ const {
 const { receiptPath, removeReceiptFile, uploadedFiles } = require('../middleware/upload');
 const { fileBase, combinePdf, sendPdf } = require('../utils/combineFiles');
 const { isStaff } = require('../utils/roles');
+const { notifyProject } = require('../utils/notifications');
 const { EDITABLE, CLOSED, STATUS_LABEL, assertTransition } = require('../utils/projectStatus');
 const { EXPENSE_CATEGORIES, round2, itemRemaining, projectMoney } = require('../utils/projectBudget');
 
@@ -375,6 +376,41 @@ async function updateProject(req, res, next) {
 
 // PATCH /api/projects/:id/submit — SK Admin. Draft or For Revision -> Pending. Every field is
 // required and the estimated cost must fit the ABYIP item's remaining balance.
+// The Barangay Chairman's decision, for the SK Admin; an approved project is also news for
+// the residents who signed up for updates (it is now on the public website).
+async function notifyDecision(project, decision, remarks) {
+  const said = remarks ? ` Remarks: ${remarks}` : '';
+  const alert = {
+    APPROVE: {
+      title: `Approved: ${project.title}`,
+      message: `The Barangay Chairman approved “${project.title}”. Its estimated cost is set aside from its ABYIP item, and the project can now be started.${said}`,
+    },
+    RETURN: {
+      title: `Returned for revision: ${project.title}`,
+      message: `The Barangay Chairman returned “${project.title}” for revision.${said}`,
+    },
+    REJECT: {
+      title: `Rejected: ${project.title}`,
+      message: `The Barangay Chairman rejected “${project.title}”.${said}`,
+    },
+  }[decision];
+  if (!alert) return;
+  await notifyProject(project.id, { type: `DECISION_${decision}`, audience: 'ADMIN', ...alert });
+  if (decision === 'APPROVE') {
+    const dates = project.startDate && project.endDate ? ` from ${phDayText(project.startDate)} to ${phDayText(project.endDate)}` : '';
+    const where = project.location ? ` at ${project.location}` : '';
+    await notifyProject(project.id, {
+      type: 'PROJECT_APPROVED',
+      audience: 'PUBLIC',
+      title: `New SK project: ${project.title}`,
+      message: `${project.title} was approved by the SK and the Barangay Chairman and will be held${dates}${where}.`,
+    });
+  }
+}
+
+// A date as words in the Philippines, e.g. "Nov 21, 2026".
+const phDayText = (d) => new Date(d).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric' });
+
 async function submitProject(req, res, next) {
   try {
     const project = await loadFor(req, res, EDITABLE, 'Submitting the request');
@@ -396,6 +432,12 @@ async function submitProject(req, res, next) {
     await prisma.project.update({
       where: { id: full.id },
       data: { status: 'PENDING', approvalState: 'PENDING', submittedAt: new Date() },
+    });
+    await notifyProject(full.id, {
+      type: 'REQUEST_SUBMITTED',
+      audience: 'CHAIRMAN',
+      title: `New request to review: ${full.title}`,
+      message: `${req.user.name} submitted the Project Request “${full.title}” with an estimated cost of ${peso(cost)}. Review it in Approvals.`,
     });
     await sendProject(res, full.id);
   } catch (err) {
@@ -455,6 +497,7 @@ async function reviewProject(req, res, next) {
         },
       }),
     ]);
+    await notifyDecision(project, req.body.decision, remarks);
     await sendProject(res, project.id);
   } catch (err) {
     next(err);
@@ -798,6 +841,13 @@ async function completeProject(req, res, next) {
       }),
     ]);
     const numbers = await completionNumbers(project);
+    const done = summary.length > 220 ? `${summary.slice(0, 217).trimEnd()}…` : summary;
+    await notifyProject(project.id, {
+      type: 'PROJECT_COMPLETED',
+      audience: 'PUBLIC',
+      title: `Completed: ${project.title}`,
+      message: `${project.title} was completed with ${participants} participants. ${done}`,
+    });
     await sendProject(res, project.id, 200, { returned: numbers.unused });
   } catch (err) {
     discard();

@@ -1,10 +1,12 @@
 const prisma = require('../prisma');
-const { syncNotifications } = require('../utils/notifications');
+const { syncNotifications, audienceOf } = require('../utils/notifications');
 
-// Alerts with an audience were only for the SK Chairperson's account, which no longer
-// exists; everyone sees the alerts without an audience.
-function visibleTo() {
-  return { audience: null };
+// Alerts without an audience are for the whole SK side; CHAIRMAN and ADMIN alerts are for that
+// side only (a request to review, a decision on a request). PUBLIC alerts are only emailed to
+// residents, and old SK_CHAIR alerts belonged to an account that no longer exists.
+function visibleTo(user) {
+  const own = audienceOf(user?.role);
+  return own ? { OR: [{ audience: null }, { audience: own }] } : { audience: null };
 }
 
 // GET /api/notifications — the SK side. Newest first, with a per-user read flag.

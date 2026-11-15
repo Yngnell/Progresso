@@ -281,11 +281,11 @@ model Notification {
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   eventId   String?
   event     Event?   @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  type      String   // PROGRESS_50/75/90 | ENDING_3D | ENDING_1D (projects) | EVENT_1D | EVENT_1H (calendar)
+  type      String   // ENDING_3D | ENDING_1D (projects) | EVENT_1D | EVENT_1H (calendar) | REQUEST_SUBMITTED | DECISION_APPROVE/RETURN/REJECT | PROJECT_APPROVED | PROJECT_COMPLETED (old: PROGRESS_50/75/90)
   title     String
   message   String
   readByIds String[] @default([])
-  // Who sees it: empty = the whole SK side; "SK_CHAIR" = only the SK Chairperson
+  // Who it is for: empty = the whole SK side; CHAIRMAN or ADMIN = that side only; PUBLIC = residents' email only (old: SK_CHAIR)
   audience  String?
   emailedAt DateTime? // set once the alert has been emailed to everyone who opted in
   viewerEmailedAt DateTime? // same, for the residents who ticked "email me updates"
