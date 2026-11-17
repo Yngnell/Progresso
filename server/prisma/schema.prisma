@@ -406,6 +406,7 @@ model LiquidationFile {
   // The project file module: what the file is (SK_RESOLUTION | ACTIVITY_DESIGN | PURCHASE_REQUEST |
   // RECEIPT | PHOTO | REPORT | LIQUIDATION) and a short description.
   documentType   String   @default("RECEIPT")
+  prNo           String?  @unique // Purchase Requests only: MM-NNN-YYYY, numbered per month (SKFPD Annex E)
   description    String?
   expenses       Expense[]
   createdAt      DateTime @default(now())

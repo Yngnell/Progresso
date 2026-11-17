@@ -4,6 +4,7 @@ node_modules/
 # Environment (secrets: database URL, JWT secret, Gmail app password)
 .env
 .env.local
+.env.production
 *.local
 
 # Build output

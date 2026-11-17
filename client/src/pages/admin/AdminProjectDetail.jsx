@@ -628,6 +628,7 @@ function Files({ project, documentTypes, canDelete, canUpload, ask, onDone, onFa
                 </button>
                 <p className="text-[13px] text-slate-600">
                   {documentTypes[f.documentType] || f.documentType}
+                  {f.prNo ? ` · PR No. ${f.prNo}` : ''}
                   {f.description ? ` · ${f.description}` : ''} · {formatDate(f.createdAt)}
                 </p>
               </div>

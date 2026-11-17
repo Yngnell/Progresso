@@ -10,6 +10,7 @@ const { receiptPath, removeReceiptFile, uploadedFiles } = require('../middleware
 const { fileBase, combinePdf, sendPdf } = require('../utils/combineFiles');
 const { isStaff } = require('../utils/roles');
 const { notifyProject } = require('../utils/notifications');
+const { nextPrNumber } = require('../utils/prNumber');
 const { EDITABLE, CLOSED, STATUS_LABEL, assertTransition } = require('../utils/projectStatus');
 const { EXPENSE_CATEGORIES, round2, itemRemaining, projectMoney } = require('../utils/projectBudget');
 
@@ -81,6 +82,7 @@ const FILE_FIELDS = {
   storeName: true,
   readStatus: true,
   documentType: true,
+  prNo: true,
   description: true,
 };
 
@@ -650,17 +652,28 @@ async function addFile(req, res, next) {
     // The type the SK Admin confirmed on the form, or else the one the system detects.
     const chosen = String(req.body.documentType || '');
     const documentType = UPLOAD_TYPES.includes(chosen) ? chosen : (await detectDocumentType(file)).documentType;
-    await prisma.liquidationFile.create({
-      data: {
-        projectId: project.id,
-        fileName: file.filename,
-        originalName: file.originalname,
-        mimeType: file.mimetype,
-        uploadedById: req.user.id,
-        uploadedByName: req.user.name,
-        documentType,
-      },
-    });
+    const data = {
+      projectId: project.id,
+      fileName: file.filename,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      uploadedById: req.user.id,
+      uploadedByName: req.user.name,
+      documentType,
+    };
+    if (documentType !== 'PURCHASE_REQUEST') await prisma.liquidationFile.create({ data });
+    else {
+      // A Purchase Request gets the next PR No. of the month. Two uploads at the same moment
+      // could pick the same number; the unique key refuses the second, which then tries again.
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await prisma.liquidationFile.create({ data: { ...data, prNo: await nextPrNumber(prisma) } });
+          break;
+        } catch (err) {
+          if (err.code !== 'P2002' || attempt >= 3) throw err;
+        }
+      }
+    }
     await sendProject(res, project.id, 201);
   } catch (err) {
     discard();

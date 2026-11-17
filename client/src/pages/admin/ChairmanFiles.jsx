@@ -50,38 +50,54 @@ export default function ChairmanFiles() {
     () =>
       (data?.files || []).map((f) => ({
         ...f,
-        typeLabel: documentTypes[f.documentType] || f.documentType || '—',
+        // A Purchase Request shows its PR No. (MM-NNN-YYYY) next to the type.
+        typeLabel: (documentTypes[f.documentType] || f.documentType || '—') + (f.prNo ? ` · ${f.prNo}` : ''),
         statusText: f.project.archivedAt ? `${f.project.statusLabel} (deleted)` : f.project.statusLabel,
         day: phDayOf(f.createdAt),
       })),
     [data, documentTypes]
   );
-  const projects = useMemo(() => {
-    const m = new Map();
-    all.forEach((f) => m.set(f.project.id, f.project.title));
-    return [...m].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [all]);
-  const typesPresent = useMemo(() => [...new Set(all.map((f) => f.documentType))], [all]);
-
   const today = phToday();
-  const shown = useMemo(() => {
+  // One test for every filter. `skip` leaves one filter out, so each dropdown can count what
+  // its options would show under the other filters (choosing a project updates the type counts).
+  const matches = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const list = all.filter((f) => {
-      if (project && f.project.id !== project) return false;
-      if (type && f.documentType !== type) return false;
+    return (f, skip) => {
+      if (skip !== 'project' && project && f.project.id !== project) return false;
+      if (skip !== 'type' && type && f.documentType !== type) return false;
       if (period === 'month' && f.day.slice(0, 7) !== today.slice(0, 7)) return false;
       if (period === 'year' && f.day.slice(0, 4) !== today.slice(0, 4)) return false;
       if (period === 'range' && ((from && f.day < from) || (to && f.day > to))) return false;
-      if (q && !f.originalName.toLowerCase().includes(q) && !f.project.title.toLowerCase().includes(q)) return false;
+      if (q && !f.originalName.toLowerCase().includes(q) && !f.project.title.toLowerCase().includes(q) && !(f.prNo || '').toLowerCase().includes(q)) return false;
       return true;
-    });
+    };
+  }, [project, type, period, from, to, search, today]);
+
+  // Project options: every project with files, with how many match the other filters.
+  const projects = useMemo(() => {
+    const m = new Map();
+    all.forEach((f) => m.set(f.project.id, { title: f.project.title, count: 0 }));
+    all.forEach((f) => { if (matches(f, 'project')) m.get(f.project.id).count += 1; });
+    return [...m].map(([id, v]) => [id, v.title, v.count]).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [all, matches]);
+  // Document type options: only the types found under the other filters, with their count.
+  // The chosen type stays listed (with 0) so the select never shows a missing value.
+  const typeCounts = useMemo(() => {
+    const c = {};
+    all.forEach((f) => { if (matches(f, 'type')) c[f.documentType] = (c[f.documentType] || 0) + 1; });
+    if (type && !c[type]) c[type] = 0;
+    return c;
+  }, [all, matches, type]);
+
+  const shown = useMemo(() => {
+    const list = all.filter((f) => matches(f));
     const col = COLUMNS.find((c) => c.key === sort.key) || COLUMNS[5];
     const dir = sort.dir === 'asc' ? 1 : -1;
     return [...list].sort((a, b) => {
       const x = col.get(a), y = col.get(b);
       return (x < y ? -1 : x > y ? 1 : 0) * dir;
     });
-  }, [all, project, type, period, from, to, search, sort, today]);
+  }, [all, matches, sort]);
 
   const sortBy = (key) => setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'date' || key === 'amount' ? 'desc' : 'asc' }));
   const fail = (text) => (err) => setProblem(err?.response?.data?.message || text);
@@ -131,7 +147,7 @@ export default function ChairmanFiles() {
             label="Project"
             value={project}
             onChange={(e) => setProject(e.target.value)}
-            options={[{ value: '', label: 'All projects' }, ...projects.map(([value, label]) => ({ value, label }))]}
+            options={[{ value: '', label: 'All projects' }, ...projects.map(([value, label, count]) => ({ value, label: `${label} (${count})` }))]}
           />
           <Select
             label="Document type"
@@ -140,8 +156,8 @@ export default function ChairmanFiles() {
             options={[
               { value: '', label: 'All types' },
               ...Object.entries(documentTypes)
-                .filter(([value]) => typesPresent.includes(value))
-                .map(([value, label]) => ({ value, label: `${label} (${all.filter((f) => f.documentType === value).length})` })),
+                .filter(([value]) => value in typeCounts)
+                .map(([value, label]) => ({ value, label: `${label} (${typeCounts[value]})` })),
             ]}
           />
           <Select label="Period" value={period} onChange={(e) => setPeriod(e.target.value)} options={PERIODS} />
@@ -153,7 +169,7 @@ export default function ChairmanFiles() {
                 id="file-search"
                 type="search"
                 className="input pl-9"
-                placeholder="File or project name"
+                placeholder="File, project, or PR No."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
